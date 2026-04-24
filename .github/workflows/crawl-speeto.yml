@@ -1,10 +1,10 @@
 name: Crawl Speeto
 
 on:
-  schedule:
-    # 스피또 추첨 시간을 설정하세요 (예: 매일 오후 6시)
-    # - cron: '0 9 * * *'  # 매일 09:00 UTC (오후 6시 KST)
   workflow_dispatch:
+  # schedule:
+  #   # 스피또 추첨 시간을 설정하세요 (예: 매일 오후 6시)
+  #   # - cron: '0 9 * * *'  # 매일 09:00 UTC (오후 6시 KST)
 
 jobs:
   crawl:
