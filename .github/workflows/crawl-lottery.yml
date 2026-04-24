@@ -27,6 +27,7 @@ jobs:
       run: |
         cd data/crawling
         python crawl_pension_stores.py
+        python crawl_all_lottery.py
 
     - name: Upload to Firebase
       env:
