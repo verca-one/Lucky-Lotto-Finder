@@ -1,0 +1,40 @@
+# .github/workflows/crawl.yml
+# 매주 일요일 오전 9시 (KST) 자동 실행
+
+name: 로또 명당 크롤링
+
+on:
+  schedule:
+    - cron: "0 0 * * 0"  # UTC 00:00 = KST 09:00 (일요일)
+  workflow_dispatch:       # 수동 실행 버튼
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 코드 체크아웃
+        uses: actions/checkout@v4
+
+      - name: Python 설치
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: 의존성 설치
+        run: |
+          pip install requests beautifulsoup4 firebase-admin
+
+      - name: Firebase 서비스 계정 키 복원
+        run: |
+          echo '${{ secrets.FIREBASE_SERVICE_ACCOUNT }}' > serviceAccountKey.json
+
+      - name: 크롤링 실행
+        run: python lotto_crawler.py
+
+      - name: Firestore 업로드
+        run: python firestore_uploader.py
+
+      - name: 키 파일 삭제
+        if: always()
+        run: rm -f serviceAccountKey.json

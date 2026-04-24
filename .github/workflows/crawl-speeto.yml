@@ -1,0 +1,48 @@
+name: Crawl Speeto
+
+on:
+  schedule:
+    # 스피또 추첨 시간을 설정하세요 (예: 매일 오후 6시)
+    # - cron: '0 9 * * *'  # 매일 09:00 UTC (오후 6시 KST)
+  workflow_dispatch:
+
+jobs:
+  crawl:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v3
+
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.11'
+
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r data/crawling/requirements.txt
+
+    - name: Run speeto scraping
+      run: |
+        cd data/crawling
+        # python scrape_speeto_numbers.py (구현 예정)
+        # python crawl_speeto_stores.py (구현 예정)
+        echo "Speeto scraping script not yet implemented"
+
+    - name: Upload to Firebase
+      env:
+        FIREBASE_CREDENTIALS: ${{ secrets.FIREBASE_CREDENTIALS }}
+        FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+      run: |
+        cd data/crawling
+        # python upload_to_firebase.py (speeto_data=True)
+        echo "Speeto upload script not yet implemented"
+
+    - name: Commit and push results
+      run: |
+        git config user.name "Lottery Bot"
+        git config user.email "lottery-bot@github.com"
+        git add -A
+        git commit -m "Auto: Update speeto data - $(date '+%Y-%m-%d %H:%M:%S')" || true
+        git push
