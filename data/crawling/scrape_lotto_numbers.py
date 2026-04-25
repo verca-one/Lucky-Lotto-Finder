@@ -66,13 +66,33 @@ def save_json(data, filename="lotto_numbers_crawled.json"):
         json.dump(data, f, ensure_ascii=False, indent=2)
     print(f"💾 저장: {filename}")
 
+def get_lotto_reverse(max_round=1220):
+    """역순으로 최신부터 수집"""
+    print(f"📊 {max_round}회차부터 역순 수집 중...")
+    print("=" * 70)
+
+    results = []
+    for i in range(max_round, 0, -1):
+        result = get_lotto(i)
+        if result:
+            results.append(result)
+            print(f"✅ {i}회: {result['numbers']} + {result['bonus']}")
+        else:
+            print(f"⏭️  {i}회: 데이터 없음")
+
+        time.sleep(0.1)  # 서버 부담 방지
+
+    print("=" * 70)
+    print(f"✅ 완료! 총 {len(results)}회차 수집")
+    return results
+
 def main():
     """메인 함수"""
     print("🎰 로또 당첨번호 수집 (API)")
     print("=" * 70)
 
-    # 최근 5회차만 수집 (테스트용)
-    lotto_data = get_all_lotto(max_round=1220)
+    # 1220회부터 역순으로 수집
+    lotto_data = get_lotto_reverse(max_round=1220)
 
     if lotto_data:
         save_json(lotto_data)
