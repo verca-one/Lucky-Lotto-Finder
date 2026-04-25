@@ -1,130 +1,84 @@
 """
-로또 당첨번호 크롤링 (Selenium + webdriver-manager)
-JavaScript 렌더링이 필요하므로 Selenium 사용
+로또 당첨번호 크롤링 (API 직접 호출)
+https://www.dhlottery.co.kr/common.do?method=getLottoNumber&drwNo={round}
 """
 
+import requests
 import json
 import time
-from selenium import webdriver
-from selenium.webdriver.common.by import By
-from selenium.webdriver.support.ui import WebDriverWait
-from selenium.webdriver.support import expected_conditions as EC
-from selenium.webdriver.chrome.options import Options
-from webdriver_manager.chrome import ChromeDriverManager
-from selenium.webdriver.chrome.service import Service
-import os
 
-BASE_URL = "https://www.dhlottery.co.kr/tt645/result"
+BASE_URL = "https://www.dhlottery.co.kr/common.do?method=getLottoNumber&drwNo="
 
-def setup_driver():
-    """Chrome WebDriver 설정"""
-    chrome_options = Options()
-    chrome_options.add_argument("--headless")
-    chrome_options.add_argument("--no-sandbox")
-    chrome_options.add_argument("--disable-dev-shm-usage")
-    chrome_options.add_argument("--disable-blink-features=AutomationControlled")
-    chrome_options.add_argument("--disable-gpu")
-    chrome_options.add_argument("user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
-
+def get_lotto(drwNo):
+    """특정 회차의 로또 당첨번호 조회"""
     try:
-        # webdriver-manager로 ChromeDriver 자동 설정
-        service = Service(ChromeDriverManager().install())
-        driver = webdriver.Chrome(service=service, options=chrome_options)
-        print("✅ Chrome WebDriver 설정 완료")
-        return driver
-    except Exception as e:
-        print(f"❌ WebDriver 설정 실패: {e}")
-        return None
+        url = f"{BASE_URL}{drwNo}"
+        res = requests.get(url, timeout=10)
+        data = res.json()
 
-def fetch_lotto_number(driver, round_num):
-    """특정 회차의 로또 당첨번호 크롤링"""
-    try:
-        url = f"{BASE_URL}?drwNo={round_num}"
-        print(f"🔍 {round_num}회 크롤링 중: {url}")
-
-        driver.get(url)
-
-        # 공(ball) 요소가 로드될 때까지 대기
-        WebDriverWait(driver, 15).until(
-            EC.presence_of_all_elements_located((By.CLASS_NAME, "ball"))
-        )
-
-        time.sleep(2)  # 추가 렌더링 대기
-
-        # 당첨번호 추출
-        numbers = []
-        bonus = None
-
-        # 일반 공 추출
-        balls = driver.find_elements(By.CLASS_NAME, "ball")
-        print(f"   발견된 공: {len(balls)}개")
-
-        for ball in balls:
-            text = ball.text.strip()
-            if text and text.isdigit():
-                numbers.append(int(text))
-                print(f"   - 번호: {text}")
-
-        # 보너스 번호 추출
-        try:
-            bonus_elem = driver.find_element(By.CLASS_NAME, "bonus")
-            bonus_text = bonus_elem.text.strip()
-            if bonus_text.isdigit():
-                bonus = int(bonus_text)
-                print(f"   - 보너스: {bonus}")
-        except:
-            print(f"   - 보너스 미발견")
-
-        if len(numbers) == 6 and bonus:
-            print(f"✅ {round_num}회: {numbers} + {bonus}\n")
-            return {
-                'round': round_num,
-                'numbers': numbers,
-                'bonus': bonus
-            }
-        else:
-            print(f"⚠️  {round_num}회: 데이터 불완전 (번호: {len(numbers)}개, 보너스: {bonus})\n")
+        if data.get("returnValue") != "success":
             return None
 
+        return {
+            "round": drwNo,
+            "numbers": [data[f"drwtNo{i}"] for i in range(1, 7)],
+            "bonus": data["bnusNo"]
+        }
     except Exception as e:
-        print(f"❌ {round_num}회 오류: {e}\n")
+        print(f"❌ {drwNo}회 조회 실패: {e}")
         return None
 
-def main():
-    """메인 크롤링 함수"""
-    print("🎰 로또 당첨번호 크롤링 (Selenium + webdriver-manager)")
+def get_latest_round():
+    """최신 회차 자동 찾기"""
+    i = 1
+    while True:
+        if get_lotto(i) is None:
+            return i - 1
+        i += 1
+        if i > 2000:  # 무한 루프 방지
+            break
+    return i - 1
+
+def get_all_lotto(max_round=None):
+    """모든 로또 당첨번호 수집"""
+    if max_round is None:
+        print("🔍 최신 회차 찾는 중...")
+        max_round = get_latest_round()
+
+    print(f"📊 1회차부터 {max_round}회차까지 수집 중...")
     print("=" * 70)
 
-    driver = setup_driver()
-    if not driver:
-        print("❌ Chrome WebDriver 초기화 실패")
-        return
-
     results = []
+    for i in range(1, max_round + 1):
+        result = get_lotto(i)
+        if result:
+            results.append(result)
+            print(f"✅ {i}회: {result['numbers']} + {result['bonus']}")
+        time.sleep(0.1)  # 서버 부담 방지
 
-    try:
-        # 최근 3회차만 테스트 (전체는 시간이 오래 걸림)
-        for round_num in range(1220, 1217, -1):
-            data = fetch_lotto_number(driver, round_num)
-            if data:
-                results.append(data)
-            time.sleep(1)  # 요청 간격
+    print("=" * 70)
+    print(f"✅ 완료! 총 {len(results)}회차 수집")
+    return results
 
-        # 결과 저장
-        output_file = "lotto_numbers_crawled.json"
-        with open(output_file, 'w', encoding='utf-8') as f:
-            json.dump(results, f, ensure_ascii=False, indent=2)
+def save_json(data, filename="lotto_numbers_crawled.json"):
+    """JSON으로 저장"""
+    with open(filename, 'w', encoding='utf-8') as f:
+        json.dump(data, f, ensure_ascii=False, indent=2)
+    print(f"💾 저장: {filename}")
 
-        print("=" * 70)
-        print(f"✅ 크롤링 완료!")
-        print(f"   성공: {len(results)}/3")
-        print(f"   저장: {output_file}")
+def main():
+    """메인 함수"""
+    print("🎰 로또 당첨번호 수집 (API)")
+    print("=" * 70)
 
-    except Exception as e:
-        print(f"❌ 크롤링 실패: {e}")
+    # 최근 5회차만 수집 (테스트용)
+    lotto_data = get_all_lotto(max_round=1220)
 
-    finally:
-        driver.quit()
+    if lotto_data:
+        save_json(lotto_data)
+        print(f"\n성공: {len(lotto_data)}회차")
+    else:
+        print("❌ 수집 실패")
 
 if __name__ == "__main__":
     main()
