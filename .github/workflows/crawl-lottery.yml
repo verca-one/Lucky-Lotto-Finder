@@ -23,11 +23,10 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r data/crawling/requirements.txt
 
-    - name: Run pension lottery scraping
+    - name: Run pension lottery store scraping (최신 회차만)
       run: |
         cd data/crawling
-        python crawl_pension_stores.py
-        python crawl_all_lottery.py
+        python crawl_pension_stores_latest.py
 
     - name: Upload to Firebase
       env:

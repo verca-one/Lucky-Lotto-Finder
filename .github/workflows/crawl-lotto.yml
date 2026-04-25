@@ -28,10 +28,10 @@ jobs:
     #     cd data/crawling
     #     python scrape_lotto_numbers.py
 
-    - name: Run lotto store scraping
+    - name: Run lotto store scraping (최신 회차만)
       run: |
         cd data/crawling
-        python crawl_all_lottery.py
+        python crawl_lotto_stores_latest.py
 
     - name: Upload to Firebase
       env:
