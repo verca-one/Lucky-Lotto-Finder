@@ -215,45 +215,65 @@ export default function AdminPage() {
 
     setSaving(true);
     try {
+      const roundNum = parseInt(round);
+
       if (activeTab === "pension") {
         // 연금복권 저장 - 자동 분류된 데이터 사용
         await addDoc(collection(db, "lotto_records"), {
           lottery_type: "pension",
-          round: parseInt(round),
+          round: roundNum,
           date: date,
           winners: generatePensionWinners(),
           bonus: pensionBonus,
           createdAt: new Date(),
         });
-        setMessage("✅ 저장되었습니다!");
-        setRound("");
-        setDate("");
-        setPensionGroup("");
-        setPensionRank1([0, 0, 0, 0, 0, 0]);
-        setPensionBonus([0, 0, 0, 0, 0, 0]);
       } else {
         // 로또/스피또 저장
         await addDoc(collection(db, "lotto_records"), {
           lottery_type: activeTab,
-          round: parseInt(round),
+          round: roundNum,
           date: date,
           numbers: numbers,
           bonus: parseInt(bonus),
           createdAt: new Date(),
         });
-        setMessage("✅ 저장되었습니다!");
-        setRound("");
-        setDate("");
-        setNumbers([]);
-        setBonus("");
       }
-      fetchRecords();
-      setTimeout(() => setMessage(""), 3000);
+
+      // 회차 상세 페이지로 이동
+      setMessage("✅ 저장되었습니다! 당첨지점 수집 페이지로 이동합니다...");
+      setTimeout(() => {
+        router.push(`/admin/${roundNum}`);
+      }, 1000);
     } catch (error) {
       console.error("저장 실패:", error);
       setMessage("❌ 저장 실패");
     } finally {
       setSaving(false);
+    }
+  };
+
+  // 당첨지점 수집
+  const handleCollectStores = async (roundNum: number) => {
+    setMessage(`📊 ${roundNum}회 당첨지점을 수집중입니다...`);
+
+    try {
+      const response = await fetch("/api/crawl-stores-by-round", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ round: roundNum }),
+      });
+
+      const data = await response.json();
+
+      if (response.ok) {
+        setMessage(`✅ ${data.count}개 당첨지점 수집 완료!`);
+        setTimeout(() => setMessage(""), 3000);
+      } else {
+        setMessage(`❌ 수집 실패: ${data.error}`);
+      }
+    } catch (error) {
+      console.error("수집 실패:", error);
+      setMessage(`❌ 오류: ${error}`);
     }
   };
 
@@ -677,12 +697,20 @@ export default function AdminPage() {
                         </p>
                         <p className="text-sm text-gray-600">{record.date}</p>
                       </div>
-                      <button
-                        onClick={() => handleDelete(record.id)}
-                        className="bg-red-500 hover:bg-red-600 text-white font-bold py-1 px-3 rounded transition"
-                      >
-                        삭제
-                      </button>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => handleCollectStores(record.round)}
+                          className="bg-green-500 hover:bg-green-600 text-white font-bold py-1 px-3 rounded transition"
+                        >
+                          당첨지점 수집
+                        </button>
+                        <button
+                          onClick={() => handleDelete(record.id)}
+                          className="bg-red-500 hover:bg-red-600 text-white font-bold py-1 px-3 rounded transition"
+                        >
+                          삭제
+                        </button>
+                      </div>
                     </div>
 
                     {/* 로또 데이터 */}

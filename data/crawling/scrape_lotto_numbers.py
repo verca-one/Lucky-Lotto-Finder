@@ -13,7 +13,7 @@ def get_lotto(drwNo):
     """특정 회차의 로또 당첨번호 조회"""
     try:
         url = f"{BASE_URL}{drwNo}"
-        res = requests.get(url, timeout=10)
+        res = requests.get(url, timeout=15)
         data = res.json()
 
         if data.get("returnValue") != "success":
@@ -25,7 +25,6 @@ def get_lotto(drwNo):
             "bonus": data["bnusNo"]
         }
     except Exception as e:
-        print(f"❌ {drwNo}회 조회 실패: {e}")
         return None
 
 def get_latest_round():
@@ -66,21 +65,22 @@ def save_json(data, filename="lotto_numbers_crawled.json"):
         json.dump(data, f, ensure_ascii=False, indent=2)
     print(f"💾 저장: {filename}")
 
-def get_lotto_reverse(max_round=1220):
-    """역순으로 최신부터 수집"""
-    print(f"📊 {max_round}회차부터 역순 수집 중...")
+def get_lotto_reverse(max_round=1220, limit=100):
+    """역순으로 최신부터 수집 (최근 N회차만)"""
+    start = max_round
+    end = max(1, max_round - limit)
+
+    print(f"📊 {max_round}회차부터 {end}회차까지 수집 중...")
     print("=" * 70)
 
     results = []
-    for i in range(max_round, 0, -1):
+    for i in range(start, end - 1, -1):
         result = get_lotto(i)
         if result:
             results.append(result)
             print(f"✅ {i}회: {result['numbers']} + {result['bonus']}")
-        else:
-            print(f"⏭️  {i}회: 데이터 없음")
 
-        time.sleep(0.1)  # 서버 부담 방지
+        time.sleep(0.3)  # 서버 부담 방지
 
     print("=" * 70)
     print(f"✅ 완료! 총 {len(results)}회차 수집")
@@ -91,12 +91,12 @@ def main():
     print("🎰 로또 당첨번호 수집 (API)")
     print("=" * 70)
 
-    # 1220회부터 역순으로 수집
-    lotto_data = get_lotto_reverse(max_round=1220)
+    # 최근 100회차만 수집 (1220회부터 역순)
+    lotto_data = get_lotto_reverse(max_round=1220, limit=100)
 
     if lotto_data:
         save_json(lotto_data)
-        print(f"\n성공: {len(lotto_data)}회차")
+        print(f"\n✅ 성공: {len(lotto_data)}회차 저장")
     else:
         print("❌ 수집 실패")
 
