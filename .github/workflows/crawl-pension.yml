@@ -1,9 +1,9 @@
-name: Crawl Lotto
+name: Crawl Pension Lottery
 
 on:
   schedule:
-    # 매주 토요일 12:30 UTC (토요일 21:30 KST)
-    - cron: '30 12 * * 6'
+    # 매주 목요일 10:30 UTC (목요일 19:30 KST)
+    - cron: '30 10 * * 4'
   workflow_dispatch:
 
 jobs:
@@ -23,12 +23,7 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r data/crawling/requirements.txt
 
-    # - name: Run lotto number scraping
-    #   run: |
-    #     cd data/crawling
-    #     python scrape_lotto_numbers.py
-
-    - name: Run lotto store scraping (최신 회차만)
+    - name: Run pension lottery store scraping (최신 회차만)
       run: |
         cd data/crawling
         python crawl_lotto_stores.py latest
@@ -46,5 +41,5 @@ jobs:
         git config user.name "Lottery Bot"
         git config user.email "lottery-bot@github.com"
         git add -A
-        git commit -m "Auto: Update lotto data - $(date '+%Y-%m-%d %H:%M:%S')" || true
+        git commit -m "Auto: Update pension lottery data - $(date '+%Y-%m-%d %H:%M:%S')" || true
         git push
