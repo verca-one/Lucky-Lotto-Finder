@@ -28,13 +28,14 @@ jobs:
         cd gooddear/data/crawling
         python crawl_lotto_stores.py latest
 
-    - name: Upload to Firebase
+    - name: Upload to Supabase
       env:
-        FIREBASE_CREDENTIALS: ${{ secrets.FIREBASE_CREDENTIALS }}
-        FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
+        SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
       run: |
         cd gooddear/data/crawling
-        python upload_to_firebase.py
+        python upload_to_supabase.py latest speedlotto_2000 zero_base_speedlotto_2000_stores_latest.json
+        python upload_to_supabase.py latest speedlotto_1000 zero_base_speedlotto_1000_stores_latest.json
+        python upload_to_supabase.py latest speedlotto_500 zero_base_speedlotto_500_stores_latest.json
 
     - name: Commit and push results
       run: |
