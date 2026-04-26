@@ -21,16 +21,16 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r data/crawling/requirements.txt
+        pip install -r gooddear/data/crawling/requirements.txt
 
     # - name: Run lotto number scraping
     #   run: |
-    #     cd data/crawling
+    #     cd gooddear/data/crawling
     #     python scrape_lotto_numbers.py
 
     - name: Run lotto store scraping (최신 회차만)
       run: |
-        cd data/crawling
+        cd gooddear/data/crawling
         python crawl_lotto_stores.py latest
 
     - name: Upload to Firebase
@@ -38,7 +38,7 @@ jobs:
         FIREBASE_CREDENTIALS: ${{ secrets.FIREBASE_CREDENTIALS }}
         FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       run: |
-        cd data/crawling
+        cd gooddear/data/crawling
         python upload_to_firebase.py
 
     - name: Commit and push results

@@ -1,10 +1,10 @@
 name: Crawl Speeto
 
 on:
+  schedule:
+    # 매일 21:30 UTC (매일 06:30 KST)
+    - cron: '30 21 * * *'
   workflow_dispatch:
-  # schedule:
-  #   # 스피또 추첨 시간을 설정하세요 (예: 매일 오후 6시)
-  #   # - cron: '0 9 * * *'  # 매일 09:00 UTC (오후 6시 KST)
 
 jobs:
   crawl:
@@ -21,23 +21,20 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -r data/crawling/requirements.txt
+        pip install -r gooddear/data/crawling/requirements.txt
 
-    - name: Run speeto scraping
+    - name: Run speeto store scraping (최신 회차만)
       run: |
-        cd data/crawling
-        # python scrape_speeto_numbers.py (구현 예정)
-        # python crawl_speeto_stores.py (구현 예정)
-        echo "Speeto scraping script not yet implemented"
+        cd gooddear/data/crawling
+        python crawl_lotto_stores.py latest
 
     - name: Upload to Firebase
       env:
         FIREBASE_CREDENTIALS: ${{ secrets.FIREBASE_CREDENTIALS }}
         FIREBASE_PROJECT_ID: ${{ secrets.FIREBASE_PROJECT_ID }}
       run: |
-        cd data/crawling
-        # python upload_to_firebase.py (speeto_data=True)
-        echo "Speeto upload script not yet implemented"
+        cd gooddear/data/crawling
+        python upload_to_firebase.py
 
     - name: Commit and push results
       run: |
