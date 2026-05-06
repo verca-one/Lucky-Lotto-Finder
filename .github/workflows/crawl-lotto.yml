@@ -23,22 +23,23 @@ jobs:
         python -m pip install --upgrade pip
         pip install -r gooddear/data/crawling/requirements.txt
 
-    # - name: Run lotto number scraping
-    #   run: |
-    #     cd gooddear/data/crawling
-    #     python scrape_lotto_numbers.py
-
     - name: Run lotto store scraping (최신 회차만)
+      env:
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
       run: |
-        cd gooddear/data/crawling
-        python crawl_lotto_stores.py latest
+        python lotto_verca_crawler.py lotto latest
+
+    - name: Collect winning numbers (최신 회차)
+      run: |
+        python lotto_verca_winning_numbers.py 5
 
     - name: Upload to Supabase
       env:
-        SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
       run: |
-        cd gooddear/data/crawling
-        python upload_to_supabase.py latest lotto zero_base_lotto_stores_latest.json
+        python lotto_verca_uploader.py
 
     - name: Commit and push results
       run: |
