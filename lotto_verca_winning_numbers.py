@@ -334,6 +334,29 @@ class WinningNumbersCrawler:
         else:
             return self.get_speedlotto_numbers(game_type, round_no)
 
+    def _estimate_latest_round(self, game_type: str) -> int:
+        """날짜 기반으로 최신 회차 추정 (HTTP 요청 없음)"""
+        from datetime import date, timedelta
+        today = date.today()
+
+        if game_type == "lotto":
+            base_date = date(2002, 12, 7)
+            days_since_saturday = (today.weekday() + 2) % 7
+            last_saturday = today - timedelta(days=days_since_saturday)
+            return (last_saturday - base_date).days // 7 + 1
+        elif game_type == "pension":
+            base_date = date(2020, 4, 2)
+            days_since_thursday = (today.weekday() - 3) % 7
+            last_thursday = today - timedelta(days=days_since_thursday)
+            return (last_thursday - base_date).days // 7 + 1
+        elif game_type == "speedlotto_2000":
+            return 67
+        elif game_type == "speedlotto_1000":
+            return 106
+        elif game_type == "speedlotto_500":
+            return 48
+        return 1
+
     def fetch_recent_numbers(self, count: int = 5) -> List[Dict]:
         """최신 N개 회차의 당첨번호 수집 (병렬 처리)"""
         logger.info("=" * 70)
@@ -342,14 +365,15 @@ class WinningNumbersCrawler:
 
         winning_numbers = []
 
-        # 각 게임별 최대 회차
+        # 각 게임별 최대 회차 (동적 계산)
         latest_rounds = {
-            "lotto": 1221,
-            "pension": 312,
-            "speedlotto_2000": 67,
-            "speedlotto_1000": 106,
-            "speedlotto_500": 48,
+            "lotto": self._estimate_latest_round("lotto"),
+            "pension": self._estimate_latest_round("pension"),
+            "speedlotto_2000": self._estimate_latest_round("speedlotto_2000"),
+            "speedlotto_1000": self._estimate_latest_round("speedlotto_1000"),
+            "speedlotto_500": self._estimate_latest_round("speedlotto_500"),
         }
+        logger.info(f"최신 회차 추정: {latest_rounds}")
 
         # 수집할 작업 리스트
         tasks = []

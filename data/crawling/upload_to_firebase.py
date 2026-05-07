@@ -11,25 +11,28 @@ from firebase_admin import firestore
 
 def init_firebase():
     """Firebase 초기화"""
-    # 환경변수에서 Firebase 자격증명 가져오기
+    # 1. 로컬 serviceAccountKey.json 파일 사용
+    if os.path.exists('serviceAccountKey.json'):
+        cred = credentials.Certificate('serviceAccountKey.json')
+        firebase_admin.initialize_app(cred)
+        print("✅ serviceAccountKey.json으로 Firebase 초기화 완료")
+        return firestore.client()
+
+    # 2. 환경변수에서 Firebase 자격증명 가져오기 (GitHub Actions용)
     creds_json = os.getenv('FIREBASE_CREDENTIALS')
     project_id = os.getenv('FIREBASE_PROJECT_ID')
 
-    if not creds_json or not project_id:
-        print("❌ Firebase 환경변수 미설정")
-        return None
+    if creds_json and project_id:
+        creds_file = '/tmp/firebase_creds.json'
+        with open(creds_file, 'w') as f:
+            f.write(creds_json)
+        cred = credentials.Certificate(creds_file)
+        firebase_admin.initialize_app(cred, {'projectId': project_id})
+        print("✅ 환경변수로 Firebase 초기화 완료")
+        return firestore.client()
 
-    # JSON 문자열을 파일로 저장 후 로드
-    creds_file = '/tmp/firebase_creds.json'
-    with open(creds_file, 'w') as f:
-        f.write(creds_json)
-
-    cred = credentials.Certificate(creds_file)
-    firebase_admin.initialize_app(cred, {
-        'projectId': project_id
-    })
-
-    return firestore.client()
+    print("❌ Firebase 인증 파일 또는 환경변수 미설정")
+    return None
 
 def upload_lotto_numbers(db):
     """로또 당첨번호 업로드"""
@@ -63,8 +66,25 @@ def upload_lotto_numbers(db):
 def upload_stores(db):
     """당첨지점 업로드"""
     try:
-        with open('crawled_stores.json', 'r', encoding='utf-8') as f:
-            stores_data = json.load(f)
+        stores_data = []
+
+        # 크롤링 데이터 읽기 (base_ 파일들)
+        files_to_read = [
+            'base_lotto_stores_latest.json',
+            'base_pension_stores_latest.json',
+            'base_speeto_a_stores_latest.json',
+            'base_speeto_b_stores_latest.json',
+            'base_speeto_c_stores_latest.json',
+            'base_speeto1000_stores_latest.json'
+        ]
+
+        for filename in files_to_read:
+            try:
+                with open(filename, 'r', encoding='utf-8') as f:
+                    stores_data.extend(json.load(f))
+                    print(f"📄 {filename} 로드 완료")
+            except FileNotFoundError:
+                print(f"⚠️  {filename} 파일 없음")
 
         if not stores_data:
             print("⚠️  당첨지점 데이터 없음")
@@ -83,10 +103,13 @@ def upload_stores(db):
                 'lottery_type': lottery_type,
                 'round': round_num,
                 'rank': store.get('rank'),
+                'store_id': store.get('store_id'),
                 'store_name': store.get('store_name'),
                 'address': store.get('address'),
                 'method': store.get('method'),
                 'region': store.get('region'),
+                'naver_map_url': store.get('naver_map_url'),
+                'kakao_map_url': store.get('kakao_map_url'),
                 'lat': store.get('lat'),
                 'lng': store.get('lng'),
                 'crawled_at': datetime.now().isoformat()
@@ -103,8 +126,6 @@ def upload_stores(db):
 
         print(f"✅ 당첨지점 {count}개 업로드 완료")
 
-    except FileNotFoundError:
-        print("⚠️  당첨지점 파일 없음")
     except Exception as e:
         print(f"❌ 당첨지점 업로드 실패: {e}")
 

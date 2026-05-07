@@ -84,7 +84,7 @@ def get_stored_latest_round(db):
 def normalize_method(method_text):
     """판매 방법 정규화"""
     if not method_text:
-        return "미정"
+        return "없음"
 
     method_text = method_text.strip().lower()
 
@@ -95,7 +95,7 @@ def normalize_method(method_text):
     elif "수동" in method_text:
         return "수동"
     else:
-        return method_text
+        return "없음"
 
 def extract_region(address):
     """주소에서 지역 추출"""
@@ -140,11 +140,18 @@ def fetch_lotto_stores(round_num):
                     method = cols[2].text.strip()
 
                     if store_name:
+                        region = extract_region(address)
+                        store_id = f"lotto_{region}_{store_name}_{address.split()[0]}"
+
                         stores.append({
                             'rank': 1,
+                            'store_id': store_id,
                             'store_name': store_name,
                             'address': address,
-                            'method': normalize_method(method)
+                            'method': normalize_method(method),
+                            'region': region,
+                            'naver_map_url': f"https://map.naver.com/v5/search/{store_name}",
+                            'kakao_map_url': f"https://map.kakao.com/link/search/{store_name}"
                         })
 
         # 2등 당첨지점
@@ -159,11 +166,18 @@ def fetch_lotto_stores(round_num):
                     method = cols[2].text.strip()
 
                     if store_name:
+                        region = extract_region(address)
+                        store_id = f"lotto_{region}_{store_name}_{address.split()[0]}"
+
                         stores.append({
                             'rank': 2,
+                            'store_id': store_id,
                             'store_name': store_name,
                             'address': address,
-                            'method': normalize_method(method)
+                            'method': normalize_method(method),
+                            'region': region,
+                            'naver_map_url': f"https://map.naver.com/v5/search/{store_name}",
+                            'kakao_map_url': f"https://map.kakao.com/link/search/{store_name}"
                         })
 
         return stores if stores else None
@@ -204,52 +218,62 @@ def save_to_firebase(db, round_num, stores):
         print(f"❌ Firebase 저장 실패: {e}")
 
 def main():
-    """메인 크롤링 함수"""
-    print("🎰 로또 당첨지점 크롤링 (최신 회차만)")
+    """메인 크롤링 함수 (전 회차 수집)"""
+    print("🎰 로또 당첨지점 크롤링 (전 회차 베이스 자료 구축)")
     print("=" * 70)
 
     db = init_firebase()
 
-    # 최신 회차 감지
-    latest_round = get_latest_round()
-    if not latest_round:
-        print("❌ 최신 회차를 감지할 수 없습니다")
-        return
+    # 회차 범위 설정
+    START_ROUND = 1
+    END_ROUND = 1221  # 최신 회차를 여기에 입력해주세요
 
-    # 저장된 최신 회차 확인
-    stored_round = get_stored_latest_round(db)
+    print(f"\n📋 {START_ROUND}회 ~ {END_ROUND}회 수집 시작\n")
 
-    # 새 회차가 있는지 확인
-    if stored_round and latest_round <= stored_round:
-        print(f"ℹ️  이미 {stored_round}회까지 저장되었습니다")
-        print(f"   새로운 회차가 없으므로 스킵합니다")
-        return
+    all_stores = []
+    success_count = 0
+    fail_count = 0
 
-    # 최신 회차만 크롤링
-    print(f"\n📊 {latest_round}회 당첨지점 크롤링 중...")
-    stores = fetch_lotto_stores(latest_round)
+    # 각 회차별 크롤링 (최신부터 역순)
+    for round_num in range(END_ROUND, START_ROUND - 1, -1):
+        print(f"📊 [{END_ROUND - round_num + 1}/{END_ROUND}] 로또 {round_num}회 크롤링 중...", end=" ")
 
-    if stores:
-        print(f"✅ {len(stores)}개 지점 발견")
-        save_to_firebase(db, latest_round, stores)
+        stores = fetch_lotto_stores(round_num)
 
-        # JSON 파일로도 저장
-        output_file = "lotto_stores_latest.json"
-        with open(output_file, 'w', encoding='utf-8') as f:
-            json.dump([{
+        if stores:
+            print(f"✅ {len(stores)}개 지점")
+            save_to_firebase(db, round_num, stores)
+            all_stores.extend([{
                 "lottery_type": "lotto",
-                "round": latest_round,
+                "round": round_num,
                 "rank": s['rank'],
+                "store_id": s['store_id'],
                 "store_name": s['store_name'],
                 "address": s['address'],
                 "method": s['method'],
-                "region": extract_region(s['address']),
+                "region": s['region'],
+                "naver_map_url": s['naver_map_url'],
+                "kakao_map_url": s['kakao_map_url'],
                 "crawled_at": datetime.now().isoformat()
-            } for s in stores], f, ensure_ascii=False, indent=2)
+            } for s in stores])
+            success_count += 1
+        else:
+            print(f"⚠️  데이터 없음")
+            fail_count += 1
 
-        print(f"✅ 크롤링 완료!")
-    else:
-        print(f"⚠️  {latest_round}회 데이터를 찾을 수 없습니다")
+        # 서버 부하 방지
+        time.sleep(0.5)
+
+    # 최종 JSON 저장
+    if all_stores:
+        output_file = "base_lotto_stores_latest.json"
+        with open(output_file, 'w', encoding='utf-8') as f:
+            json.dump(all_stores, f, ensure_ascii=False, indent=2)
+
+    print("\n" + "=" * 70)
+    print(f"✅ 크롤링 완료!")
+    print(f"   성공: {success_count}회차 / 실패: {fail_count}회차")
+    print(f"   총 {len(all_stores)}개 지점 수집")
 
 if __name__ == "__main__":
     main()

@@ -29,6 +29,8 @@ interface Store {
 export default function HomePage() {
   const [activeTab, setActiveTab] = useState<"lotto" | "pension" | "speeto">("lotto");
   const [lottoRound, setLottoRound] = useState<number | null>(null);
+  const [selectedRound, setSelectedRound] = useState<number | null>(null);
+  const [latestRound, setLatestRound] = useState<number | null>(null);
   const [lottoNumbers, setLottoNumbers] = useState<number[]>([]);
   const [lottoBonus, setLottoBonus] = useState<number | number[] | null>(null);
   const [pensionWinners, setPensionWinners] = useState<Record<string, { group: string; balls: number[] }> | null>(null);
@@ -53,60 +55,49 @@ export default function HomePage() {
         const recordsSnapshot = await getDocs(q);
 
         if (!recordsSnapshot.empty) {
-          // 해당 탭의 최신 기록 찾기
-          const latestRecord = recordsSnapshot.docs.find(
+          // 해당 탭의 모든 기록 필터링
+          const tabRecords = recordsSnapshot.docs.filter(
             (doc) => (doc.data().lottery_type || "lotto") === activeTab
           );
 
-          if (latestRecord) {
-            const data = latestRecord.data();
-            setLottoRound(data.round);
+          if (tabRecords.length > 0) {
+            const latestRoundNum = tabRecords[0].data().round;
+            setLatestRound(latestRoundNum);
 
-            // 연금복권인 경우
-            if (activeTab === "pension") {
-              setPensionWinners(data.winners || null);
+            // targetRound 결정: selectedRound가 있으면 그것, 없으면 최신 회차
+            const targetRound = selectedRound || latestRoundNum;
+
+            // 해당 회차의 기록 찾기
+            const targetRecord = tabRecords.find((doc) => doc.data().round === targetRound);
+
+            if (targetRecord) {
+              const data = targetRecord.data();
+              setLottoRound(data.round);
+
+              // 연금복권인 경우
+              if (activeTab === "pension") {
+                setPensionWinners(data.winners || null);
+                setLottoNumbers([]);
+                setLottoBonus(null);
+              } else {
+                setLottoNumbers(data.numbers || []);
+                setLottoBonus(data.bonus || null);
+                setPensionWinners(null);
+              }
+
+              setAdminDate(data.date);
+
+              // 2. 당첨지점 조회 (임시 비활성화 - 크롤링 데이터 정리 중)
+              setWinStores([]);
+              setRank2Stores([]);
+            } else {
+              setLottoRound(null);
               setLottoNumbers([]);
               setLottoBonus(null);
-            } else {
-              setLottoNumbers(data.numbers || []);
-              setLottoBonus(data.bonus || null);
-              setPensionWinners(null);
+              setAdminDate(null);
+              setWinStores([]);
+              setRank2Stores([]);
             }
-
-            setAdminDate(data.date);
-
-            // 2. 해당 라운드의 당첨지점 조회
-            const historySnapshot = await getDocs(collection(db, "win_history"));
-            const histories = historySnapshot.docs.map((doc) => doc.data() as WinHistory);
-
-            const storesSnapshot = await getDocs(collection(db, "stores"));
-            const storesMap = new Map(storesSnapshot.docs.map((doc) => [doc.id, doc.data() as Store]));
-
-            // 1등 (rank가 없거나 rank=1)
-            const rank1Histories = histories.filter(
-              (h) => h.lottery_type === activeTab && h.round === data.round && (!h.rank || h.rank === 1)
-            );
-            const roundWinStores = rank1Histories
-              .map((h) => storesMap.get(h.store_id!))
-              .filter((store) => store !== undefined) as (Store & { draw_date?: string })[];
-
-            // 2등 (rank=2)
-            const rank2Histories = histories.filter(
-              (h) => h.lottery_type === activeTab && h.round === data.round && h.rank === 2
-            );
-            const rank2StoresList = rank2Histories
-              .map((h) => storesMap.get(h.store_id!))
-              .filter((store) => store !== undefined) as (Store & { draw_date?: string })[];
-
-            setWinStores(roundWinStores);
-            setRank2Stores(rank2StoresList);
-          } else {
-            setLottoRound(null);
-            setLottoNumbers([]);
-            setLottoBonus(null);
-            setAdminDate(null);
-            setWinStores([]);
-            setRank2Stores([]);
           }
 
           // 평가 데이터 로드
@@ -125,7 +116,7 @@ export default function HomePage() {
     };
 
     fetchData();
-  }, [activeTab]);
+  }, [activeTab, selectedRound]);
 
   const getNumberColor = (num: number) => {
     if (num >= 1 && num <= 10) return "bg-yellow-400";
@@ -152,6 +143,18 @@ export default function HomePage() {
     const month = baseDate.getMonth() + 1;
     const day = baseDate.getDate();
     return `${year}년 ${month}월 ${day}일`;
+  };
+
+  const handlePreviousRound = () => {
+    if (selectedRound && selectedRound > 1) {
+      setSelectedRound(selectedRound - 1);
+    }
+  };
+
+  const handleNextRound = () => {
+    if (selectedRound && latestRound && selectedRound < latestRound) {
+      setSelectedRound(selectedRound + 1);
+    }
   };
 
   const handleRating = async (storeId: string, category: string, type: 'like' | 'dislike') => {
@@ -286,11 +289,37 @@ export default function HomePage() {
       {lottoRound && (
         <div className="bg-white rounded-xl shadow-lg p-6 mb-8">
           <div className="text-center mb-8 space-y-3">
-            <h2 className="text-4xl font-bold">
-              {activeTab === "lotto" && `로또 ${lottoRound}회`}
-              {activeTab === "pension" && `연금복권 ${lottoRound}회`}
-              {activeTab === "speeto" && `스피또 ${lottoRound}회`}
-            </h2>
+            <div className="flex items-center justify-center gap-6">
+              {/* 왼쪽 화살표 */}
+              <button
+                onClick={handlePreviousRound}
+                disabled={selectedRound === 1}
+                className="text-4xl hover:scale-125 transition disabled:opacity-30 disabled:cursor-not-allowed"
+                title="이전 회차"
+              >
+                ◀
+              </button>
+
+              <h2 className="text-4xl font-bold min-w-max">
+                {activeTab === "lotto" && `로또 ${lottoRound}회`}
+                {activeTab === "pension" && `연금복권 ${lottoRound}회`}
+                {activeTab === "speeto" && `스피또 ${lottoRound}회`}
+              </h2>
+
+              {/* 오른쪽 화살표 - 최신 회차가 아닐 때만 표시 */}
+              {selectedRound && latestRound && selectedRound < latestRound && (
+                <button
+                  onClick={handleNextRound}
+                  className="text-4xl hover:scale-125 transition"
+                  title="다음 회차"
+                >
+                  ▶
+                </button>
+              )}
+              {selectedRound === latestRound && (
+                <div className="w-12"></div>
+              )}
+            </div>
             <p className="text-lg text-gray-600">
               ({adminDate ? formatDate(adminDate) : (lottoRound ? calculateLottoDate(lottoRound) : "날짜 정보 없음")})
             </p>

@@ -46,10 +46,15 @@ wheels/
 Thumbs.db
 
 # Crawling data
+base_big_*.json     # 이전 형식 무시
+zero_base_*.json
 *.json
 lotto_*.html
 crawl_progress.json
 pension_stores_progress.json
+
+# 새 형식 JSON 파일은 포함
+!like_shot_base_big_*.json
 
 # Firebase
 .runtimeconfig.json

@@ -836,4 +836,36 @@ if __name__ == "__main__":
 
     # 작업 디렉토리를 스크립트 위치로 변경
     script_dir = os.path.dirname(os.path.abspath(__file__))
-    os.chdir(script_dir
+    os.chdir(script_dir)
+    logger.info(f"작업 디렉토리: {os.getcwd()}")
+
+    crawler = DHLotteryCrawler()
+
+    # 커맨드 라인 인자 처리
+    # 사용법:
+    #   python lotto_verca_crawler.py                    → 전체 크롤링
+    #   python lotto_verca_crawler.py latest              → 모든 게임 최신 5회차
+    #   python lotto_verca_crawler.py lotto latest        → 로또만 최신 5회차
+    #   python lotto_verca_crawler.py pension latest      → 연금복권만 최신 5회차
+    #   python lotto_verca_crawler.py speed latest        → 스피또만 최신 5회차
+    args = [a.lower() for a in sys.argv[1:]]
+
+    if len(args) == 0:
+        # 전체 크롤링
+        crawler.run_all_rounds_by_round()
+    elif len(args) == 1 and args[0] == "latest":
+        # 모든 게임 최신 5회차
+        crawler.run_latest_rounds(count=5)
+    elif len(args) >= 2 and args[1] == "latest":
+        # 게임별 최신 크롤링
+        game_type = args[0]
+        count = int(args[2]) if len(args) >= 3 else 5
+        crawler.run_latest_by_game(game_type, count=count)
+    else:
+        print("사용법:")
+        print("  python lotto_verca_crawler.py                    → 전체 크롤링")
+        print("  python lotto_verca_crawler.py latest              → 모든 게임 최신 5회차")
+        print("  python lotto_verca_crawler.py lotto latest        → 로또만 최신 5회차")
+        print("  python lotto_verca_crawler.py pension latest      → 연금복권만 최신 5회차")
+        print("  python lotto_verca_crawler.py speed latest        → 스피또만 최신 5회차")
+        print("  python lotto_verca_crawler.py lotto latest 3      → 로또만 최신 3회차")
