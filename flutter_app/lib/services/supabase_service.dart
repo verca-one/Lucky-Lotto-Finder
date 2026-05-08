@@ -671,4 +671,132 @@ class SupabaseService {
       return null;
     }
   }
+
+  // ========================
+  // 쿠폰 시스템
+  // ========================
+
+  /// 쿠폰 유효성 검증 + 사용 처리 (원자적)
+  /// 반환: {'success': bool, 'message': String, 'type': String?}
+  static Future<Map<String, dynamic>> redeemCoupon({
+    required String couponCode,
+    required String deviceId,
+  }) async {
+    try {
+      // 1. 쿠폰 조회
+      final couponResp = await _supabase
+          .from('coupons')
+          .select()
+          .eq('code', couponCode)
+          .maybeSingle();
+
+      if (couponResp == null) {
+        return {'success': false, 'message': '존재하지 않는 쿠폰입니다'};
+      }
+
+      // 2. 활성 여부
+      if (couponResp['is_active'] != true) {
+        return {'success': false, 'message': '비활성화된 쿠폰입니다'};
+      }
+
+      // 3. 만료일 체크
+      if (couponResp['expires_at'] != null) {
+        final expiresAt = DateTime.parse(couponResp['expires_at']);
+        if (DateTime.now().isAfter(expiresAt)) {
+          return {'success': false, 'message': '만료된 쿠폰입니다'};
+        }
+      }
+
+      // 4. 사용 횟수 체크
+      final usedCount = couponResp['used_count'] ?? 0;
+      final maxUses = couponResp['max_uses'] ?? 1;
+      if (usedCount >= maxUses) {
+        return {'success': false, 'message': '사용 횟수를 초과한 쿠폰입니다'};
+      }
+
+      // 5. 디바이스 중복 체크
+      final dupResp = await _supabase
+          .from('coupon_redemptions')
+          .select('id')
+          .eq('coupon_code', couponCode)
+          .eq('device_id', deviceId)
+          .maybeSingle();
+
+      if (dupResp != null) {
+        return {'success': false, 'message': '이미 사용한 쿠폰입니다'};
+      }
+
+      // 6. 사용 기록 추가
+      await _supabase.from('coupon_redemptions').insert({
+        'coupon_code': couponCode,
+        'device_id': deviceId,
+      });
+
+      // 7. used_count 증가
+      await _supabase
+          .from('coupons')
+          .update({'used_count': usedCount + 1})
+          .eq('code', couponCode);
+
+      return {
+        'success': true,
+        'message': '쿠폰이 적용되었습니다!',
+        'type': couponResp['type'],
+      };
+    } catch (e) {
+      print('쿠폰 사용 오류: $e');
+      return {'success': false, 'message': '쿠폰 처리 중 오류가 발생했습니다'};
+    }
+  }
+
+  /// 관리자: 쿠폰 생성
+  static Future<bool> createCoupon({
+    required String code,
+    required String type,
+    required int maxUses,
+    DateTime? expiresAt,
+  }) async {
+    try {
+      await _supabase.from('coupons').insert({
+        'code': code,
+        'type': type,
+        'max_uses': maxUses,
+        'used_count': 0,
+        'is_active': true,
+        'expires_at': expiresAt?.toIso8601String(),
+      });
+      return true;
+    } catch (e) {
+      print('쿠폰 생성 오류: $e');
+      return false;
+    }
+  }
+
+  /// 관리자: 전체 쿠폰 목록 조회
+  static Future<List<Map<String, dynamic>>> getAllCoupons() async {
+    try {
+      final response = await _supabase
+          .from('coupons')
+          .select()
+          .order('created_at', ascending: false);
+      return (response as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      print('쿠폰 목록 조회 오류: $e');
+      return [];
+    }
+  }
+
+  /// 관리자: 쿠폰 활성/비활성 토글
+  static Future<bool> toggleCouponActive(String code, bool isActive) async {
+    try {
+      await _supabase
+          .from('coupons')
+          .update({'is_active': isActive})
+          .eq('code', code);
+      return true;
+    } catch (e) {
+      print('쿠폰 상태 변경 오류: $e');
+      return false;
+    }
+  }
 }

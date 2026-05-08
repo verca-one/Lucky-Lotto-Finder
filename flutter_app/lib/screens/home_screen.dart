@@ -32,10 +32,12 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _loadUserId();
-    _initBannerAd();
+    _initAdsAndBanner();
   }
 
-  Future<void> _initBannerAd() async {
+  Future<void> _initAdsAndBanner() async {
+    await AdService.loadAdsRemovedState();
+    if (AdService.adsRemoved) return;
     final loaded = await AdService.loadBannerAd();
     if (!mounted) return;
     setState(() {
@@ -65,98 +67,57 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  Future<String> _getDeviceId() async {
+    final prefs = await SharedPreferences.getInstance();
+    var deviceId = prefs.getString('device_id');
+    if (deviceId == null || deviceId.isEmpty) {
+      deviceId = 'dev_${DateTime.now().millisecondsSinceEpoch}_${UniqueKey().hashCode}';
+      await prefs.setString('device_id', deviceId);
+    }
+    return deviceId;
+  }
+
   void _showSettingsMenu() {
     final rootContext = context;
     TextEditingController inputController = TextEditingController();
+    TextEditingController couponController = TextEditingController();
 
     showDialog(
       context: rootContext,
-      builder: (dialogContext) => Dialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        child: SingleChildScrollView(
-          child: Container(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  '🍀 복권명당',
-                  style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  '프로필 설정',
-                  style: TextStyle(fontSize: 14, color: Colors.grey),
-                ),
-                const SizedBox(height: 32),
-                const Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    '프로필 이름을 입력하세요',
-                    style: TextStyle(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: Colors.black87,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: inputController,
-                  decoration: InputDecoration(
-                    hintText: '예: 행운이',
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.blue,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                    ),
-                    onPressed: () {
-                      if (inputController.text.isEmpty) return;
+      builder: (dialogContext) => _SettingsDialog(
+        inputController: inputController,
+        couponController: couponController,
+        adsRemoved: AdService.adsRemoved,
+        onSaveProfile: (text) {
+          if (text.isEmpty) return;
+          if (text == '공룡로또') {
+            Navigator.pop(dialogContext);
+            _showAdminPasswordDialog();
+          } else {
+            _saveUserId(text);
+            Navigator.pop(dialogContext);
+            ScaffoldMessenger.of(rootContext).showSnackBar(
+              SnackBar(content: Text('프로필이 저장되었습니다: $text')),
+            );
+          }
+        },
+        onRedeemCoupon: (code) async {
+          final deviceId = await _getDeviceId();
+          final result = await SupabaseService.redeemCoupon(
+            couponCode: code,
+            deviceId: deviceId,
+          );
+          if (!mounted) return result;
 
-                      if (inputController.text == '공룡로또') {
-                        Navigator.pop(dialogContext);
-                        _showAdminPasswordDialog();
-                      } else {
-                        _saveUserId(inputController.text);
-                        Navigator.pop(dialogContext);
-                        ScaffoldMessenger.of(rootContext).showSnackBar(
-                          SnackBar(
-                            content: Text(
-                              '프로필이 저장되었습니다: ${inputController.text}',
-                            ),
-                          ),
-                        );
-                      }
-                    },
-                    child: const Text(
-                      '저장',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
+          if (result['success'] == true && result['type'] == 'ad_removal') {
+            await AdService.setAdsRemoved(true);
+            setState(() {
+              _isBannerLoaded = false;
+              _bannerAd = null;
+            });
+          }
+          return result;
+        },
       ),
     );
   }
@@ -330,7 +291,7 @@ class _HomeScreenState extends State<HomeScreen> {
         bottomNavigationBar: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (_isBannerLoaded && _bannerAd != null)
+            if (!AdService.adsRemoved && _isBannerLoaded && _bannerAd != null)
               SizedBox(
                 width: _bannerAd!.size.width.toDouble(),
                 height: _bannerAd!.size.height.toDouble(),
@@ -371,6 +332,249 @@ class _BottomTabPlaceholder extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Center(child: Text(message));
+  }
+}
+
+class _SettingsDialog extends StatefulWidget {
+  final TextEditingController inputController;
+  final TextEditingController couponController;
+  final bool adsRemoved;
+  final void Function(String) onSaveProfile;
+  final Future<Map<String, dynamic>> Function(String) onRedeemCoupon;
+
+  const _SettingsDialog({
+    required this.inputController,
+    required this.couponController,
+    required this.adsRemoved,
+    required this.onSaveProfile,
+    required this.onRedeemCoupon,
+  });
+
+  @override
+  State<_SettingsDialog> createState() => _SettingsDialogState();
+}
+
+class _SettingsDialogState extends State<_SettingsDialog> {
+  bool _isRedeeming = false;
+  String? _couponMessage;
+  bool? _couponSuccess;
+  late bool _adsRemoved;
+
+  @override
+  void initState() {
+    super.initState();
+    _adsRemoved = widget.adsRemoved;
+  }
+
+  Future<void> _handleRedeem() async {
+    final code = widget.couponController.text.trim();
+    if (code.isEmpty) {
+      setState(() {
+        _couponMessage = '쿠폰 코드를 입력하세요';
+        _couponSuccess = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _isRedeeming = true;
+      _couponMessage = null;
+    });
+
+    final result = await widget.onRedeemCoupon(code);
+
+    if (!mounted) return;
+    setState(() {
+      _isRedeeming = false;
+      _couponSuccess = result['success'] == true;
+      _couponMessage = result['message'] ?? '';
+      if (_couponSuccess == true) {
+        _adsRemoved = true;
+        widget.couponController.clear();
+      }
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      child: SingleChildScrollView(
+        child: Container(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Text(
+                '설정',
+                style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 20),
+
+              // ── 쿠폰 입력 섹션 ──
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.orange.shade200),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.card_giftcard, color: Colors.orange.shade700, size: 20),
+                        const SizedBox(width: 8),
+                        const Text(
+                          '쿠폰 입력',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    if (_adsRemoved) ...[
+                      Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: Colors.green.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.check_circle, color: Colors.green.shade700, size: 20),
+                            const SizedBox(width: 8),
+                            const Expanded(
+                              child: Text(
+                                '광고제거 쿠폰이 적용되어 있습니다',
+                                style: TextStyle(fontSize: 13, color: Colors.green),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ] else ...[
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextField(
+                              controller: widget.couponController,
+                              decoration: InputDecoration(
+                                hintText: 'XXXX-XXXX-XXXX',
+                                hintStyle: const TextStyle(fontSize: 13),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 10,
+                                ),
+                                isDense: true,
+                              ),
+                              style: const TextStyle(
+                                fontFamily: 'monospace',
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          SizedBox(
+                            height: 42,
+                            child: ElevatedButton(
+                              onPressed: _isRedeeming ? null : _handleRedeem,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.orange,
+                                padding: const EdgeInsets.symmetric(horizontal: 16),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                              ),
+                              child: _isRedeeming
+                                  ? const SizedBox(
+                                      width: 16, height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2, color: Colors.white,
+                                      ),
+                                    )
+                                  : const Text(
+                                      '적용',
+                                      style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                                    ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (_couponMessage != null) ...[
+                        const SizedBox(height: 8),
+                        Text(
+                          _couponMessage!,
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: _couponSuccess == true ? Colors.green : Colors.red,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ],
+                ),
+              ),
+
+              const SizedBox(height: 20),
+              const Divider(),
+              const SizedBox(height: 16),
+
+              // ── 프로필 섹션 ──
+              const Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  '프로필 이름을 입력하세요',
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w500,
+                    color: Colors.black87,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: widget.inputController,
+                decoration: InputDecoration(
+                  hintText: '예: 행운이',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 12,
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.blue,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  onPressed: () => widget.onSaveProfile(widget.inputController.text),
+                  child: const Text(
+                    '저장',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class AdService {
   // Google AdMob 애플리케이션 ID
@@ -10,9 +11,32 @@ class AdService {
 
   static BannerAd? _bannerAd;
   static bool _isLoaded = false;
+  static bool _adsRemoved = false;
+
+  /// 광고 제거 상태 확인
+  static bool get adsRemoved => _adsRemoved;
+
+  /// SharedPreferences에서 광고제거 상태 로드
+  static Future<void> loadAdsRemovedState() async {
+    final prefs = await SharedPreferences.getInstance();
+    _adsRemoved = prefs.getBool('ads_removed') ?? false;
+  }
+
+  /// 광고 제거 적용
+  static Future<void> setAdsRemoved(bool removed) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('ads_removed', removed);
+    _adsRemoved = removed;
+    if (removed) {
+      _bannerAd?.dispose();
+      _bannerAd = null;
+      _isLoaded = false;
+    }
+  }
 
   // 배너 광고 로드 (Completer로 로드 완료까지 대기)
   static Future<bool> loadBannerAd() async {
+    if (_adsRemoved) return false;
     final completer = Completer<bool>();
 
     _bannerAd = BannerAd(

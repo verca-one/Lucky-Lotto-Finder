@@ -4,6 +4,7 @@ import 'admin_lotto_round_screen.dart';
 import 'admin_lotto_store_screen.dart';
 import 'admin_pension_round_screen.dart';
 import 'admin_pension_store_screen.dart';
+import 'admin_coupon_screen.dart';
 
 class AdminScreen extends StatelessWidget {
   const AdminScreen({super.key});
@@ -100,6 +101,21 @@ class AdminScreen extends StatelessWidget {
                           context,
                           MaterialPageRoute(
                             builder: (_) => const AdminPensionStoreScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    _buildAdminMenuItem(
+                      icon: Icons.card_giftcard,
+                      title: '쿠폰 관리',
+                      subtitle: '쿠폰 생성/관리 (광고제거 등)',
+                      color: Colors.deepOrange,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const AdminCouponScreen(),
                           ),
                         );
                       },
