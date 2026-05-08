@@ -132,10 +132,11 @@ def calculate_badges(stores, lottery_type):
                 "priority": 20,
             })
 
-    # ── 2) 주기 분석 (5회 이상 당첨점) ──
-    codes_5plus = [s["dhlottery_code"] for s in unique_stores if (s.get("total_count") or 0) >= 5]
-    winning_rounds = get_winning_rounds_for_codes(codes_5plus, lottery_type)
+    # ── 2) 당첨 회차 데이터 로드 (2회 이상 당첨점) ──
+    codes_2plus = [s["dhlottery_code"] for s in unique_stores if (s.get("total_count") or 0) >= 2]
+    winning_rounds = get_winning_rounds_for_codes(codes_2plus, lottery_type)
 
+    # ── 3) 주기 분석 (5회 이상 당첨점) ──
     for code, rounds in winning_rounds.items():
         if len(rounds) < 5 or current_round <= 0:
             continue
@@ -147,17 +148,23 @@ def calculate_badges(stores, lottery_type):
         # 평균 간격 배지
         avg_weeks = round(avg_interval)
         months = round(avg_interval / 4.3)
+        is_due = elapsed >= (avg_interval - 1) and elapsed <= (avg_interval + 1)
+
         if months >= 1:
+            if is_due:
+                pattern_label = f"평균 {months}개월주기(이번회차 예측 주목중)"
+            else:
+                pattern_label = f"평균 {months}개월 주기일까? 주시중"
             badges.append({
                 "dhlottery_code": code,
                 "lottery_type": lottery_type,
                 "badge_type": "pattern",
-                "badge_label": f"평균 {months}개월 주기",
+                "badge_label": pattern_label,
                 "priority": 40,
             })
 
-        # "이번주 유력" (평균 간격 ±3 이내)
-        if elapsed >= (avg_interval - 3) and elapsed <= (avg_interval + 3):
+        # "이번주 유력" (평균 간격 ±1 이내)
+        if is_due:
             badges.append({
                 "dhlottery_code": code,
                 "lottery_type": lottery_type,
@@ -166,28 +173,111 @@ def calculate_badges(stores, lottery_type):
                 "priority": 1,
             })
 
-        # "최근 핫" - 최근 10회차 내 2회 이상
-        recent_wins = [r for r in rounds_sorted if (current_round - r) <= 10]
-        if len(recent_wins) >= 2:
-            weeks_span = current_round - recent_wins[0]
-            months_span = math.ceil(weeks_span / 4.3)
+    # ── 4) 이번 달 N회 당첨 ──
+    # 최근 4회차(약 1개월) 내 2회 이상 당첨
+    for code, rounds in winning_rounds.items():
+        if current_round <= 0:
+            continue
+        rounds_sorted = sorted(rounds)
+        this_month_wins = [r for r in rounds_sorted if (current_round - r) <= 4]
+        if len(this_month_wins) >= 2:
             badges.append({
                 "dhlottery_code": code,
                 "lottery_type": lottery_type,
                 "badge_type": "streak",
-                "badge_label": f"최근 핫 ({months_span}개월내 {len(recent_wins)}회)",
-                "priority": 5,
+                "badge_label": f"이번 달 {len(this_month_wins)}회 당첨",
+                "priority": 3,
             })
 
-    # ── 3) 지역 최다 당첨 배지 ──
-    # 시/구 단위 1등 최다
+    # ── 5) 최근 연속 당첨 (연속 회차 당첨) ──
+    for code, rounds in winning_rounds.items():
+        if current_round <= 0:
+            continue
+        rounds_sorted = sorted(rounds, reverse=True)
+        # 최근 회차부터 연속 체크
+        consecutive = 1
+        for i in range(1, len(rounds_sorted)):
+            if rounds_sorted[i-1] - rounds_sorted[i] == 1:
+                consecutive += 1
+            else:
+                break
+        # 최근 연속 2회차 이상 + 가장 최근 당첨이 5회차 이내
+        if consecutive >= 2 and (current_round - rounds_sorted[0]) <= 5:
+            badges.append({
+                "dhlottery_code": code,
+                "lottery_type": lottery_type,
+                "badge_type": "streak",
+                "badge_label": f"최근 연속 {consecutive}회차 당첨",
+                "priority": 2,
+            })
+
+    # ── 주소 파싱 헬퍼 ──
+    def _parse_address(address):
+        """주소에서 시, 구, 동 추출"""
+        parts = (address or "").strip().split()
+        si = parts[0] if len(parts) >= 1 else ""    # 서울특별시, 경기도 등
+        gu = parts[1] if len(parts) >= 2 else ""     # 강남구, 수원시 등
+        dong = parts[2] if len(parts) >= 3 else ""   # 역삼동, 팔달구 등
+        return si, gu, dong
+
+    # ── 6) 동 1위 판매점 ──
+    dong_stores = defaultdict(list)
+    for s in unique_stores:
+        tc = s.get("total_count") or 0
+        if tc <= 0:
+            continue
+        si, gu, dong = _parse_address(s.get("address"))
+        if dong:
+            dong_key = f"{gu} {dong}" if gu else dong
+            dong_stores[dong_key].append(s)
+
+    for dong_key, ss in dong_stores.items():
+        if len(ss) < 2:
+            continue  # 동에 판매점이 2개 이상일 때만
+        sorted_ss = sorted(ss, key=lambda x: -(x.get("total_count") or 0))
+        top = sorted_ss[0]
+        tc = top.get("total_count") or 0
+        if tc >= 2:
+            badges.append({
+                "dhlottery_code": top["dhlottery_code"],
+                "lottery_type": lottery_type,
+                "badge_type": "rank",
+                "badge_label": f"{dong_key} 1위 판매점",
+                "priority": 25,
+            })
+
+    # ── 7) 시 TOP3 ──
+    si_stores = defaultdict(list)
+    for s in unique_stores:
+        tc = s.get("total_count") or 0
+        if tc <= 0:
+            continue
+        si, gu, dong = _parse_address(s.get("address"))
+        if si:
+            si_stores[si].append(s)
+
+    for si, ss in si_stores.items():
+        sorted_ss = sorted(ss, key=lambda x: -(x.get("total_count") or 0))
+        for rank_idx, s in enumerate(sorted_ss[:3]):
+            rank = rank_idx + 1
+            code = s["dhlottery_code"]
+            tc = s.get("total_count") or 0
+            if tc >= 3:
+                badges.append({
+                    "dhlottery_code": code,
+                    "lottery_type": lottery_type,
+                    "badge_type": "rank",
+                    "badge_label": f"{si} TOP{rank} ({tc}회)",
+                    "priority": 26 + rank,
+                })
+
+    # ── 8) 지역 최다당첨 배지 ──
     sigu_first = {}  # sigu → (code, first_count, store)
     sigu_total = {}  # sigu → (code, total_count, store)
 
     for s in unique_stores:
-        address = (s.get("address") or "").strip()
-        parts = address.split()
-        sigu = parts[1] if len(parts) >= 2 else s.get("region", "")
+        si, gu, dong = _parse_address(s.get("address"))
+        sigu = gu if gu else s.get("region", "")
         fc = s.get("first_count") or 0
         tc = s.get("total_count") or 0
         code = s["dhlottery_code"]
@@ -217,28 +307,27 @@ def calculate_badges(stores, lottery_type):
                 "dhlottery_code": code,
                 "lottery_type": lottery_type,
                 "badge_type": "regional",
-                "badge_label": f"{sigu} {type_label} 최다당첨",
+                "badge_label": f"{sigu} 지역 최다당첨 ({tc}회)",
                 "priority": 16,
             })
 
-    # ── 4) 지역 등수 (시/구 내 총 당첨 1~3등) ──
-    sigu_stores = defaultdict(list)
+    # ── 9) 구 내 등수 (기존) ──
+    gu_stores = defaultdict(list)
     for s in unique_stores:
         tc = s.get("total_count") or 0
         if tc <= 0:
             continue
-        address = (s.get("address") or "").strip()
-        parts = address.split()
-        sigu = parts[1] if len(parts) >= 2 else s.get("region", "")
-        sigu_stores[sigu].append(s)
+        si, gu, dong = _parse_address(s.get("address"))
+        sigu = gu if gu else s.get("region", "")
+        gu_stores[sigu].append(s)
 
-    for sigu, ss in sigu_stores.items():
+    for sigu, ss in gu_stores.items():
         sorted_ss = sorted(ss, key=lambda x: -(x.get("total_count") or 0))
         for rank_idx, s in enumerate(sorted_ss[:3]):
             rank = rank_idx + 1
             code = s["dhlottery_code"]
             tc = s.get("total_count") or 0
-            if tc >= 2:  # 최소 2회 이상만
+            if tc >= 2:
                 badges.append({
                     "dhlottery_code": code,
                     "lottery_type": lottery_type,
