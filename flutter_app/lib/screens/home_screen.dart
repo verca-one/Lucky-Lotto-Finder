@@ -11,6 +11,7 @@ import '../services/supabase_service.dart';
 import '../services/ad_service.dart';
 import 'nearby_screen.dart';
 import 'region_screen.dart';
+import 'favorites_screen.dart';
 import 'admin_screen.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -35,11 +36,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _initBannerAd() async {
-    await AdService.loadBannerAd();
+    final loaded = await AdService.loadBannerAd();
     if (!mounted) return;
     setState(() {
+      _isBannerLoaded = loaded;
       _bannerAd = AdService.getBannerAd();
-      _isBannerLoaded = _bannerAd != null;
     });
   }
 
@@ -276,7 +277,7 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
       const NearbyScreen(),
       const RegionScreen(),
-      const _BottomTabPlaceholder(message: '추천 기능 준비 중입니다'),
+      const FavoritesScreen(),
     ];
 
     return DefaultTabController(
@@ -353,7 +354,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   icon: Icon(Icons.location_city),
                   label: '지역',
                 ),
-                BottomNavigationBarItem(icon: Icon(Icons.star), label: '추천'),
+                BottomNavigationBarItem(icon: Icon(Icons.star), label: '즐겨찾기'),
               ],
             ),
           ],
@@ -425,35 +426,45 @@ class _LotteryTabContentState extends State<_LotteryTabContent> {
         : LocalDataService().getPensionStores();
   }
 
+  // 최신 회차 캐시 (중복 API 호출 방지)
+  int? _cachedLatestRound;
+
   Future<LottoWinningNumber?> _loadLatestLottoWinning() async {
     if (widget.type != 'lotto') return Future.value(null);
+
+    // 로컬 캐시 우선 (빠름)
+    final localRounds = await LottoWinningService().getAllRounds();
+    if (localRounds.isNotEmpty) {
+      _cachedLatestRound = localRounds.first.round;
+      return localRounds.first;
+    }
+
+    // 로컬 없으면 Supabase
     final latestRound = await SupabaseService.getLatestRound('lotto');
     if (latestRound == null) return null;
+    _cachedLatestRound = latestRound;
 
-    // Supabase lotto_winning_numbers에서 먼저 조회
     final fromSupabase = await SupabaseService.getWinningNumbersForRound(latestRound);
-    if (fromSupabase != null) return fromSupabase;
-
-    // fallback: SharedPreferences
-    final allRounds = await LottoWinningService().getAllRounds();
-    final found = allRounds.firstWhere(
-      (r) => r.round == latestRound,
-      orElse: () => LottoWinningNumber(
-        drawDate: '',
-        round: latestRound,
-        numbers: [],
-        bonusNumber: 0,
-      ),
-    );
-    return found;
+    return fromSupabase;
   }
 
   Future<List<LotteryStore>> _loadLoadedWinningStores() async {
     if (widget.type != 'lotto') return [];
-    // Supabase에서 최신 회차 및 당첨지점 직접 조회
-    final latestRound = await SupabaseService.getLatestRound('lotto');
-    if (latestRound == null) return [];
-    return SupabaseService.getLottoWinningStoresForRound(latestRound);
+
+    // _loadLatestLottoWinning에서 캐시된 회차 재활용 (중복 API 호출 방지)
+    // 아직 캐시 안 됐으면 대기
+    int? round = _cachedLatestRound;
+    if (round == null) {
+      // 먼저 로컬에서 시도
+      final localRounds = await LottoWinningService().getAllRounds();
+      if (localRounds.isNotEmpty) {
+        round = localRounds.first.round;
+      } else {
+        round = await SupabaseService.getLatestRound('lotto');
+      }
+    }
+    if (round == null) return [];
+    return SupabaseService.getLottoWinningStoresForRound(round);
   }
 
   Future<List<LotteryStore>> _loadLoadedWinningStoresForRound(int round) async {
