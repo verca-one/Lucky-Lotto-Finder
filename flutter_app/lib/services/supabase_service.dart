@@ -799,4 +799,176 @@ class SupabaseService {
       return false;
     }
   }
+
+  // ========================
+  // 판매점 평가 (store_reviews)
+  // ========================
+
+  /// 평가 투표 (upsert) - 같은 vote_type이면 삭제(취소), 다른 vote_type이면 변경
+  static Future<bool> vote({
+    required String dhlotteryCode,
+    required String reviewKey,
+    required String deviceId,
+    required String voteType, // 'up' or 'down'
+  }) async {
+    try {
+      // 기존 투표 확인
+      final existing = await _supabase
+          .from('store_reviews')
+          .select('id, vote_type')
+          .eq('dhlottery_code', dhlotteryCode)
+          .eq('review_key', reviewKey)
+          .eq('device_id', deviceId)
+          .maybeSingle();
+
+      if (existing != null) {
+        if (existing['vote_type'] == voteType) {
+          // 같은 버튼 다시 누름 → 취소(삭제)
+          await _supabase.from('store_reviews').delete().eq('id', existing['id']);
+        } else {
+          // 다른 버튼 → 변경
+          await _supabase.from('store_reviews').update({
+            'vote_type': voteType,
+            'updated_at': DateTime.now().toIso8601String(),
+          }).eq('id', existing['id']);
+        }
+      } else {
+        // 신규 투표
+        await _supabase.from('store_reviews').insert({
+          'dhlottery_code': dhlotteryCode,
+          'review_key': reviewKey,
+          'device_id': deviceId,
+          'vote_type': voteType,
+        });
+      }
+      return true;
+    } catch (e) {
+      print('평가 투표 오류: $e');
+      return false;
+    }
+  }
+
+  /// 판매점 평가 집계 조회 (항목별 up/down 수)
+  static Future<Map<String, Map<String, int>>> getReviewSummary(String dhlotteryCode) async {
+    try {
+      final response = await _supabase
+          .from('store_review_summary')
+          .select()
+          .eq('dhlottery_code', dhlotteryCode);
+
+      final Map<String, Map<String, int>> result = {};
+      for (var row in (response as List)) {
+        result[row['review_key']] = {
+          'up': row['up_count'] ?? 0,
+          'down': row['down_count'] ?? 0,
+        };
+      }
+      return result;
+    } catch (e) {
+      print('평가 집계 조회 오류: $e');
+      return {};
+    }
+  }
+
+  /// 내 기기의 투표 현황 조회 (해당 판매점)
+  static Future<Map<String, String>> getMyVotes({
+    required String dhlotteryCode,
+    required String deviceId,
+  }) async {
+    try {
+      final response = await _supabase
+          .from('store_reviews')
+          .select('review_key, vote_type')
+          .eq('dhlottery_code', dhlotteryCode)
+          .eq('device_id', deviceId);
+
+      final Map<String, String> result = {};
+      for (var row in (response as List)) {
+        result[row['review_key']] = row['vote_type'];
+      }
+      return result;
+    } catch (e) {
+      print('내 투표 조회 오류: $e');
+      return {};
+    }
+  }
+
+  // ========================
+  // 판매점 신고 (store_reports)
+  // ========================
+
+  /// 신고 생성 (기기별 주 1회 제한)
+  static Future<Map<String, dynamic>> createReport({
+    required String dhlotteryCode,
+    required String deviceId,
+    required String reason,
+    String? detail,
+  }) async {
+    try {
+      // 최근 7일 내 이 기기로 신고한 적 있는지 체크
+      final weekAgo = DateTime.now().subtract(const Duration(days: 7)).toIso8601String();
+      final recent = await _supabase
+          .from('store_reports')
+          .select('id')
+          .eq('device_id', deviceId)
+          .gte('created_at', weekAgo)
+          .limit(1);
+
+      if ((recent as List).isNotEmpty) {
+        return {'success': false, 'message': '신고는 일주일에 1회만 가능합니다.'};
+      }
+
+      await _supabase.from('store_reports').insert({
+        'dhlottery_code': dhlotteryCode,
+        'device_id': deviceId,
+        'reason': reason,
+        'detail': detail,
+      });
+
+      return {'success': true, 'message': '신고가 접수되었습니다.'};
+    } catch (e) {
+      print('신고 생성 오류: $e');
+      return {'success': false, 'message': '신고 처리 중 오류가 발생했습니다.'};
+    }
+  }
+
+  /// 관리자: 전체 신고 목록 조회
+  static Future<List<Map<String, dynamic>>> getAllReports({String? status}) async {
+    try {
+      var query = _supabase.from('store_reports').select();
+      if (status != null && status.isNotEmpty) {
+        query = query.eq('status', status);
+      }
+      final response = await query.order('created_at', ascending: false);
+      return (response as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      print('신고 목록 조회 오류: $e');
+      return [];
+    }
+  }
+
+  /// 관리자: 신고 상태 변경
+  static Future<bool> updateReportStatus(String reportId, String status) async {
+    try {
+      await _supabase.from('store_reports').update({
+        'status': status,
+        'updated_at': DateTime.now().toIso8601String(),
+      }).eq('id', reportId);
+      return true;
+    } catch (e) {
+      print('신고 상태 변경 오류: $e');
+      return false;
+    }
+  }
+
+  /// 관리자: 신고 삭제
+  static Future<bool> deleteReport(String reportId) async {
+    try {
+      await _supabase.from('store_reports').delete().eq('id', reportId);
+      return true;
+    } catch (e) {
+      print('신고 삭제 오류: $e');
+      return false;
+    }
+  }
 }

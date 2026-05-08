@@ -5,6 +5,7 @@ import 'dart:convert';
 import '../models/lottery_store.dart';
 import '../services/supabase_service.dart';
 import '../services/badge_service.dart';
+import '../widgets/store_detail_popup.dart';
 
 class RegionScreen extends StatefulWidget {
   const RegionScreen({super.key});
@@ -45,7 +46,7 @@ class _RegionScreenState extends State<RegionScreen> {
     await prefs.setString('favorite_stores', jsonEncode(_favorites.toList()));
   }
 
-  void _toggleFavorite(String dhlotteryCode) {
+  Future<void> _toggleFavorite(String dhlotteryCode) async {
     setState(() {
       if (_favorites.contains(dhlotteryCode)) {
         _favorites.remove(dhlotteryCode);
@@ -53,7 +54,7 @@ class _RegionScreenState extends State<RegionScreen> {
         _favorites.add(dhlotteryCode);
       }
     });
-    _saveFavorites();
+    await _saveFavorites();
   }
 
   // 배지 로딩된 시/구 추적
@@ -542,7 +543,6 @@ class _RegionScreenState extends State<RegionScreen> {
 
   Widget _buildStoreCard(LotteryStore store, int rank) {
     final isFav = _favorites.contains(store.dhlotteryCode);
-    final isExpanded = _expandedCards.contains(store.dhlotteryCode);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
@@ -550,93 +550,53 @@ class _RegionScreenState extends State<RegionScreen> {
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () {
-          setState(() {
-            if (isExpanded) {
-              _expandedCards.remove(store.dhlotteryCode);
-            } else {
-              _expandedCards.add(store.dhlotteryCode);
-            }
+          showStoreDetailPopup(
+            context: context,
+            store: store,
+            favorites: _favorites,
+            onToggleFavorite: _toggleFavorite,
+          ).then((_) {
+            // 팝업 닫힌 후 즐겨찾기 상태 갱신
+            _loadFavorites();
           });
         },
         child: Padding(
           padding: const EdgeInsets.all(12),
-          child: Column(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          store.storeName,
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          store.address,
-                          style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        const SizedBox(height: 6),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 4,
-                          children: BadgeService.getBadges(store.dhlotteryCode).map((badge) {
-                            return _buildBadgeChip(badge);
-                          }).toList(),
-                        ),
-                      ],
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      store.storeName,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                  InkWell(
-                    onTap: () => _toggleFavorite(store.dhlotteryCode),
-                    borderRadius: BorderRadius.circular(20),
-                    child: Padding(
-                      padding: const EdgeInsets.all(4),
-                      child: Icon(
-                        isFav ? Icons.star : Icons.star_border,
-                        color: isFav ? Colors.amber : Colors.grey.shade400,
-                        size: 28,
-                      ),
+                    const SizedBox(height: 4),
+                    Text(
+                      store.address,
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                ],
-              ),
-              // 펼침 영역: 외부지도 버튼
-              if (isExpanded) ...[
-                const SizedBox(height: 10),
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey.shade300),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () => _openMap('naver', store),
-                          icon: const Icon(Icons.map_outlined, size: 18),
-                          label: const Text('네이버지도'),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () => _openMap('kakao', store),
-                          icon: const Icon(Icons.place_outlined, size: 18),
-                          label: const Text('카카오지도'),
-                        ),
-                      ),
-                    ],
-                  ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 4,
+                      children: BadgeService.getBadges(store.dhlotteryCode).map((badge) {
+                        return _buildBadgeChip(badge);
+                      }).toList(),
+                    ),
+                  ],
                 ),
-              ],
+              ),
+              Icon(
+                isFav ? Icons.star : Icons.star_border,
+                color: isFav ? Colors.amber : Colors.grey.shade400,
+                size: 24,
+              ),
             ],
           ),
         ),

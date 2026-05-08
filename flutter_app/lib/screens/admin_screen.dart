@@ -5,6 +5,7 @@ import 'admin_lotto_store_screen.dart';
 import 'admin_pension_round_screen.dart';
 import 'admin_pension_store_screen.dart';
 import 'admin_coupon_screen.dart';
+import 'admin_report_screen.dart';
 
 class AdminScreen extends StatelessWidget {
   const AdminScreen({super.key});
@@ -116,6 +117,21 @@ class AdminScreen extends StatelessWidget {
                           context,
                           MaterialPageRoute(
                             builder: (_) => const AdminCouponScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    _buildAdminMenuItem(
+                      icon: Icons.flag,
+                      title: '신고접수된 지점',
+                      subtitle: '신고 목록 관리/상태 변경',
+                      color: Colors.red.shade700,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const AdminReportScreen(),
                           ),
                         );
                       },

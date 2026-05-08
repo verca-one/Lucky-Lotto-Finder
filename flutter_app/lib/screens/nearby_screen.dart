@@ -3,10 +3,13 @@ import 'package:geolocator/geolocator.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
 import 'dart:math' as math;
 import '../models/lottery_store.dart';
 import '../services/supabase_service.dart';
 import '../services/badge_service.dart';
+import '../widgets/store_detail_popup.dart';
 
 class NearbyScreen extends StatefulWidget {
   const NearbyScreen({super.key});
@@ -24,12 +27,33 @@ class _NearbyScreenState extends State<NearbyScreen> {
   final String _selectedGame = 'lotto';
   double _searchRadiusKm = 1.3;
   MapController? _mapController;
+  Set<String> _favorites = {};
 
   @override
   void initState() {
     super.initState();
     _mapController = MapController();
+    _loadFavorites();
     _getCurrentLocation();
+  }
+
+  Future<void> _loadFavorites() async {
+    final prefs = await SharedPreferences.getInstance();
+    final favJson = prefs.getString('favorite_stores') ?? '[]';
+    final favList = (jsonDecode(favJson) as List).cast<String>();
+    setState(() => _favorites = favList.toSet());
+  }
+
+  Future<void> _toggleFavorite(String code) async {
+    setState(() {
+      if (_favorites.contains(code)) {
+        _favorites.remove(code);
+      } else {
+        _favorites.add(code);
+      }
+    });
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('favorite_stores', jsonEncode(_favorites.toList()));
   }
 
   @override
@@ -329,7 +353,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
   final Set<int> _expandedStoreIndices = {};
   final ScrollController _listScrollController = ScrollController();
 
-  /// 지도 마커 탭 → 팝업
+  /// 지도 마커 탭 또는 카드 탭 → 상세 팝업
   void _showStorePopup(LotteryStore store, int index) {
     final distance = _calculateDistance(
       _currentPosition!.latitude,
@@ -337,115 +361,27 @@ class _NearbyScreenState extends State<NearbyScreen> {
       store.latitude ?? 0,
       store.longitude ?? 0,
     );
-    final badges = BadgeService.getBadges(store.dhlotteryCode);
 
-    showModalBottomSheet(
+    showStoreDetailPopup(
       context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 상단 핸들
-            Center(
-              child: Container(
-                width: 40, height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.grey.shade300,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    store.storeName,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.green,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    '${distance.toStringAsFixed(2)}km',
-                    style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              store.address,
-              style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-            ),
-            if (badges.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 6,
-                runSpacing: 4,
-                children: badges.map((b) => _buildBadgeChip(b)).toList(),
-              ),
-            ],
-            const SizedBox(height: 16),
-            Row(
-              children: [
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                      _openExternalMap('naver', store);
-                    },
-                    icon: const Icon(Icons.map_outlined, size: 18),
-                    label: const Text('네이버지도'),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: OutlinedButton.icon(
-                    onPressed: () {
-                      Navigator.pop(ctx);
-                      _openExternalMap('kakao', store);
-                    },
-                    icon: const Icon(Icons.place_outlined, size: 18),
-                    label: const Text('카카오지도'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-          ],
-        ),
-      ),
-    );
+      store: store,
+      favorites: _favorites,
+      onToggleFavorite: _toggleFavorite,
+      distanceKm: distance,
+    ).then((_) {
+      // 팝업 닫힌 후 즐겨찾기 상태 갱신
+      _loadFavorites();
+    });
   }
 
-  /// 아래 리스트 카드 탭 → 지도 이동 + 카드 펼침
+  /// 아래 리스트 카드 탭 → 지도 이동 + 상세 팝업
   void _scrollToAndExpand(int index, LotteryStore store) {
     // 지도를 해당 판매점으로 이동
     if (store.latitude != null && store.longitude != null && _mapController != null) {
       _mapController!.move(LatLng(store.latitude!, store.longitude!), 15);
     }
-    // 카드 펼침
-    setState(() {
-      _expandedStoreIndices.add(index);
-    });
-    // 리스트 스크롤 (카드 높이 약 120 기준)
-    final offset = index * 120.0;
-    _listScrollController.animateTo(
-      offset,
-      duration: const Duration(milliseconds: 300),
-      curve: Curves.easeInOut,
-    );
+    // 상세 팝업
+    _showStorePopup(store, index);
   }
 
   Future<void> _openExternalMap(String mapType, LotteryStore store) async {
@@ -488,21 +424,12 @@ class _NearbyScreenState extends State<NearbyScreen> {
       store.latitude ?? 0,
       store.longitude ?? 0,
     );
-    final isExpanded = _expandedStoreIndices.contains(index);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: () {
-          if (isExpanded) {
-            setState(() {
-              _expandedStoreIndices.remove(index);
-            });
-          } else {
-            _scrollToAndExpand(index, store);
-          }
-        },
+        onTap: () => _scrollToAndExpand(index, store),
         child: Padding(
           padding: const EdgeInsets.all(12),
           child: Column(
@@ -546,36 +473,6 @@ class _NearbyScreenState extends State<NearbyScreen> {
                   return _buildBadgeChip(badge);
                 }).toList(),
               ),
-              if (isExpanded) ...[
-                const SizedBox(height: 10),
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.grey.shade300),
-                  ),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () => _openExternalMap('naver', store),
-                          icon: const Icon(Icons.map_outlined, size: 18),
-                          label: const Text('네이버지도'),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () => _openExternalMap('kakao', store),
-                          icon: const Icon(Icons.place_outlined, size: 18),
-                          label: const Text('카카오지도'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
             ],
           ),
         ),
