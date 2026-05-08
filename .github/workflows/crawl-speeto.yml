@@ -1,10 +1,16 @@
-name: Crawl Speeto
+name: Crawl Speeto (disabled)
 
+# 비활성화 - 스피또 미사용
+# on:
+#   schedule:
+#     - cron: '0 21 * * *'
+#   workflow_dispatch:
 on:
-  schedule:
-    # 매일 21:00 UTC (매일 06:00 KST)
-    - cron: '0 21 * * *'
   workflow_dispatch:
+    inputs:
+      confirm:
+        description: '수동 실행 확인 (현재 비활성화됨)'
+        required: true
 
 jobs:
   crawl:
@@ -44,7 +50,4 @@ jobs:
     - name: Commit and push results
       run: |
         git config user.name "Lottery Bot"
-        git config user.email "lottery-bot@github.com"
-        git add -A
-        git commit -m "Auto: Update speeto data - $(date '+%Y-%m-%d %H:%M:%S')" || true
-        git push
+        git config us
