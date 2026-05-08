@@ -6,6 +6,7 @@ import 'admin_pension_round_screen.dart';
 import 'admin_pension_store_screen.dart';
 import 'admin_coupon_screen.dart';
 import 'admin_report_screen.dart';
+import 'admin_crawl_status_screen.dart';
 
 class AdminScreen extends StatelessWidget {
   const AdminScreen({super.key});
@@ -136,6 +137,21 @@ class AdminScreen extends StatelessWidget {
                         );
                       },
                     ),
+                    const SizedBox(height: 12),
+                    _buildAdminMenuItem(
+                      icon: Icons.checklist,
+                      title: '크롤링 회차 확인',
+                      subtitle: '회차별 크롤링/지점로드 상태 확인',
+                      color: Colors.indigo,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const AdminCrawlStatusScreen(),
+                          ),
+                        );
+                      },
+                    ),
                   ],
                 ),
               ),
@@ -174,29 +190,4 @@ class AdminScreen extends StatelessWidget {
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        fontSize: 12,
-                        color: Colors.grey,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Icon(Icons.arrow_forward_ios, size: 16, color: Colors.grey),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
+            

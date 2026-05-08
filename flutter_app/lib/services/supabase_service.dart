@@ -971,4 +971,5 @@ class SupabaseService {
       return false;
     }
   }
-}
+
+ 
