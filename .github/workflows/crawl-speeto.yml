@@ -50,4 +50,7 @@ jobs:
     - name: Commit and push results
       run: |
         git config user.name "Lottery Bot"
-        git config us
+        git config user.email "lottery-bot@github.com"
+        git add -A
+        git commit -m "Auto: Update speeto data - $(date '+%Y-%m-%d %H:%M:%S')" || true
+        git push
