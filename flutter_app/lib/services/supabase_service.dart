@@ -972,4 +972,111 @@ class SupabaseService {
     }
   }
 
- 
+  // ========================
+  // 크롤링 상태 조회 (관리자용)
+  // ========================
+
+  /// 로또 회차별 당첨지점 수 조회
+  static Future<Map<int, Map<String, int>>> getLottoStoreCountsByRound() async {
+    try {
+      final response = await _supabase
+          .from('winning_history')
+          .select('round, prize_tier')
+          .eq('lottery_type', 'lotto');
+
+      final Map<int, Map<String, int>> result = {};
+      for (var row in (response as List)) {
+        final round = row['round'] as int;
+        final tier = row['prize_tier'] as String? ?? '';
+        result.putIfAbsent(round, () => {'total': 0, 'first': 0, 'second': 0});
+        result[round]!['total'] = (result[round]!['total'] ?? 0) + 1;
+        if (tier == '1') result[round]!['first'] = (result[round]!['first'] ?? 0) + 1;
+        if (tier == '2') result[round]!['second'] = (result[round]!['second'] ?? 0) + 1;
+      }
+      return result;
+    } catch (e) {
+      print('로또 지점 수 조회 오류: $e');
+      return {};
+    }
+  }
+
+  /// 연금 회차별 당첨지점 수 조회
+  static Future<Map<int, Map<String, int>>> getPensionStoreCountsByRound() async {
+    try {
+      final response = await _supabase
+          .from('winning_history')
+          .select('round, prize_tier')
+          .eq('lottery_type', 'pension');
+
+      final Map<int, Map<String, int>> result = {};
+      for (var row in (response as List)) {
+        final round = row['round'] as int;
+        final tier = row['prize_tier'] as String? ?? '';
+        result.putIfAbsent(round, () => {'total': 0, 'first': 0, 'second': 0});
+        result[round]!['total'] = (result[round]!['total'] ?? 0) + 1;
+        if (tier == '1') result[round]!['first'] = (result[round]!['first'] ?? 0) + 1;
+        if (tier == '2') result[round]!['second'] = (result[round]!['second'] ?? 0) + 1;
+      }
+      return result;
+    } catch (e) {
+      print('연금 지점 수 조회 오류: $e');
+      return {};
+    }
+  }
+
+  /// lottery_rounds 전체 조회 (로또)
+  static Future<List<Map<String, dynamic>>> getAllLottoRounds() async {
+    try {
+      final response = await _supabase
+          .from('lottery_rounds')
+          .select()
+          .order('round', ascending: false);
+      return (response as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      print('lottery_rounds 조회 오류: $e');
+      return [];
+    }
+  }
+
+  /// pension_rounds 전체 조회
+  static Future<List<Map<String, dynamic>>> getAllPensionRounds() async {
+    try {
+      final response = await _supabase
+          .from('pension_rounds')
+          .select()
+          .order('round', ascending: false);
+      return (response as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      print('pension_rounds 조회 오류: $e');
+      return [];
+    }
+  }
+
+  /// 로또 회차 삭제 (당첨번호 + 회차 + 지점 데이터)
+  static Future<bool> deleteLottoRound(int round) async {
+    try {
+      await _supabase.from('winning_history').delete()
+          .eq('round', round).eq('lottery_type', 'lotto');
+      await _supabase.from('lotto_winning_numbers').delete().eq('round', round);
+      await _supabase.from('lottery_rounds').delete().eq('round', round);
+      return true;
+    } catch (e) {
+      print('로또 회차 삭제 오류: $e');
+      return false;
+    }
+  }
+
+  /// 연금 회차 삭제 (당첨번호 + 회차 + 지점 데이터)
+  static Future<bool> deletePensionRound(int round) async {
+    try {
+      await _supabase.from('winning_history').delete()
+          .eq('round', round).eq('lottery_type', 'pension');
+      await _supabase.from('pension_winning_numbers').delete().eq('round', round);
+      await _supabase.from('pension_rounds').delete().eq('round', round);
+      return true;
+    } catch (e) {
+      print('연금 회차 삭제 오류: $e');
+      return false;
+    }
+  }
+}
