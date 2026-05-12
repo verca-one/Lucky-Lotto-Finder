@@ -620,6 +620,68 @@ class SupabaseService {
     return getStoresByRound(round: round, lotteryType: 'pension');
   }
 
+  /// 홈 랭킹: 로또 1등 당첨 횟수 기준 TOP N 지점 조회
+  /// first_count 내림차순 + latest_first_win 내림차순 (최근 가중치)
+  static Future<List<Map<String, dynamic>>> getTopRankedStores({
+    int limit = 30,
+  }) async {
+    try {
+      final response = await _supabase
+          .from('lottery_stores')
+          .select('dhlottery_code, store_name, address, region, lottery_type, first_count, second_count, total_count, purchase_method, latest_first_win, latest_second_win')
+          .eq('lottery_type', 'lotto')
+          .gt('first_count', 0)
+          .order('first_count', ascending: false)
+          .order('latest_first_win', ascending: false)
+          .limit(limit);
+      return (response as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      print('TOP 랭킹 조회 오류: $e');
+      return [];
+    }
+  }
+
+  /// 특정 지점의 연금복권 당첨 정보 조회 (배지용)
+  static Future<Map<String, Map<String, dynamic>>> getPensionInfoForStores(
+    List<String> dhlotteryCodes,
+  ) async {
+    try {
+      if (dhlotteryCodes.isEmpty) return {};
+      final response = await _supabase
+          .from('lottery_stores')
+          .select('dhlottery_code, first_count, second_count, total_count')
+          .eq('lottery_type', 'pension')
+          .inFilter('dhlottery_code', dhlotteryCodes)
+          .gt('total_count', 0);
+      final Map<String, Map<String, dynamic>> result = {};
+      for (final row in (response as List)) {
+        result[row['dhlottery_code'] as String] = Map<String, dynamic>.from(row);
+      }
+      return result;
+    } catch (e) {
+      print('연금복권 정보 조회 오류: $e');
+      return {};
+    }
+  }
+
+  /// 특정 판매점의 당첨 이력 조회 (로또 + 연금 모두)
+  static Future<List<Map<String, dynamic>>> getWinningHistoryForStore(
+    String dhlotteryCode,
+  ) async {
+    try {
+      final response = await _supabase
+          .from('winning_history')
+          .select('dhlottery_code, lottery_type, round, prize_tier')
+          .eq('dhlottery_code', dhlotteryCode)
+          .order('round', ascending: false)
+          .limit(200);
+      return (response as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      print('당첨 이력 조회 오류: $e');
+      return [];
+    }
+  }
+
   // store_badges 테이블에서 배지 조회
   static Future<List<Map<String, dynamic>>> getStoreBadges(
     List<String> dhlotteryCodes, {

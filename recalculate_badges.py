@@ -60,12 +60,11 @@ def get_latest_round(lottery_type):
 
 
 def get_winning_rounds_for_codes(codes, lottery_type):
-    """판매점별 당첨 회차 목록 (winning_history)"""
+    """판매점별 당첨 회차 목록 (winning_history) — prize_tier 구분 없이 전체"""
     if not codes:
         return {}
 
     result = defaultdict(list)
-    # in 필터는 한번에 너무 많으면 안 됨 → 500개씩 분할
     chunk_size = 500
     for i in range(0, len(codes), chunk_size):
         chunk = codes[i:i+chunk_size]
@@ -78,6 +77,31 @@ def get_winning_rounds_for_codes(codes, lottery_type):
                 .execute())
         for row in (resp.data or []):
             result[row["dhlottery_code"]].append(row["round"])
+    return dict(result)
+
+
+def get_winning_rounds_by_tier(codes, lottery_type):
+    """판매점별 등수별 당첨 회차 목록 (winning_history)
+    반환: {dhlottery_code: {"first": [rounds], "second": [rounds]}}
+    """
+    if not codes:
+        return {}
+
+    result = defaultdict(lambda: defaultdict(list))
+    chunk_size = 500
+    for i in range(0, len(codes), chunk_size):
+        chunk = codes[i:i+chunk_size]
+        resp = (supabase.table("winning_history")
+                .select("dhlottery_code, round, prize_tier")
+                .eq("lottery_type", lottery_type)
+                .in_("dhlottery_code", chunk)
+                .order("round")
+                .limit(10000)
+                .execute())
+        for row in (resp.data or []):
+            code = row["dhlottery_code"]
+            tier = row.get("prize_tier", "first")
+            result[code][tier].append(row["round"])
     return dict(result)
 
 
@@ -132,46 +156,84 @@ def calculate_badges(stores, lottery_type):
                 "priority": 20,
             })
 
-    # ── 2) 당첨 회차 데이터 로드 (2회 이상 당첨점) ──
+    # ── 2) 당첨 회차 데이터 로드 (2회 이상 당첨점) ── 등수별 분리
     codes_2plus = [s["dhlottery_code"] for s in unique_stores if (s.get("total_count") or 0) >= 2]
     winning_rounds = get_winning_rounds_for_codes(codes_2plus, lottery_type)
+    winning_rounds_by_tier = get_winning_rounds_by_tier(codes_2plus, lottery_type)
 
-    # ── 3) 주기 분석 (5회 이상 당첨점) ──
-    for code, rounds in winning_rounds.items():
-        if len(rounds) < 5 or current_round <= 0:
+    # ── 3) 등수별 당첨주기 배지 (1등/2등 각각) ──
+    tier_labels = {"first": "1등", "second": "2등"}
+    for code, tiers in winning_rounds_by_tier.items():
+        if current_round <= 0:
             continue
-        rounds_sorted = sorted(rounds)
-        intervals = [rounds_sorted[i] - rounds_sorted[i-1] for i in range(1, len(rounds_sorted))]
-        avg_interval = sum(intervals) / len(intervals)
-        elapsed = current_round - rounds_sorted[-1]
+        for tier, rounds in tiers.items():
+            tier_name = tier_labels.get(tier, tier)
+            if len(rounds) < 3:
+                continue
+            rounds_sorted = sorted(rounds)
+            intervals = [rounds_sorted[i] - rounds_sorted[i-1] for i in range(1, len(rounds_sorted))]
+            avg_interval = sum(intervals) / len(intervals)
+            elapsed = current_round - rounds_sorted[-1]
 
-        # 평균 간격 배지
-        avg_weeks = round(avg_interval)
-        months = round(avg_interval / 4.3)
-        is_due = elapsed >= (avg_interval - 1) and elapsed <= (avg_interval + 1)
+            months = round(avg_interval / 4.3)
+            is_due = elapsed >= (avg_interval - 1) and elapsed <= (avg_interval + 1)
 
-        if months >= 1:
-            if is_due:
-                pattern_label = f"평균 {months}개월주기(이번회차 예측 주목중)"
-            else:
-                pattern_label = f"평균 {months}개월 주기일까? 주시중"
-            badges.append({
-                "dhlottery_code": code,
-                "lottery_type": lottery_type,
-                "badge_type": "pattern",
-                "badge_label": pattern_label,
-                "priority": 40,
-            })
+            if months >= 1:
+                if is_due:
+                    pattern_label = f"{type_label} {tier_name} {months}개월 당첨주기 (이번주 예상)"
+                else:
+                    pattern_label = f"{type_label} {tier_name} {months}개월 당첨주기"
+                badges.append({
+                    "dhlottery_code": code,
+                    "lottery_type": lottery_type,
+                    "badge_type": "pattern",
+                    "badge_label": pattern_label,
+                    "priority": 40 if tier == "first" else 41,
+                })
 
-        # "이번주 유력" (평균 간격 ±1 이내)
-        if is_due:
-            badges.append({
-                "dhlottery_code": code,
-                "lottery_type": lottery_type,
-                "badge_type": "hot",
-                "badge_label": f"{months}개월 주기 (이번주 유력!)",
-                "priority": 1,
-            })
+            # "이번주 유력" (1등 주기가 맞을 때만)
+            if is_due and tier == "first":
+                badges.append({
+                    "dhlottery_code": code,
+                    "lottery_type": lottery_type,
+                    "badge_type": "hot",
+                    "badge_label": f"{type_label} {tier_name} {months}개월 주기 (이번주 예상)",
+                    "priority": 1,
+                })
+
+    # ── 3-2) 크로스 복권 당첨주기 (로또 지점의 연금 주기 / 연금 지점의 로또 주기) ──
+    cross_type = "pension" if lottery_type == "lotto" else "lotto"
+    cross_label = lottery_label(cross_type)
+    cross_round = get_latest_round(cross_type)
+    cross_rounds_by_tier = get_winning_rounds_by_tier(codes_2plus, cross_type)
+
+    for code, tiers in cross_rounds_by_tier.items():
+        if cross_round <= 0:
+            continue
+        for tier, rounds in tiers.items():
+            tier_name = tier_labels.get(tier, tier)
+            if len(rounds) < 3:
+                continue
+            rounds_sorted = sorted(rounds)
+            intervals = [rounds_sorted[i] - rounds_sorted[i-1] for i in range(1, len(rounds_sorted))]
+            avg_interval = sum(intervals) / len(intervals)
+            elapsed = cross_round - rounds_sorted[-1]
+
+            months = round(avg_interval / 4.3)
+            is_due = elapsed >= (avg_interval - 1) and elapsed <= (avg_interval + 1)
+
+            if months >= 1:
+                if is_due:
+                    pattern_label = f"{cross_label} {tier_name} {months}개월 당첨주기 (이번주 예상)"
+                else:
+                    pattern_label = f"{cross_label} {tier_name} {months}개월 당첨주기"
+                badges.append({
+                    "dhlottery_code": code,
+                    "lottery_type": lottery_type,
+                    "badge_type": "pattern",
+                    "badge_label": pattern_label,
+                    "priority": 42,
+                })
 
     # ── 4) 이번 달 N회 당첨 ──
     # 최근 4회차(약 1개월) 내 2회 이상 당첨
