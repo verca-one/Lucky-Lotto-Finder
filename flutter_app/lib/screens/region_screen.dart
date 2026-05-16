@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'dart:convert';
 import '../models/lottery_store.dart';
 import '../services/supabase_service.dart';
 import '../services/badge_service.dart';
@@ -21,6 +20,7 @@ class _RegionScreenState extends State<RegionScreen> {
 
   // 즐겨찾기
   Set<String> _favorites = {};
+  Map<String, int> _top30Ranks = {};
 
   // 게임 타입
   String _selectedGame = 'all';
@@ -29,21 +29,30 @@ class _RegionScreenState extends State<RegionScreen> {
   void initState() {
     super.initState();
     _loadFavorites();
+    _loadTop30Ranks();
     _loadStores();
   }
 
   Future<void> _loadFavorites() async {
     final prefs = await SharedPreferences.getInstance();
-    final favJson = prefs.getString('favorite_stores') ?? '[]';
-    final favList = (jsonDecode(favJson) as List).cast<String>();
     setState(() {
-      _favorites = favList.toSet();
+      _favorites = (prefs.getStringList('favorite_stores') ?? []).toSet();
     });
+  }
+
+  Future<void> _loadTop30Ranks() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rankList = prefs.getStringList('prev_ranking') ?? [];
+    final Map<String, int> ranks = {};
+    for (int i = 0; i < rankList.length; i++) {
+      ranks[rankList[i]] = i + 1;
+    }
+    setState(() => _top30Ranks = ranks);
   }
 
   Future<void> _saveFavorites() async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('favorite_stores', jsonEncode(_favorites.toList()));
+    await prefs.setStringList('favorite_stores', _favorites.toList());
   }
 
   Future<void> _toggleFavorite(String dhlotteryCode) async {
@@ -169,22 +178,6 @@ class _RegionScreenState extends State<RegionScreen> {
 
     return Column(
       children: [
-        // 게임 타입 선택
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: [
-                _buildGameChip('all', '종합'),
-                const SizedBox(width: 8),
-                _buildGameChip('lotto', '로또'),
-                const SizedBox(width: 8),
-                _buildGameChip('pension', '연금복권'),
-              ],
-            ),
-          ),
-        ),
         // 즐겨찾기 섹션
         _buildFavoritesSection(),
         // 메인 콘텐츠 (박스 안에 박스)
@@ -256,6 +249,11 @@ class _RegionScreenState extends State<RegionScreen> {
                 ),
               ),
             ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '즐겨찾기 메뉴에서 확인해주세요',
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
           ),
           const SizedBox(height: 8),
           ...uniqueFavStores.take(5).map((store) => _buildStoreRow(store, showRegion: true)),
@@ -543,62 +541,174 @@ class _RegionScreenState extends State<RegionScreen> {
 
   Widget _buildStoreCard(LotteryStore store, int rank) {
     final isFav = _favorites.contains(store.dhlotteryCode);
+    final isExpanded = _expandedCards.contains(store.dhlotteryCode);
 
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      color: isFav ? Colors.amber.shade50 : null,
-      child: InkWell(
-        borderRadius: BorderRadius.circular(12),
-        onTap: () {
-          showStoreDetailPopup(
-            context: context,
-            store: store,
-            favorites: _favorites,
-            onToggleFavorite: _toggleFavorite,
-          ).then((_) {
-            // 팝업 닫힌 후 즐겨찾기 상태 갱신
-            _loadFavorites();
-          });
-        },
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      store.storeName,
-                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      store.address,
-                      style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 4,
-                      children: BadgeService.getBadges(store.dhlotteryCode).map((badge) {
-                        return _buildBadgeChip(badge);
-                      }).toList(),
-                    ),
-                  ],
-                ),
-              ),
-              Icon(
-                isFav ? Icons.star : Icons.star_border,
-                color: isFav ? Colors.amber : Colors.grey.shade400,
-                size: 24,
-              ),
-            ],
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          if (isExpanded) {
+            _expandedCards.remove(store.dhlotteryCode);
+          } else {
+            _expandedCards.clear();
+            _expandedCards.add(store.dhlotteryCode);
+          }
+        });
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: isExpanded
+              ? Colors.blue.shade50
+              : (isFav ? Colors.amber.shade50 : Colors.white),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isExpanded ? Colors.blue.shade200 : Colors.grey.shade200,
+            width: 1,
           ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 4,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 헤더: 이름 + 즐겨찾기
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    store.storeName,
+                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => _toggleFavorite(store.dhlotteryCode),
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Icon(
+                      isFav ? Icons.star : Icons.star_border,
+                      color: isFav ? Colors.amber : Colors.grey.shade400,
+                      size: 24,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(
+              store.address,
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+            ),
+            const SizedBox(height: 6),
+            // 배지
+            Wrap(
+              spacing: 6,
+              runSpacing: 4,
+              children: [
+                if (_top30Ranks.containsKey(store.dhlotteryCode))
+                  _buildTop30Badge(_top30Ranks[store.dhlotteryCode]!),
+                ...BadgeService.getBadges(store.dhlotteryCode).map((badge) {
+                  return _buildBadgeChip(badge);
+                }),
+              ],
+            ),
+            // ── 확장 영역 ──
+            if (isExpanded) ...[
+              const SizedBox(height: 10),
+              Divider(height: 1, color: Colors.grey.shade300),
+              const SizedBox(height: 10),
+              // 지도 버튼
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _openMap('naver', store),
+                      icon: const Icon(Icons.map_outlined, size: 16),
+                      label: const Text('네이버지도', style: TextStyle(fontSize: 13)),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _openMap('kakao', store),
+                      icon: const Icon(Icons.place_outlined, size: 16),
+                      label: const Text('카카오지도', style: TextStyle(fontSize: 13)),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 10),
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              // 당첨 정보
+              Row(
+                children: [
+                  if ((store.firstCount ?? 0) > 0)
+                    _buildInfoChip('로또 1등 ${store.firstCount}회', Colors.red.shade700, Colors.red.shade50),
+                  if ((store.firstCount ?? 0) > 0) const SizedBox(width: 6),
+                  if ((store.secondCount ?? 0) > 0)
+                    _buildInfoChip('로또 2등 ${store.secondCount}회', Colors.orange.shade700, Colors.orange.shade50),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Divider(height: 1, color: Colors.grey.shade300),
+              const SizedBox(height: 10),
+              // 판매점 평가
+              _InlineReviewSection(dhlotteryCode: store.dhlotteryCode),
+            ],
+            // 확장 아이콘
+            if (!isExpanded)
+              Align(
+                alignment: Alignment.center,
+                child: Icon(Icons.expand_more, color: Colors.grey.shade400, size: 18),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildInfoChip(String label, Color textColor, Color bgColor) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: bgColor,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Text(label, style: TextStyle(fontSize: 11, color: textColor, fontWeight: FontWeight.w600)),
+    );
+  }
+
+  Widget _buildTop30Badge(int rank) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.amber.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.amber.shade300, width: 1),
+      ),
+      child: Text(
+        '복권명당 TOP30:$rank위',
+        style: TextStyle(
+          fontSize: 10,
+          color: Colors.amber.shade800,
+          fontWeight: FontWeight.bold,
         ),
       ),
     );
@@ -652,4 +762,356 @@ class _RegionScreenState extends State<RegionScreen> {
     );
   }
 
+}
+
+/// 카드 내 인라인 판매점 평가 + 신고 위젯
+class _InlineReviewSection extends StatefulWidget {
+  final String dhlotteryCode;
+  const _InlineReviewSection({required this.dhlotteryCode});
+
+  @override
+  State<_InlineReviewSection> createState() => _InlineReviewSectionState();
+}
+
+class _InlineReviewSectionState extends State<_InlineReviewSection> {
+  Map<String, Map<String, int>> _summary = {};
+  bool _isLoading = true;
+  String _deviceId = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final prefs = await SharedPreferences.getInstance();
+    var deviceId = prefs.getString('device_id');
+    if (deviceId == null || deviceId.isEmpty) {
+      deviceId = 'dev_${DateTime.now().millisecondsSinceEpoch}_${UniqueKey().hashCode}';
+      await prefs.setString('device_id', deviceId);
+    }
+    _deviceId = deviceId;
+
+    final summary = await SupabaseService.getReviewSummary(widget.dhlotteryCode);
+    if (!mounted) return;
+    setState(() {
+      _summary = summary;
+      _isLoading = false;
+    });
+  }
+
+  Future<void> _showReviewDialog() async {
+    final myVotes = await SupabaseService.getMyVotes(
+      dhlotteryCode: widget.dhlotteryCode,
+      deviceId: _deviceId,
+    );
+    if (!mounted) return;
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => _ReviewDialog(
+        dhlotteryCode: widget.dhlotteryCode,
+        deviceId: _deviceId,
+        initialVotes: myVotes,
+      ),
+    );
+
+    if (result == true && mounted) {
+      final summary = await SupabaseService.getReviewSummary(widget.dhlotteryCode);
+      if (mounted) setState(() => _summary = summary);
+    }
+  }
+
+  Future<void> _showReportDialog() async {
+    String? selectedReason;
+    final detailController = TextEditingController();
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setDialogState) => AlertDialog(
+          title: const Text('판매점 신고', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('신고 사유를 선택하세요', style: TextStyle(fontSize: 13, color: Colors.grey)),
+                const SizedBox(height: 12),
+                ...reportReasons.map((reason) => RadioListTile<String>(
+                  title: Text(reason, style: const TextStyle(fontSize: 14)),
+                  value: reason,
+                  groupValue: selectedReason,
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  onChanged: (v) => setDialogState(() => selectedReason = v),
+                )),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: detailController,
+                  maxLines: 2,
+                  decoration: InputDecoration(
+                    hintText: '추가 설명 (선택)',
+                    hintStyle: const TextStyle(fontSize: 13),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                    contentPadding: const EdgeInsets.all(10),
+                    isDense: true,
+                  ),
+                  style: const TextStyle(fontSize: 13),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('취소'),
+            ),
+            ElevatedButton(
+              onPressed: selectedReason == null ? null : () => Navigator.pop(ctx, true),
+              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+              child: const Text('신고', style: TextStyle(color: Colors.white)),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (result == true && selectedReason != null && mounted) {
+      final resp = await SupabaseService.createReport(
+        dhlotteryCode: widget.dhlotteryCode,
+        deviceId: _deviceId,
+        reason: selectedReason!,
+        detail: detailController.text.trim().isEmpty ? null : detailController.text.trim(),
+      );
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(resp['message'] ?? '')),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_isLoading) {
+      return const Padding(
+        padding: EdgeInsets.symmetric(vertical: 12),
+        child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // 신고 + 평가 버튼 행
+        Row(
+          mainAxisAlignment: MainAxisAlignment.end,
+          children: [
+            GestureDetector(
+              onTap: _showReportDialog,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.red.shade200),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.flag_outlined, size: 14, color: Colors.red.shade400),
+                    const SizedBox(width: 4),
+                    Text('신고', style: TextStyle(fontSize: 11, color: Colors.red.shade400, fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: _showReviewDialog,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                decoration: BoxDecoration(
+                  color: Colors.blue.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.blue.shade200),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.rate_review_outlined, size: 14, color: Colors.blue.shade400),
+                    const SizedBox(width: 4),
+                    Text('평가', style: TextStyle(fontSize: 11, color: Colors.blue.shade400, fontWeight: FontWeight.w600)),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 10),
+        // 승인된 평가 수치 표시
+        const Text('판매점 평가', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+        const SizedBox(height: 8),
+        ...reviewItems.map((item) {
+          final counts = _summary[item.key] ?? {'up': 0, 'down': 0};
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 6),
+            child: Row(
+              children: [
+                Icon(item.icon, size: 16, color: Colors.grey.shade600),
+                const SizedBox(width: 8),
+                Expanded(child: Text(item.label, style: const TextStyle(fontSize: 13))),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(12)),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.thumb_up, size: 14, color: Colors.blue),
+                    const SizedBox(width: 4),
+                    Text('${counts['up']}', style: const TextStyle(fontSize: 11, color: Colors.blue)),
+                  ]),
+                ),
+                const SizedBox(width: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(12)),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    const Icon(Icons.thumb_down, size: 14, color: Colors.red),
+                    const SizedBox(width: 4),
+                    Text('${counts['down']}', style: const TextStyle(fontSize: 11, color: Colors.red)),
+                  ]),
+                ),
+              ],
+            ),
+          );
+        }),
+      ],
+    );
+  }
+}
+
+/// 평가 다이얼로그 (새 창)
+class _ReviewDialog extends StatefulWidget {
+  final String dhlotteryCode;
+  final String deviceId;
+  final Map<String, String> initialVotes;
+
+  const _ReviewDialog({
+    required this.dhlotteryCode,
+    required this.deviceId,
+    required this.initialVotes,
+  });
+
+  @override
+  State<_ReviewDialog> createState() => _ReviewDialogState();
+}
+
+class _ReviewDialogState extends State<_ReviewDialog> {
+  late Map<String, String> _votes;
+  bool _isSubmitting = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _votes = Map.from(widget.initialVotes);
+  }
+
+  void _toggleVote(String reviewKey, String voteType) {
+    setState(() {
+      if (_votes[reviewKey] == voteType) {
+        _votes.remove(reviewKey);
+      } else {
+        _votes[reviewKey] = voteType;
+      }
+    });
+  }
+
+  Future<void> _submit() async {
+    setState(() => _isSubmitting = true);
+    for (final entry in _votes.entries) {
+      await SupabaseService.vote(
+        dhlotteryCode: widget.dhlotteryCode,
+        reviewKey: entry.key,
+        deviceId: widget.deviceId,
+        voteType: entry.value,
+      );
+    }
+    if (mounted) {
+      setState(() => _isSubmitting = false);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('평가가 제출되었습니다. 승인 후 반영됩니다.')),
+      );
+      Navigator.pop(context, true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final hasVotes = _votes.isNotEmpty;
+    return AlertDialog(
+      title: const Text('판매점 평가', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('이 판매점에 대해 평가해주세요', style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+            const SizedBox(height: 4),
+            Text('승인 후 반영됩니다', style: TextStyle(fontSize: 11, color: Colors.orange.shade600)),
+            const SizedBox(height: 16),
+            ...reviewItems.map((item) {
+              final myVote = _votes[item.key];
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Row(
+                  children: [
+                    Icon(item.icon, size: 18, color: Colors.grey.shade700),
+                    const SizedBox(width: 10),
+                    Expanded(child: Text(item.label, style: const TextStyle(fontSize: 14))),
+                    GestureDetector(
+                      onTap: () => _toggleVote(item.key, 'up'),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: myVote == 'up' ? Colors.blue.shade100 : Colors.grey.shade100,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(Icons.thumb_up, size: 18, color: myVote == 'up' ? Colors.blue : Colors.grey),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    GestureDetector(
+                      onTap: () => _toggleVote(item.key, 'down'),
+                      child: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: myVote == 'down' ? Colors.red.shade100 : Colors.grey.shade100,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(Icons.thumb_down, size: 18, color: myVote == 'down' ? Colors.red : Colors.grey),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context, false),
+          child: const Text('닫기'),
+        ),
+        ElevatedButton(
+          onPressed: (!hasVotes || _isSubmitting) ? null : _submit,
+          style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+          child: _isSubmitting
+              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Text('제출', style: TextStyle(color: Colors.white)),
+        ),
+      ],
+    );
+  }
 }

@@ -1,16 +1,10 @@
-name: Crawl Speeto (disabled)
+name: Crawl Speeto
 
-# 비활성화 - 스피또 미사용
-# on:
-#   schedule:
-#     - cron: '0 21 * * *'
-#   workflow_dispatch:
 on:
+  schedule:
+    # 매주 금요일 21:00 UTC (토요일 06:00 KST)
+    - cron: '0 21 * * 5'
   workflow_dispatch:
-    inputs:
-      confirm:
-        description: '수동 실행 확인 (현재 비활성화됨)'
-        required: true
 
 jobs:
   crawl:
@@ -46,6 +40,15 @@ jobs:
         SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
       run: |
         python lotto_verca_uploader.py
+
+    - name: Recalculate badges (스피또)
+      env:
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      run: |
+        python recalculate_badges.py speedlotto_2000
+        python recalculate_badges.py speedlotto_1000
+        python recalculate_badges.py speedlotto_500
 
     - name: Commit and push results
       run: |

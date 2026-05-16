@@ -18,10 +18,10 @@ class ReviewItem {
 const List<ReviewItem> reviewItems = [
   ReviewItem(key: 'parking_easy', label: '주차가 쉽다', icon: Icons.local_parking),
   ReviewItem(key: 'bank_transfer_available', label: '계좌이체 가능하다', icon: Icons.account_balance),
-  ReviewItem(key: 'hard_to_find', label: '지점이 찾기 어렵다', icon: Icons.explore_off),
-  ReviewItem(key: 'unfriendly', label: '불친절해요', icon: Icons.sentiment_dissatisfied),
-  ReviewItem(key: 'inexperienced', label: '미숙해요', icon: Icons.psychology_alt),
-  ReviewItem(key: 'owner_absent', label: '사장이 자리에 잘 없어요', icon: Icons.person_off),
+  ReviewItem(key: 'easy_to_find', label: '지점을 찾기 쉬워요', icon: Icons.explore),
+  ReviewItem(key: 'friendly', label: '친절해요', icon: Icons.sentiment_satisfied),
+  ReviewItem(key: 'saturday_good', label: '토요일에 로또구매하기 좋아요', icon: Icons.calendar_today),
+  ReviewItem(key: 'indoor_purchase', label: '가게안에서 구매할수 있어요', icon: Icons.store),
 ];
 
 /// 신고 사유
@@ -75,6 +75,7 @@ class _StoreDetailSheet extends StatefulWidget {
 class _StoreDetailSheetState extends State<_StoreDetailSheet> {
   Map<String, Map<String, int>> _summary = {};
   Map<String, String> _myVotes = {};
+  Map<String, int> _top30Ranks = {};
   bool _isLoadingReviews = true;
   late bool _isFavorite;
   String _deviceId = '';
@@ -83,7 +84,18 @@ class _StoreDetailSheetState extends State<_StoreDetailSheet> {
   void initState() {
     super.initState();
     _isFavorite = widget.favorites.contains(widget.store.dhlotteryCode);
+    _loadTop30Ranks();
     _loadDeviceId();
+  }
+
+  Future<void> _loadTop30Ranks() async {
+    final prefs = await SharedPreferences.getInstance();
+    final rankList = prefs.getStringList('prev_ranking') ?? [];
+    final Map<String, int> ranks = {};
+    for (int i = 0; i < rankList.length; i++) {
+      ranks[rankList[i]] = i + 1;
+    }
+    if (mounted) setState(() => _top30Ranks = ranks);
   }
 
   Future<void> _loadDeviceId() async {
@@ -260,6 +272,7 @@ class _StoreDetailSheetState extends State<_StoreDetailSheet> {
   Widget build(BuildContext context) {
     final store = widget.store;
     final badges = BadgeService.getBadges(store.dhlotteryCode);
+    final top30Rank = _top30Ranks[store.dhlotteryCode];
 
     return DraggableScrollableSheet(
       initialChildSize: 0.7,
@@ -346,12 +359,15 @@ class _StoreDetailSheetState extends State<_StoreDetailSheet> {
             ),
 
             // ── 배지 ──
-            if (badges.isNotEmpty) ...[
+            if (badges.isNotEmpty || top30Rank != null) ...[
               const SizedBox(height: 10),
               Wrap(
                 spacing: 6,
                 runSpacing: 4,
-                children: badges.map((b) => _buildBadgeChip(b)).toList(),
+                children: [
+                  if (top30Rank != null) _buildTop30Badge(top30Rank),
+                  ...badges.map((b) => _buildBadgeChip(b)),
+                ],
               ),
             ],
 
@@ -497,6 +513,25 @@ class _StoreDetailSheetState extends State<_StoreDetailSheet> {
               ),
             ],
           ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTop30Badge(int rank) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: Colors.amber.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.amber.shade300, width: 1),
+      ),
+      child: Text(
+        '복권명당 TOP30:$rank위',
+        style: TextStyle(
+          fontSize: 10,
+          color: Colors.amber.shade800,
+          fontWeight: FontWeight.bold,
         ),
       ),
     );

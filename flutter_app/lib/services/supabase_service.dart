@@ -45,6 +45,22 @@ class SupabaseService {
     }
   }
 
+  // 특정 코드 목록으로 판매점 조회 (즐겨찾기용)
+  static Future<List<LotteryStore>> getStoresByCodes(List<String> codes) async {
+    if (codes.isEmpty) return [];
+    try {
+      final response = await _supabase
+          .from('lottery_stores')
+          .select()
+          .inFilter('dhlottery_code', codes)
+          .eq('lottery_type', 'lotto');
+      return (response as List).map((json) => LotteryStore.fromJson(json)).toList();
+    } catch (e) {
+      print('즐겨찾기 판매점 조회 오류: $e');
+      return [];
+    }
+  }
+
   // Supabase에서 판매점 데이터 조회
   static Future<List<LotteryStore>> getNearbyStores({
     required double latitude,
@@ -895,12 +911,13 @@ class SupabaseService {
           }).eq('id', existing['id']);
         }
       } else {
-        // 신규 투표
+        // 신규 투표 (pending 상태로 저장)
         await _supabase.from('store_reviews').insert({
           'dhlottery_code': dhlotteryCode,
           'review_key': reviewKey,
           'device_id': deviceId,
           'vote_type': voteType,
+          'status': 'pending',
         });
       }
       return true;
@@ -910,20 +927,21 @@ class SupabaseService {
     }
   }
 
-  /// 판매점 평가 집계 조회 (항목별 up/down 수)
+  /// 판매점 평가 집계 조회 (승인된 것만, 항목별 up/down 수)
   static Future<Map<String, Map<String, int>>> getReviewSummary(String dhlotteryCode) async {
     try {
       final response = await _supabase
-          .from('store_review_summary')
-          .select()
-          .eq('dhlottery_code', dhlotteryCode);
+          .from('store_reviews')
+          .select('review_key, vote_type')
+          .eq('dhlottery_code', dhlotteryCode)
+          .eq('status', 'approved');
 
       final Map<String, Map<String, int>> result = {};
       for (var row in (response as List)) {
-        result[row['review_key']] = {
-          'up': row['up_count'] ?? 0,
-          'down': row['down_count'] ?? 0,
-        };
+        final key = row['review_key'] as String;
+        final type = row['vote_type'] as String;
+        result.putIfAbsent(key, () => {'up': 0, 'down': 0});
+        result[key]![type] = (result[key]![type] ?? 0) + 1;
       }
       return result;
     } catch (e) {
@@ -1139,6 +1157,170 @@ class SupabaseService {
     } catch (e) {
       print('연금 회차 삭제 오류: $e');
       return false;
+    }
+  }
+
+  // ========================
+  // 평가 승인 관리 (관리자용)
+  // ========================
+
+  /// 지점별 pending 평가 수 조회
+  static Future<List<Map<String, dynamic>>> getPendingReviewStats() async {
+    try {
+      final response = await _supabase
+          .from('store_reviews')
+          .select('dhlottery_code, review_key, vote_type')
+          .eq('status', 'pending');
+
+      // 지점별 집계
+      final Map<String, Map<String, int>> stats = {};
+      for (var row in (response as List)) {
+        final code = row['dhlottery_code'] as String;
+        stats.putIfAbsent(code, () => {'pending': 0, 'up': 0, 'down': 0});
+        stats[code]!['pending'] = (stats[code]!['pending'] ?? 0) + 1;
+        final type = row['vote_type'] as String;
+        stats[code]![type] = (stats[code]![type] ?? 0) + 1;
+      }
+
+      // 지점 이름 조회
+      if (stats.isEmpty) return [];
+      final codes = stats.keys.toList();
+      final stores = await _supabase
+          .from('lottery_stores')
+          .select('dhlottery_code, store_name, address')
+          .inFilter('dhlottery_code', codes);
+
+      final Map<String, Map<String, dynamic>> storeMap = {};
+      for (var s in (stores as List)) {
+        storeMap[s['dhlottery_code']] = s;
+      }
+
+      return stats.entries.map((e) {
+        final store = storeMap[e.key];
+        return {
+          'dhlottery_code': e.key,
+          'store_name': store?['store_name'] ?? e.key,
+          'address': store?['address'] ?? '',
+          'pending_count': e.value['pending'] ?? 0,
+          'up_count': e.value['up'] ?? 0,
+          'down_count': e.value['down'] ?? 0,
+        };
+      }).toList()
+        ..sort((a, b) => (b['pending_count'] as int).compareTo(a['pending_count'] as int));
+    } catch (e) {
+      print('대기 평가 통계 오류: $e');
+      return [];
+    }
+  }
+
+  /// 특정 지점의 pending 평가 일괄 승인
+  static Future<int> approveStoreReviews(String dhlotteryCode) async {
+    try {
+      final response = await _supabase
+          .from('store_reviews')
+          .update({'status': 'approved'})
+          .eq('dhlottery_code', dhlotteryCode)
+          .eq('status', 'pending')
+          .select();
+      return (response as List).length;
+    } catch (e) {
+      print('지점 평가 승인 오류: $e');
+      return 0;
+    }
+  }
+
+  /// 전체 pending 평가 일괄 승인 (보류 지점 제외)
+  static Future<int> approveAllPendingReviews() async {
+    try {
+      // 보류 지점 목록
+      final holds = await _supabase.from('review_holds').select('dhlottery_code');
+      final holdCodes = (holds as List).map((h) => h['dhlottery_code'] as String).toSet();
+
+      // pending 평가 조회
+      final pending = await _supabase
+          .from('store_reviews')
+          .select('id, dhlottery_code')
+          .eq('status', 'pending');
+
+      // 보류 지점 제외한 ID 목록
+      final idsToApprove = (pending as List)
+          .where((r) => !holdCodes.contains(r['dhlottery_code']))
+          .map((r) => r['id'])
+          .toList();
+
+      if (idsToApprove.isEmpty) return 0;
+
+      // 배치 승인
+      int approved = 0;
+      for (int i = 0; i < idsToApprove.length; i += 100) {
+        final batch = idsToApprove.sublist(i, i + 100 > idsToApprove.length ? idsToApprove.length : i + 100);
+        final resp = await _supabase
+            .from('store_reviews')
+            .update({'status': 'approved'})
+            .inFilter('id', batch)
+            .select();
+        approved += (resp as List).length;
+      }
+      return approved;
+    } catch (e) {
+      print('전체 평가 승인 오류: $e');
+      return 0;
+    }
+  }
+
+  /// 보류 목록 조회
+  static Future<List<Map<String, dynamic>>> getReviewHolds() async {
+    try {
+      final response = await _supabase
+          .from('review_holds')
+          .select()
+          .order('held_at', ascending: false);
+      return (response as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      print('보류 목록 조회 오류: $e');
+      return [];
+    }
+  }
+
+  /// 보류 추가
+  static Future<bool> addReviewHold(String dhlotteryCode, {String? reason}) async {
+    try {
+      await _supabase.from('review_holds').upsert({
+        'dhlottery_code': dhlotteryCode,
+        'held_at': DateTime.now().toIso8601String(),
+        'reason': reason,
+      });
+      return true;
+    } catch (e) {
+      print('보류 추가 오류: $e');
+      return false;
+    }
+  }
+
+  /// 보류 해제
+  static Future<bool> removeReviewHold(String dhlotteryCode) async {
+    try {
+      await _supabase.from('review_holds').delete().eq('dhlottery_code', dhlotteryCode);
+      return true;
+    } catch (e) {
+      print('보류 해제 오류: $e');
+      return false;
+    }
+  }
+
+  /// 특정 지점의 pending 평가 거절 (삭제)
+  static Future<int> rejectStoreReviews(String dhlotteryCode) async {
+    try {
+      final response = await _supabase
+          .from('store_reviews')
+          .delete()
+          .eq('dhlottery_code', dhlotteryCode)
+          .eq('status', 'pending')
+          .select();
+      return (response as List).length;
+    } catch (e) {
+      print('지점 평가 거절 오류: $e');
+      return 0;
     }
   }
 }

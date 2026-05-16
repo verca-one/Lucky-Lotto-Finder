@@ -7,6 +7,7 @@ import 'admin_pension_store_screen.dart';
 import 'admin_coupon_screen.dart';
 import 'admin_report_screen.dart';
 import 'admin_crawl_status_screen.dart';
+import 'admin_review_screen.dart';
 
 class AdminScreen extends StatelessWidget {
   const AdminScreen({super.key});
@@ -133,6 +134,21 @@ class AdminScreen extends StatelessWidget {
                           context,
                           MaterialPageRoute(
                             builder: (_) => const AdminReportScreen(),
+                          ),
+                        );
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    _buildAdminMenuItem(
+                      icon: Icons.rate_review,
+                      title: '지점평가 관리',
+                      subtitle: '대기 중 평가 승인/보류/거절',
+                      color: Colors.green.shade700,
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => const AdminReviewScreen(),
                           ),
                         );
                       },

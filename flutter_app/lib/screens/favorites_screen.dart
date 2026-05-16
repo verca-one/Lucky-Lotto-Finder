@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'dart:convert';
 import '../models/lottery_store.dart';
 import '../services/supabase_service.dart';
 import '../services/badge_service.dart';
@@ -28,11 +27,9 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
 
-    // 즐겨찾기 목록 로드
+    // 즐겨찾기 목록 로드 (StringList 방식)
     final prefs = await SharedPreferences.getInstance();
-    final favJson = prefs.getString('favorite_stores') ?? '[]';
-    final favList = (jsonDecode(favJson) as List).cast<String>();
-    _favorites = favList.toSet();
+    _favorites = (prefs.getStringList('favorite_stores') ?? []).toSet();
 
     if (_favorites.isEmpty) {
       if (!mounted) return;
@@ -40,13 +37,8 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       return;
     }
 
-    // Supabase에서 전체 판매점 로드 (로또)
-    final lottoStores = await SupabaseService.getAllStores(lotteryType: 'lotto');
-
-    // 즐겨찾기에 해당하는 판매점만 필터
-    final favStores = lottoStores
-        .where((s) => _favorites.contains(s.dhlotteryCode))
-        .toList();
+    // 즐겨찾기 코드로 해당 판매점만 조회
+    final favStores = await SupabaseService.getStoresByCodes(_favorites.toList());
 
     // 중복 제거
     final seen = <String>{};
@@ -80,7 +72,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       _allStores.removeWhere((s) => s.dhlotteryCode == dhlotteryCode);
     });
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('favorite_stores', jsonEncode(_favorites.toList()));
+    await prefs.setStringList('favorite_stores', _favorites.toList());
   }
 
   Future<void> _openMap(String mapType, LotteryStore store) async {

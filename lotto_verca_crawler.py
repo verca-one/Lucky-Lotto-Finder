@@ -386,16 +386,16 @@ class DHLotteryCrawler:
             return False
 
     def crawl_pension_stores(self, round_num: int) -> bool:
-        """연금복권 당첨지점 크롤링"""
+        """연금복권 당첨지점 크롤링 (신규 API: selectPtWnShp.do)"""
         logger.info(f"연금복권 {round_num}회 당첨지점 크롤링 시작...")
 
         try:
-            url = f"https://www.dhlottery.co.kr/wnprchsplcsrch/selectLtWnShp.do"
+            # 연금복권 전용 엔드포인트 (로또와 별도)
+            url = f"https://www.dhlottery.co.kr/wnprchsplcsrch/selectPtWnShp.do"
             params = {
                 "srchWnShpRnk": "all",
                 "srchLtEpsd": round_num,
-                "srchShpLctn": "",
-                "gameName": "pension"
+                "srchShpLctn": ""
             }
 
             response = self._safe_request(url, params=params)
@@ -411,17 +411,19 @@ class DHLotteryCrawler:
             logger.info(f"연금복권 {round_num}회: {len(stores)}개 당첨지점 발견")
 
             for store in stores:
-                rank = store.get("wnShpRnk", 0)
-                if rank not in [1, 2]:
+                # wnShpRnk: "1"=1등, "2"=2등, "21"=보너스 (문자열)
+                rank_str = str(store.get("wnShpRnk", ""))
+                if rank_str not in ["1", "2"]:
                     continue
 
+                rank = int(rank_str)
                 dhlottery_code = store.get("ltShpId")
                 store_name = store.get("shpNm", "")
                 address = store.get("shpAddr", "").strip()
                 prize_tier = self._get_prize_tier(rank)
 
-                # API 응답에서 구매방식 직접 추출 (1등만 존재, 2등은 빈값)
-                purchase_method = store.get("atmtPsvYnTxt", "") or ""
+                # 연금복권 API에는 atmtPsvYnTxt가 없음
+                purchase_method = ""
 
                 self._ensure_store_entry(dhlottery_code, store_name, address, purchase_method)
                 self._add_winning_record(dhlottery_code, "pension", round_num, prize_tier, purchase_method)
@@ -659,13 +661,28 @@ class DHLotteryCrawler:
             return estimated
 
         elif game_type == "pension":
-            # 연금복권720+ 1회차 추첨일: 2020-04-02 (목요일)
+            # 연금복권: 날짜 추정 후 API로 실제 최신 회차 확인 (명절 등 쉬는 주 보정)
             base_date = date(2020, 4, 2)
-            # 가장 최근 지난 목요일 계산
-            days_since_thursday = (today.weekday() - 3) % 7  # 목요일=0
+            days_since_thursday = (today.weekday() - 3) % 7
             last_thursday = today - timedelta(days=days_since_thursday)
             estimated = (last_thursday - base_date).days // 7 + 1
-            logger.info(f"연금복권 최신 회차 (추정): {estimated}회")
+
+            # API로 실제 최신 회차 검증 (높은 회차부터 내려가며 데이터 있는 회차 찾기)
+            for try_round in range(estimated, max(estimated - 10, 0), -1):
+                try:
+                    url = "https://www.dhlottery.co.kr/wnprchsplcsrch/selectPtWnShp.do"
+                    params = {"srchWnShpRnk": "all", "srchLtEpsd": try_round, "srchShpLctn": ""}
+                    response = self._safe_request(url, params=params)
+                    if response:
+                        data = response.json()
+                        if data.get("data") and data["data"].get("list") and len(data["data"]["list"]) > 0:
+                            logger.info(f"연금복권 최신 회차 (API 확인): {try_round}회")
+                            return try_round
+                    time.sleep(random.uniform(2.0, 4.0))
+                except Exception:
+                    pass
+
+            logger.warning(f"연금복권 최신 회차 API 확인 실패, 추정치 사용: {estimated}회")
             return estimated
 
         elif "speedlotto" in game_type:
@@ -692,9 +709,10 @@ class DHLotteryCrawler:
                     break
                 logger.info(f"\n[{i+1}/{count}] 로또 {round_num}회 크롤링 중...")
                 self.crawl_lotto_stores(round_num)
-                self.save_to_files()
-                logger.info(f"[중간저장] 로또 {round_num}회 완료")
-                time.sleep(random.uniform(5.0, 12.0))
+                if (i + 1) % 50 == 0:
+                    self.save_to_files()
+                    logger.info(f"[중간저장] 로또 {round_num}회 완료")
+                time.sleep(random.uniform(2.0, 4.0))
 
         elif game_type == "pension":
             latest = self.get_latest_round("pension")
@@ -707,29 +725,36 @@ class DHLotteryCrawler:
                     break
                 logger.info(f"\n[{i+1}/{count}] 연금복권 {round_num}회 크롤링 중...")
                 self.crawl_pension_stores(round_num)
-                self.save_to_files()
-                logger.info(f"[중간저장] 연금복권 {round_num}회 완료")
-                time.sleep(random.uniform(5.0, 12.0))
+                # 50회마다 중간저장 (매회 저장 불필요)
+                if (i + 1) % 50 == 0:
+                    self.save_to_files()
+                    logger.info(f"[중간저장] 연금복권 {round_num}회 완료")
+                time.sleep(random.uniform(2.0, 4.0))
 
         elif game_type == "speed":
-            # 스피또 2000/1000/500 모두 크롤링
-            latest = self.get_latest_round("lotto")  # 스피또는 로또 회차 기준
-            if not latest:
-                logger.error("스피또 최신 회차 조회 실패")
-                return
-            for i in range(count):
-                round_num = latest - i
-                if round_num <= 0:
-                    break
-                logger.info(f"\n[{i+1}/{count}] 스피또 {round_num}회 크롤링 중...")
-                self.crawl_speedlotto_stores("speedlotto_2000", round_num)
-                time.sleep(random.uniform(5.0, 12.0))
-                self.crawl_speedlotto_stores("speedlotto_1000", round_num)
-                time.sleep(random.uniform(5.0, 12.0))
-                self.crawl_speedlotto_stores("speedlotto_500", round_num)
+            # 스피또는 자체 회차 사용 (로또 회차와 다름)
+            speed_max = {
+                "speedlotto_2000": 68,
+                "speedlotto_1000": 106,
+                "speedlotto_500": 48,
+            }
+            for speed_type, max_round in speed_max.items():
+                actual_count = min(count, max_round)
+                logger.info(f"\n{'='*50}")
+                logger.info(f"[{speed_type}] 1~{max_round}회 크롤링 시작 ({actual_count}회)")
+                logger.info(f"{'='*50}")
+                for i in range(actual_count):
+                    round_num = max_round - i
+                    if round_num <= 0:
+                        break
+                    logger.info(f"\n[{i+1}/{actual_count}] {speed_type} {round_num}회 크롤링 중...")
+                    self.crawl_speedlotto_stores(speed_type, round_num)
+                    if (i + 1) % 50 == 0:
+                        self.save_to_files()
+                        logger.info(f"[중간저장] {speed_type} {round_num}회 완료")
+                    time.sleep(random.uniform(2.0, 4.0))
                 self.save_to_files()
-                logger.info(f"[중간저장] 스피또 {round_num}회 완료")
-                time.sleep(random.uniform(5.0, 12.0))
+                logger.info(f"[{speed_type}] 크롤링 완료!")
 
         else:
             logger.error(f"알 수 없는 게임 타입: {game_type}")

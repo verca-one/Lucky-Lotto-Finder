@@ -156,6 +156,74 @@ def calculate_badges(stores, lottery_type):
                 "priority": 20,
             })
 
+    # ── 1.5) 맛집 배지 (상위 10% 기준) ──
+    if lottery_type in ("lotto", "pension", "speedlotto_2000", "speedlotto_1000", "speedlotto_500"):
+        # 1등 맛집: 1등 횟수 상위 10%
+        first_counts = sorted([s.get("first_count") or 0 for s in unique_stores if (s.get("first_count") or 0) > 0], reverse=True)
+        if first_counts:
+            cutoff_idx = max(1, len(first_counts) // 10)
+            first_threshold = first_counts[min(cutoff_idx - 1, len(first_counts) - 1)]
+            for s in unique_stores:
+                fc = s.get("first_count") or 0
+                if fc >= first_threshold and fc > 0:
+                    badges.append({
+                        "dhlottery_code": s["dhlottery_code"],
+                        "lottery_type": lottery_type,
+                        "badge_type": "matjip",
+                        "badge_label": f"{type_label} 1등 맛집",
+                        "priority": 5,
+                    })
+
+        # 2등 맛집: 2등 횟수 상위 10% (로또만)
+        if lottery_type == "lotto":
+            second_counts = sorted([s.get("second_count") or 0 for s in unique_stores if (s.get("second_count") or 0) > 0], reverse=True)
+            if second_counts:
+                cutoff_idx = max(1, len(second_counts) // 10)
+                second_threshold = second_counts[min(cutoff_idx - 1, len(second_counts) - 1)]
+                for s in unique_stores:
+                    sc = s.get("second_count") or 0
+                    if sc >= second_threshold and sc > 0:
+                        badges.append({
+                            "dhlottery_code": s["dhlottery_code"],
+                            "lottery_type": lottery_type,
+                            "badge_type": "matjip",
+                            "badge_label": f"{type_label} 2등 맛집",
+                            "priority": 6,
+                        })
+
+            # 3등 맛집 (로또): 총 당첨 횟수 상위 10%
+            total_counts = sorted([s.get("total_count") or 0 for s in unique_stores if (s.get("total_count") or 0) > 0], reverse=True)
+            if total_counts:
+                cutoff_idx = max(1, len(total_counts) // 10)
+                total_threshold = total_counts[min(cutoff_idx - 1, len(total_counts) - 1)]
+                for s in unique_stores:
+                    tc = s.get("total_count") or 0
+                    if tc >= total_threshold and tc > 0:
+                        badges.append({
+                            "dhlottery_code": s["dhlottery_code"],
+                            "lottery_type": lottery_type,
+                            "badge_type": "matjip",
+                            "badge_label": f"{type_label} 3등 맛집",
+                            "priority": 7,
+                        })
+
+        # 연금복권/스피또 맛집: 총 당첨 횟수 상위 10%
+        if lottery_type in ("pension", "speedlotto_2000", "speedlotto_1000", "speedlotto_500"):
+            total_counts = sorted([s.get("total_count") or 0 for s in unique_stores if (s.get("total_count") or 0) > 0], reverse=True)
+            if total_counts:
+                cutoff_idx = max(1, len(total_counts) // 10)
+                total_threshold = total_counts[min(cutoff_idx - 1, len(total_counts) - 1)]
+                for s in unique_stores:
+                    tc = s.get("total_count") or 0
+                    if tc >= total_threshold and tc > 0:
+                        badges.append({
+                            "dhlottery_code": s["dhlottery_code"],
+                            "lottery_type": lottery_type,
+                            "badge_type": "matjip",
+                            "badge_label": "연금복권 맛집" if lottery_type == "pension" else f"{type_label} 맛집",
+                            "priority": 5,
+                        })
+
     # ── 2) 당첨 회차 데이터 로드 (2회 이상 당첨점) ── 등수별 분리
     codes_2plus = [s["dhlottery_code"] for s in unique_stores if (s.get("total_count") or 0) >= 2]
     winning_rounds = get_winning_rounds_for_codes(codes_2plus, lottery_type)
@@ -402,7 +470,7 @@ def calculate_badges(stores, lottery_type):
 
 
 def recalculate(lottery_type=None):
-    types_to_process = [lottery_type] if lottery_type else ["lotto", "pension"]
+    types_to_process = [lottery_type] if lottery_type else ["lotto", "pension", "speedlotto_2000", "speedlotto_1000", "speedlotto_500"]
 
     for lt in types_to_process:
         print(f"\n{'='*50}")
@@ -449,6 +517,45 @@ def recalculate(lottery_type=None):
         print(f"\n📈 {lottery_label(lt)} 배지 통계:")
         for bt, cnt in sorted(by_type.items()):
             print(f"   {bt}: {cnt}개")
+
+    # ── 복권명당 TOP 5 배지 (홈 랭킹 기준, 전체 재계산 시에만) ──
+    if lottery_type is None:
+        print(f"\n{'='*50}")
+        print(f"🏆 복권명당 TOP 5 배지 계산...")
+        print(f"{'='*50}")
+
+        # 기존 복권명당 배지 삭제
+        supabase.table("store_badges").delete().eq("badge_type", "myeongdang").execute()
+
+        # 홈 랭킹과 동일 기준: 로또 first_count DESC, total_count DESC 상위 30 중 TOP 5
+        top_stores = (supabase.table("lottery_stores")
+                      .select("dhlottery_code, store_name, first_count, total_count")
+                      .eq("lottery_type", "lotto")
+                      .gt("first_count", 0)
+                      .order("first_count", desc=True)
+                      .order("total_count", desc=True)
+                      .limit(5)
+                      .execute())
+
+        now = datetime.utcnow().isoformat()
+        md_badges = []
+        for rank_idx, s in enumerate(top_stores.data or []):
+            rank = rank_idx + 1
+            md_badges.append({
+                "dhlottery_code": s["dhlottery_code"],
+                "lottery_type": "lotto",
+                "badge_type": "myeongdang",
+                "badge_label": f"복권명당 TOP {rank}위",
+                "priority": 0,
+                "calculated_at": now,
+            })
+
+        if md_badges:
+            supabase.table("store_badges").upsert(md_badges).execute()
+            for b in md_badges:
+                print(f"   🏅 {b['badge_label']}: {b['dhlottery_code']}")
+
+        print(f"   → {len(md_badges)}개 복권명당 배지 생성")
 
     print(f"\n✅ 배지 재계산 완료!")
 
