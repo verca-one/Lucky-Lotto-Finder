@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'random_number_screen.dart';
+import 'ai_number_screen.dart';
 
 class RecommendScreen extends StatefulWidget {
   const RecommendScreen({super.key});
@@ -9,12 +10,15 @@ class RecommendScreen extends StatefulWidget {
 }
 
 class _RecommendScreenState extends State<RecommendScreen> {
-  String? _currentSub; // null = 메인메뉴, 'random' = 번호생성
+  String? _currentSub; // null = 메인메뉴, 'random' = 번호생성, 'ai' = AI번호
 
   @override
   Widget build(BuildContext context) {
     if (_currentSub == 'random') {
       return _wrapWithBack(const RandomNumberContent());
+    }
+    if (_currentSub == 'ai') {
+      return _wrapWithBack(const AiNumberContent());
     }
     return _buildMenu();
   }
@@ -68,12 +72,8 @@ class _RecommendScreenState extends State<RecommendScreen> {
             bgColor: Colors.purple.shade50,
             borderColor: Colors.purple.shade200,
             title: 'AI 조합번호 생성',
-            subtitle: 'AI가 분석한 확률 기반 번호 추천',
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('준비 중입니다')),
-              );
-            },
+            subtitle: '7183 법칙으로 AI 번호 추천',
+            onTap: () => setState(() => _currentSub = 'ai'),
           ),
           const SizedBox(height: 16),
 
