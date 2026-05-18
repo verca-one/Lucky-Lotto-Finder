@@ -21,6 +21,7 @@ class _SajuNumberContentState extends State<SajuNumberContent> {
 
   bool _isGenerating = false;
   List<List<int>> _generatedSets = [];
+  List<bool> _heldSets = [];
   Map<String, String> _sajuResult = {};
 
   // 천간 (天干)
@@ -185,15 +186,25 @@ class _SajuNumberContentState extends State<SajuNumberContent> {
     await Future.delayed(const Duration(milliseconds: 400));
 
     final saju = _calculateSaju();
-    final sets = <List<int>>[];
-    for (int i = 0; i < 5; i++) {
-      sets.add(_generateSajuNumbers(saju));
+    final newSets = <List<int>>[];
+    final newHeld = <bool>[];
+
+    for (int i = 0; i < _generatedSets.length; i++) {
+      if (i < _heldSets.length && _heldSets[i]) {
+        newSets.add(_generatedSets[i]);
+        newHeld.add(true);
+      }
+    }
+    while (newSets.length < 5) {
+      newSets.add(_generateSajuNumbers(saju));
+      newHeld.add(false);
     }
 
     if (!mounted) return;
     setState(() {
       _sajuResult = saju;
-      _generatedSets = sets;
+      _generatedSets = newSets;
+      _heldSets = newHeld;
       _isGenerating = false;
     });
   }
@@ -220,7 +231,19 @@ class _SajuNumberContentState extends State<SajuNumberContent> {
   }
 
   void _removeSet(int index) {
-    setState(() => _generatedSets.removeAt(index));
+    setState(() {
+      _generatedSets.removeAt(index);
+      if (index < _heldSets.length) _heldSets.removeAt(index);
+    });
+  }
+
+  void _toggleHold(int index) {
+    setState(() {
+      while (_heldSets.length <= index) {
+        _heldSets.add(false);
+      }
+      _heldSets[index] = !_heldSets[index];
+    });
   }
 
   Color _getBallColor(int number) {
@@ -447,13 +470,17 @@ class _SajuNumberContentState extends State<SajuNumberContent> {
               final nums = _generatedSets[i];
               final sum = nums.fold<int>(0, (a, b) => a + b);
               final oddCount = nums.where((n) => n % 2 == 1).length;
+              final isHeld = i < _heldSets.length && _heldSets[i];
               return Container(
                 margin: const EdgeInsets.only(bottom: 8),
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
-                  color: Colors.deepPurple.shade50,
+                  color: isHeld ? Colors.deepPurple.shade100 : Colors.deepPurple.shade50,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.deepPurple.shade200),
+                  border: Border.all(
+                    color: isHeld ? Colors.deepPurple : Colors.deepPurple.shade200,
+                    width: isHeld ? 2 : 1,
+                  ),
                 ),
                 child: Column(
                   children: [
@@ -481,6 +508,15 @@ class _SajuNumberContentState extends State<SajuNumberContent> {
                           ),
                         ),
                         GestureDetector(
+                          onTap: () => _toggleHold(i),
+                          child: Icon(
+                            isHeld ? Icons.lock : Icons.lock_open,
+                            size: 20,
+                            color: isHeld ? Colors.deepPurple : Colors.grey.shade400,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        GestureDetector(
                           onTap: () => _removeSet(i),
                           child: Icon(Icons.close, size: 20, color: Colors.grey.shade500),
                         ),
@@ -494,6 +530,10 @@ class _SajuNumberContentState extends State<SajuNumberContent> {
                           '합:$sum  홀:$oddCount 짝:${6 - oddCount}',
                           style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
                         ),
+                        if (isHeld) ...[
+                          const SizedBox(width: 8),
+                          Text('HOLD', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.deepPurple.shade700)),
+                        ],
                       ],
                     ),
                   ],

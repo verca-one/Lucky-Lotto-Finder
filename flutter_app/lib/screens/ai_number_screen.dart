@@ -17,6 +17,7 @@ class _AiNumberContentState extends State<AiNumberContent> {
   bool _isLoading = true;
   bool _isGenerating = false;
   List<List<int>> _generatedSets = [];
+  List<bool> _heldSets = [];
   String _analysisText = '';
 
   // 7183 순환 배열
@@ -155,14 +156,25 @@ class _AiNumberContentState extends State<AiNumberContent> {
     setState(() => _isGenerating = true);
     await Future.delayed(const Duration(milliseconds: 500));
 
-    final sets = <List<int>>[];
-    for (int i = 0; i < 5; i++) {
-      sets.add(_generate7183Numbers());
+    // 홀드된 세트 유지, 나머지만 새로 생성하여 총 5세트
+    final newSets = <List<int>>[];
+    final newHeld = <bool>[];
+
+    for (int i = 0; i < _generatedSets.length; i++) {
+      if (i < _heldSets.length && _heldSets[i]) {
+        newSets.add(_generatedSets[i]);
+        newHeld.add(true);
+      }
+    }
+    while (newSets.length < 5) {
+      newSets.add(_generate7183Numbers());
+      newHeld.add(false);
     }
 
     if (!mounted) return;
     setState(() {
-      _generatedSets = sets;
+      _generatedSets = newSets;
+      _heldSets = newHeld;
       _analysisText = _buildAnalysis();
       _isGenerating = false;
     });
@@ -190,7 +202,19 @@ class _AiNumberContentState extends State<AiNumberContent> {
   }
 
   void _removeSet(int index) {
-    setState(() => _generatedSets.removeAt(index));
+    setState(() {
+      _generatedSets.removeAt(index);
+      if (index < _heldSets.length) _heldSets.removeAt(index);
+    });
+  }
+
+  void _toggleHold(int index) {
+    setState(() {
+      while (_heldSets.length <= index) {
+        _heldSets.add(false);
+      }
+      _heldSets[index] = !_heldSets[index];
+    });
   }
 
   Color _getBallColor(int number) {
@@ -319,13 +343,17 @@ class _AiNumberContentState extends State<AiNumberContent> {
               final nums = _generatedSets[i];
               final sum = nums.fold<int>(0, (a, b) => a + b);
               final oddCount = nums.where((n) => n % 2 == 1).length;
+              final isHeld = i < _heldSets.length && _heldSets[i];
               return Container(
                 margin: const EdgeInsets.only(bottom: 8),
                 padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
                 decoration: BoxDecoration(
-                  color: Colors.purple.shade50,
+                  color: isHeld ? Colors.purple.shade100 : Colors.purple.shade50,
                   borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.purple.shade200),
+                  border: Border.all(
+                    color: isHeld ? Colors.purple : Colors.purple.shade200,
+                    width: isHeld ? 2 : 1,
+                  ),
                 ),
                 child: Column(
                   children: [
@@ -353,6 +381,15 @@ class _AiNumberContentState extends State<AiNumberContent> {
                           ),
                         ),
                         GestureDetector(
+                          onTap: () => _toggleHold(i),
+                          child: Icon(
+                            isHeld ? Icons.lock : Icons.lock_open,
+                            size: 20,
+                            color: isHeld ? Colors.purple : Colors.grey.shade400,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        GestureDetector(
                           onTap: () => _removeSet(i),
                           child: Icon(Icons.close, size: 20, color: Colors.grey.shade500),
                         ),
@@ -366,6 +403,10 @@ class _AiNumberContentState extends State<AiNumberContent> {
                           '합:$sum  홀:$oddCount 짝:${6 - oddCount}',
                           style: TextStyle(fontSize: 10, color: Colors.grey.shade600),
                         ),
+                        if (isHeld) ...[
+                          const SizedBox(width: 8),
+                          Text('HOLD', style: TextStyle(fontSize: 10, fontWeight: FontWeight.bold, color: Colors.purple.shade700)),
+                        ],
                       ],
                     ),
                   ],
