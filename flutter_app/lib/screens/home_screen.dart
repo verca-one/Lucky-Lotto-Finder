@@ -841,16 +841,6 @@ class _HomeRankingContentState extends State<_HomeRankingContent> {
                         overflow: TextOverflow.ellipsis,
                       ),
                       const SizedBox(height: 8),
-                      // 당첨 정보 행
-                      Row(
-                        children: [
-                          _buildInfoChip('1등 ${firstCount}회', Colors.red.shade700, Colors.red.shade50),
-                          const SizedBox(width: 6),
-                          if (secondCount > 0)
-                            _buildInfoChip('2등 ${secondCount}회', Colors.orange.shade700, Colors.orange.shade50),
-                          if (secondCount > 0) const SizedBox(width: 6),
-                        ],
-                      ),
                       // 연금복권 배지
                       if (pensionFirstCount > 0 || pensionSecondCount > 0) ...[
                         const SizedBox(height: 6),
@@ -1038,14 +1028,6 @@ class _HomeRankingContentState extends State<_HomeRankingContent> {
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 6),
-                Row(
-                  children: [
-                    _buildInfoChip('1등 ${firstCount}회', Colors.red.shade700, Colors.red.shade50),
-                    const SizedBox(width: 6),
-                    if (secondCount > 0)
-                      _buildInfoChip('2등 ${secondCount}회', Colors.orange.shade700, Colors.orange.shade50),
-                  ],
-                ),
                 if (badges.isNotEmpty) ...[
                   const SizedBox(height: 6),
                   Wrap(
