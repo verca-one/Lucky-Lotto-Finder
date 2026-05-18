@@ -1,11 +1,51 @@
 import 'package:flutter/material.dart';
 import 'random_number_screen.dart';
 
-class RecommendScreen extends StatelessWidget {
+class RecommendScreen extends StatefulWidget {
   const RecommendScreen({super.key});
 
   @override
+  State<RecommendScreen> createState() => _RecommendScreenState();
+}
+
+class _RecommendScreenState extends State<RecommendScreen> {
+  String? _currentSub; // null = 메인메뉴, 'random' = 번호생성
+
+  @override
   Widget build(BuildContext context) {
+    if (_currentSub == 'random') {
+      return _wrapWithBack(const RandomNumberContent());
+    }
+    return _buildMenu();
+  }
+
+  Widget _wrapWithBack(Widget child) {
+    return Column(
+      children: [
+        // 뒤로가기 헤더
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            children: [
+              GestureDetector(
+                onTap: () => setState(() => _currentSub = null),
+                child: Row(
+                  children: [
+                    Icon(Icons.arrow_back_ios, size: 18, color: Colors.grey.shade700),
+                    const SizedBox(width: 4),
+                    Text('번호 추천', style: TextStyle(fontSize: 14, color: Colors.grey.shade700)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(child: child),
+      ],
+    );
+  }
+
+  Widget _buildMenu() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -22,9 +62,7 @@ class RecommendScreen extends StatelessWidget {
           ),
           const SizedBox(height: 24),
 
-          // AI 조합번호 생성
           _buildMenuCard(
-            context,
             icon: Icons.auto_awesome,
             iconColor: Colors.purple,
             bgColor: Colors.purple.shade50,
@@ -39,27 +77,18 @@ class RecommendScreen extends StatelessWidget {
           ),
           const SizedBox(height: 16),
 
-          // 나만의 번호 생성
           _buildMenuCard(
-            context,
             icon: Icons.casino,
             iconColor: Colors.orange,
             bgColor: Colors.orange.shade50,
             borderColor: Colors.orange.shade200,
             title: '나만의 번호 생성',
             subtitle: '주사위를 굴려 랜덤 번호 조합',
-            onTap: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const RandomNumberScreen()),
-              );
-            },
+            onTap: () => setState(() => _currentSub = 'random'),
           ),
           const SizedBox(height: 16),
 
-          // 번호별 의미
           _buildMenuCard(
-            context,
             icon: Icons.menu_book,
             iconColor: Colors.teal,
             bgColor: Colors.teal.shade50,
@@ -77,8 +106,7 @@ class RecommendScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildMenuCard(
-    BuildContext context, {
+  Widget _buildMenuCard({
     required IconData icon,
     required Color iconColor,
     required Color bgColor,
@@ -122,18 +150,12 @@ class RecommendScreen extends StatelessWidget {
                 children: [
                   Text(
                     title,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                    ),
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                   const SizedBox(height: 4),
                   Text(
                     subtitle,
-                    style: TextStyle(
-                      fontSize: 13,
-                      color: Colors.grey.shade600,
-                    ),
+                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
                   ),
                 ],
               ),

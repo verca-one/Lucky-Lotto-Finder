@@ -3,19 +3,19 @@ import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-class RandomNumberScreen extends StatefulWidget {
-  const RandomNumberScreen({super.key});
+class RandomNumberContent extends StatefulWidget {
+  const RandomNumberContent({super.key});
 
   @override
-  State<RandomNumberScreen> createState() => _RandomNumberScreenState();
+  State<RandomNumberContent> createState() => _RandomNumberContentState();
 }
 
-class _RandomNumberScreenState extends State<RandomNumberScreen>
+class _RandomNumberContentState extends State<RandomNumberContent>
     with SingleTickerProviderStateMixin {
   List<int> _currentNumbers = [];
-  List<List<int>> _pickedSets = []; // 최대 5세트
+  List<List<int>> _pickedSets = [];
   bool _isRolling = false;
-  bool _hasRolled = false; // 굴린 후 픽 대기 상태
+  bool _hasRolled = false;
   late AnimationController _animController;
 
   @override
@@ -46,9 +46,7 @@ class _RandomNumberScreenState extends State<RandomNumberScreen>
     for (int i = 0; i < 15; i++) {
       await Future.delayed(const Duration(milliseconds: 80));
       if (!mounted) return;
-      setState(() {
-        _currentNumbers = _generateNumbers(rng);
-      });
+      setState(() => _currentNumbers = _generateNumbers(rng));
     }
 
     setState(() {
@@ -74,8 +72,6 @@ class _RandomNumberScreenState extends State<RandomNumberScreen>
       _hasRolled = false;
       _currentNumbers = [];
     });
-
-    // 5개 채워지면 안내
     if (_pickedSets.length >= 5) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('5세트가 모두 채워졌습니다! 저장하거나 초기화하세요')),
@@ -85,28 +81,22 @@ class _RandomNumberScreenState extends State<RandomNumberScreen>
 
   Future<void> _saveAllNumbers() async {
     if (_pickedSets.isEmpty) return;
-
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getStringList('my_lotto_numbers') ?? [];
-
     for (final numbers in _pickedSets) {
-      final entry = jsonEncode({
+      saved.insert(0, jsonEncode({
         'numbers': numbers,
         'date': DateTime.now().toIso8601String(),
-      });
-      saved.insert(0, entry);
+      }));
     }
-    // 최대 50개까지 저장
     while (saved.length > 50) {
       saved.removeLast();
     }
     await prefs.setStringList('my_lotto_numbers', saved);
-
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('${_pickedSets.length}세트가 저장되었습니다! 즐겨찾기 > 나의 번호에서 확인하세요')),
+      SnackBar(content: Text('${_pickedSets.length}세트가 저장되었습니다!')),
     );
-
     setState(() {
       _pickedSets = [];
       _currentNumbers = [];
@@ -132,202 +122,196 @@ class _RandomNumberScreenState extends State<RandomNumberScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        backgroundColor: Colors.orange,
-        title: const Text(
-          '번호 생성',
-          style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 18),
-        ),
-        iconTheme: const IconThemeData(color: Colors.white),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            // 주사위 아이콘
-            Icon(
-              Icons.casino,
-              size: 50,
-              color: _isRolling ? Colors.orange : Colors.grey.shade400,
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              '주사위를 굴려 행운의 번호를 뽑아보세요!',
-              style: TextStyle(fontSize: 15, color: Colors.black87),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        children: [
+          Icon(
+            Icons.casino,
+            size: 50,
+            color: _isRolling ? Colors.orange : Colors.grey.shade400,
+          ),
+          const SizedBox(height: 12),
+          const Text(
+            '주사위를 굴려 행운의 번호를 뽑아보세요!',
+            style: TextStyle(fontSize: 15, color: Colors.black87),
+            textAlign: TextAlign.center,
+          ),
+          const SizedBox(height: 24),
 
-            // 현재 번호 공 표시
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 20),
-              decoration: BoxDecoration(
-                color: Colors.grey.shade50,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.grey.shade200),
-              ),
-              child: _currentNumbers.isEmpty && !_isRolling
-                  ? Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: List.generate(6, (_) => _emptyBall()),
-                    )
-                  : Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: _currentNumbers.map((n) => _ballWidget(n, 40)).toList(),
-                    ),
+          // 번호 공
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 20),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade50,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: Colors.grey.shade200),
             ),
-            const SizedBox(height: 20),
+            child: (_currentNumbers.isEmpty && !_isRolling)
+                ? Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(6, (_) => _emptyBall()),
+                  )
+                : Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: _currentNumbers.map((n) => _ballWidget(n, 40)).toList(),
+                  ),
+          ),
+          const SizedBox(height: 20),
 
-            // 주사위 굴리기 + 이 번호 픽! 버튼 (항상 표시)
-            if (_pickedSets.length < 5)
-              Row(
-                children: [
-                  Expanded(
-                    child: SizedBox(
-                      height: 50,
-                      child: ElevatedButton.icon(
-                        onPressed: (_isRolling || _hasRolled) ? null : _rollDice,
-                        icon: AnimatedBuilder(
-                          animation: _animController,
-                          builder: (_, child) => Transform.rotate(
-                            angle: _animController.value * 4 * pi,
-                            child: child,
-                          ),
-                          child: const Icon(Icons.casino, size: 20),
+          // 버튼 행
+          if (_pickedSets.length < 5)
+            Row(
+              children: [
+                Expanded(
+                  child: SizedBox(
+                    height: 50,
+                    child: ElevatedButton.icon(
+                      onPressed: (_isRolling || _hasRolled) ? null : _rollDice,
+                      icon: AnimatedBuilder(
+                        animation: _animController,
+                        builder: (_, child) => Transform.rotate(
+                          angle: _animController.value * 4 * pi,
+                          child: child,
                         ),
-                        label: Text(
-                          _isRolling ? '굴리는 중...' : '주사위 굴리기',
-                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.orange,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
+                        child: const Icon(Icons.casino, size: 20),
+                      ),
+                      label: Text(
+                        _isRolling ? '굴리는 중...' : '주사위 굴리기',
+                        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                      ),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.orange,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: SizedBox(
-                      height: 50,
-                      child: ElevatedButton.icon(
-                        onPressed: _hasRolled ? _pickNumber : null,
-                        icon: const Icon(Icons.check_circle, size: 20),
-                        label: const Text('이 번호 픽!', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.deepOrange,
-                          foregroundColor: Colors.white,
-                          disabledBackgroundColor: Colors.grey.shade300,
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-
-            const SizedBox(height: 24),
-
-            // 픽한 번호 세트 목록
-            if (_pickedSets.isNotEmpty) ...[
-              Row(
-                children: [
-                  Icon(Icons.format_list_numbered, size: 20, color: Colors.orange.shade700),
-                  const SizedBox(width: 6),
-                  Text(
-                    '픽한 번호 (${_pickedSets.length}/5)',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 10),
-              ...List.generate(_pickedSets.length, (i) {
-                final nums = _pickedSets[i];
-                return Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: Colors.orange.shade50,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: Colors.orange.shade200),
-                  ),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 24,
-                        height: 24,
-                        decoration: BoxDecoration(
-                          color: Colors.orange,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Center(
-                          child: Text(
-                            '${i + 1}',
-                            style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      ...nums.map((n) => _ballWidget(n, 32)),
-                    ],
-                  ),
-                );
-              }),
-              const SizedBox(height: 16),
-
-              // 저장 버튼
-              SizedBox(
-                width: double.infinity,
-                height: 48,
-                child: OutlinedButton.icon(
-                  onPressed: _saveAllNumbers,
-                  icon: const Icon(Icons.bookmark_add, size: 20),
-                  label: Text('${_pickedSets.length}세트 저장하기', style: const TextStyle(fontSize: 15)),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: Colors.orange.shade700,
-                    side: BorderSide(color: Colors.orange.shade300),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                 ),
-              ),
-              const SizedBox(height: 8),
-              // 초기화 버튼
-              SizedBox(
-                width: double.infinity,
-                height: 40,
-                child: TextButton(
-                  onPressed: _resetAll,
-                  child: Text('초기화', style: TextStyle(color: Colors.grey.shade600)),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: SizedBox(
+                    height: 50,
+                    child: ElevatedButton.icon(
+                      onPressed: _hasRolled ? _pickNumber : null,
+                      icon: const Icon(Icons.check_circle, size: 20),
+                      label: const Text('이 번호 픽!', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.deepOrange,
+                        foregroundColor: Colors.white,
+                        disabledBackgroundColor: Colors.grey.shade300,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                  ),
                 ),
-              ),
-            ],
+              ],
+            ),
 
+          const SizedBox(height: 24),
+
+          // 픽한 번호 세트
+          if (_pickedSets.isNotEmpty) ...[
+            Row(
+              children: [
+                Icon(Icons.format_list_numbered, size: 20, color: Colors.orange.shade700),
+                const SizedBox(width: 6),
+                Text(
+                  '픽한 번호 (${_pickedSets.length}/5)',
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            ...List.generate(_pickedSets.length, (i) {
+              final nums = _pickedSets[i];
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.orange.shade200),
+                ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: 24,
+                      height: 24,
+                      decoration: BoxDecoration(
+                        color: Colors.orange,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Center(
+                        child: Text(
+                          '${i + 1}',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 12),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Wrap(
+                        spacing: 4,
+                        children: nums.map((n) => _ballWidget(n, 32)).toList(),
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: () => setState(() => _pickedSets.removeAt(i)),
+                      child: Icon(Icons.close, size: 20, color: Colors.grey.shade500),
+                    ),
+                  ],
+                ),
+              );
+            }),
             const SizedBox(height: 16),
-            // 안내문
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.blue.shade50,
-                borderRadius: BorderRadius.circular(10),
+            SizedBox(
+              width: double.infinity,
+              height: 48,
+              child: OutlinedButton.icon(
+                onPressed: _saveAllNumbers,
+                icon: const Icon(Icons.bookmark_add, size: 20),
+                label: Text('${_pickedSets.length}세트 저장하기', style: const TextStyle(fontSize: 15)),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.orange.shade700,
+                  side: BorderSide(color: Colors.orange.shade300),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
               ),
-              child: Row(
-                children: [
-                  Icon(Icons.info_outline, size: 18, color: Colors.blue.shade400),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      '최대 5세트까지 번호를 픽할 수 있습니다. 5세트가 채워지면 저장 후 초기화됩니다.',
-                      style: TextStyle(fontSize: 12, color: Colors.blue.shade700),
-                    ),
-                  ),
-                ],
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              height: 40,
+              child: TextButton(
+                onPressed: _resetAll,
+                child: Text('초기화', style: TextStyle(color: Colors.grey.shade600)),
               ),
             ),
           ],
-        ),
+
+          const SizedBox(height: 16),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.blue.shade50,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.info_outline, size: 18, color: Colors.blue.shade400),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    '최대 5세트까지 번호를 픽할 수 있습니다. 5세트가 채워지면 저장 후 초기화됩니다.',
+                    style: TextStyle(fontSize: 12, color: Colors.blue.shade700),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }
