@@ -397,7 +397,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
   }
 
   /// 리스트 카드 탭 → 상세 팝업 (아래서 올라오는 작은 시트)
-  void _showStoreDetailSheet(LotteryStore store, int index) {
+  Future<void> _showStoreDetailSheet(LotteryStore store, int index) async {
     final distance = _calculateDistance(
       _currentPosition!.latitude,
       _currentPosition!.longitude,
@@ -410,13 +410,16 @@ class _NearbyScreenState extends State<NearbyScreen> {
       _mapController!.move(LatLng(store.latitude!, store.longitude!), 15);
     }
 
+    final prefs = await SharedPreferences.getInstance();
+    final currentUserId = prefs.getString('userId') ?? '';
+
     showStoreDetailPopup(
       context: context,
       store: store,
       favorites: _favorites,
       onToggleFavorite: _toggleFavorite,
       distanceKm: distance,
-      isLoggedIn: _userId.isNotEmpty,
+      isLoggedIn: currentUserId.isNotEmpty,
     ).then((_) {
       _loadFavorites();
     });
