@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'random_number_screen.dart';
 import 'ai_number_screen.dart';
+import 'number_meaning_screen.dart';
 
 class RecommendScreen extends StatefulWidget {
   const RecommendScreen({super.key});
@@ -10,7 +11,7 @@ class RecommendScreen extends StatefulWidget {
 }
 
 class _RecommendScreenState extends State<RecommendScreen> {
-  String? _currentSub; // null = 메인메뉴, 'random' = 번호생성, 'ai' = AI번호
+  String? _currentSub; // null, 'random', 'ai', 'meaning'
 
   @override
   Widget build(BuildContext context) {
@@ -19,6 +20,9 @@ class _RecommendScreenState extends State<RecommendScreen> {
     }
     if (_currentSub == 'ai') {
       return _wrapWithBack(const AiNumberContent());
+    }
+    if (_currentSub == 'meaning') {
+      return _wrapWithBack(const NumberMeaningContent());
     }
     return _buildMenu();
   }
@@ -94,12 +98,8 @@ class _RecommendScreenState extends State<RecommendScreen> {
             bgColor: Colors.teal.shade50,
             borderColor: Colors.teal.shade200,
             title: '번호별 의미',
-            subtitle: '각 번호가 가진 의미와 통계 확인',
-            onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('준비 중입니다')),
-              );
-            },
+            subtitle: '1~45 각 번호의 상징과 법칙 연계',
+            onTap: () => setState(() => _currentSub = 'meaning'),
           ),
         ],
       ),
