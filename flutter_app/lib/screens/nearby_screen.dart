@@ -665,6 +665,12 @@ class _NearbyScreenState extends State<NearbyScreen> {
       case StoreBadgeType.hot:
         color = Colors.red;
         break;
+      case StoreBadgeType.myeongdang:
+        color = Colors.amber.shade800;
+        break;
+      case StoreBadgeType.matjip:
+        color = Colors.deepOrange;
+        break;
       case StoreBadgeType.first:
         color = Colors.red.shade700;
         break;
