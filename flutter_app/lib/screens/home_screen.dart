@@ -243,6 +243,20 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
+              const SizedBox(width: 4),
+              GestureDetector(
+                onTap: () async {
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.remove('userId');
+                  setState(() => _userId = '');
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('로그아웃 되었습니다')),
+                    );
+                  }
+                },
+                child: const Icon(Icons.logout, color: Colors.white70, size: 18),
+              ),
             ],
           ],
         ),

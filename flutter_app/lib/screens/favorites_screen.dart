@@ -54,9 +54,14 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       return;
     }
 
-    // 캐시에서 먼저 로드, 캐시 미스 시 Supabase 조회
+    // 캐시에서 먼저 로드, 현재 즐겨찾기와 매칭 확인
     List<LotteryStore> favStores = _loadFromCache(prefs);
-    if (favStores.isEmpty || favStores.length < _favorites.length) {
+    // 캐시된 목록에서 현재 즐겨찾기에 있는 것만 필터링
+    favStores = favStores.where((s) => _favorites.contains(s.dhlotteryCode)).toList();
+    // 캐시에 없는 즐겨찾기가 있으면 Supabase에서 다시 조회
+    final cachedCodes = favStores.map((s) => s.dhlotteryCode).toSet();
+    final missingCodes = _favorites.difference(cachedCodes);
+    if (missingCodes.isNotEmpty) {
       favStores = await SupabaseService.getStoresByCodes(_favorites.toList());
       _saveToCache(prefs, favStores);
     }
