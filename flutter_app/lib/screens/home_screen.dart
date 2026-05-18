@@ -11,6 +11,7 @@ import 'region_screen.dart';
 import 'recommend_screen.dart';
 import 'favorites_screen.dart';
 import 'admin_screen.dart';
+import '../services/favorites_notifier.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -343,6 +344,13 @@ class _HomeRankingContentState extends State<_HomeRankingContent> {
     super.initState();
     _loadFavorites();
     _loadRanking();
+    favoritesNotifier.addListener(_loadFavorites);
+  }
+
+  @override
+  void dispose() {
+    favoritesNotifier.removeListener(_loadFavorites);
+    super.dispose();
   }
 
   Future<void> _loadFavorites() async {
@@ -362,6 +370,7 @@ class _HomeRankingContentState extends State<_HomeRankingContent> {
       }
     });
     await prefs.setStringList('favorite_stores', _favorites.toList());
+    notifyFavoritesChanged();
   }
 
   Future<void> _loadRanking() async {
@@ -1779,17 +1788,4 @@ class _SettingsDialogState extends State<_SettingsDialog> {
                   child: const Text(
                     '저장',
                     style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
+                      color: Colo

@@ -10,6 +10,7 @@ import '../models/lottery_store.dart';
 import '../services/supabase_service.dart';
 import '../services/badge_service.dart';
 import '../widgets/store_detail_popup.dart';
+import '../services/favorites_notifier.dart';
 
 class NearbyScreen extends StatefulWidget {
   const NearbyScreen({super.key});
@@ -39,6 +40,11 @@ class _NearbyScreenState extends State<NearbyScreen> {
     _loadTop30Ranks();
     _loadUserId();
     _getCurrentLocation();
+    favoritesNotifier.addListener(_onFavoritesChanged);
+  }
+
+  void _onFavoritesChanged() {
+    _loadFavorites();
   }
 
   Future<void> _loadUserId() async {
@@ -71,10 +77,12 @@ class _NearbyScreenState extends State<NearbyScreen> {
     });
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList('favorite_stores', _favorites.toList());
+    notifyFavoritesChanged();
   }
 
   @override
   void dispose() {
+    favoritesNotifier.removeListener(_onFavoritesChanged);
     _mapController?.dispose();
     _listScrollController.dispose();
     super.dispose();
@@ -1331,14 +1339,4 @@ class _ReviewDialogState extends State<_ReviewDialog> {
           child: const Text('닫기'),
         ),
         ElevatedButton(
-          onPressed: (!hasVotes || _isSubmitting) ? null : _submit,
-          style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
-          child: _isSubmitting
-              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-              : const Text('제출', style: TextStyle(color: Colors.white)),
-        ),
-      ],
-    );
-  }
-}
-
+          onPressed: (

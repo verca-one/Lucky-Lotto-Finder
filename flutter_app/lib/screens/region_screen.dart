@@ -5,6 +5,7 @@ import '../models/lottery_store.dart';
 import '../services/supabase_service.dart';
 import '../services/badge_service.dart';
 import '../widgets/store_detail_popup.dart';
+import '../services/favorites_notifier.dart';
 
 class RegionScreen extends StatefulWidget {
   const RegionScreen({super.key});
@@ -31,6 +32,17 @@ class _RegionScreenState extends State<RegionScreen> {
     _loadFavorites();
     _loadTop30Ranks();
     _loadStores();
+    favoritesNotifier.addListener(_onFavoritesChanged);
+  }
+
+  @override
+  void dispose() {
+    favoritesNotifier.removeListener(_onFavoritesChanged);
+    super.dispose();
+  }
+
+  void _onFavoritesChanged() {
+    _loadFavorites();
   }
 
   Future<void> _loadFavorites() async {
@@ -53,6 +65,7 @@ class _RegionScreenState extends State<RegionScreen> {
   Future<void> _saveFavorites() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList('favorite_stores', _favorites.toList());
+    notifyFavoritesChanged();
   }
 
   Future<void> _toggleFavorite(String dhlotteryCode) async {
@@ -1112,12 +1125,4 @@ class _ReviewDialogState extends State<_ReviewDialog> {
         ),
         ElevatedButton(
           onPressed: (!hasVotes || _isSubmitting) ? null : _submit,
-          style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
-          child: _isSubmitting
-              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-              : const Text('제출', style: TextStyle(color: Colors.white)),
-        ),
-      ],
-    );
-  }
-}
+          style: ElevatedButton.s

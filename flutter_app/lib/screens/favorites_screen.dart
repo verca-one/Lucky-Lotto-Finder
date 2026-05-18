@@ -5,6 +5,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../models/lottery_store.dart';
 import '../services/supabase_service.dart';
 import '../services/badge_service.dart';
+import '../services/favorites_notifier.dart';
 
 class FavoritesScreen extends StatefulWidget {
   const FavoritesScreen({super.key});
@@ -18,12 +19,28 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
   List<LotteryStore> _allStores = [];
   bool _isLoading = true;
   bool _isRefreshing = false;
+  bool _selfTriggered = false;
   DateTime? _lastRefreshTime;
   final Set<String> _expandedCards = {};
 
   @override
   void initState() {
     super.initState();
+    _loadData();
+    favoritesNotifier.addListener(_onFavoritesChanged);
+  }
+
+  @override
+  void dispose() {
+    favoritesNotifier.removeListener(_onFavoritesChanged);
+    super.dispose();
+  }
+
+  void _onFavoritesChanged() {
+    if (_selfTriggered) {
+      _selfTriggered = false;
+      return;
+    }
     _loadData();
   }
 
@@ -130,6 +147,8 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
     });
     final prefs = await SharedPreferences.getInstance();
     await prefs.setStringList('favorite_stores', _favorites.toList());
+    _selfTriggered = true;
+    notifyFavoritesChanged();
   }
 
   Future<void> _openMap(String mapType, LotteryStore store) async {
@@ -346,71 +365,4 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
             ],
           ),
         ),
-      ),
-    );
-  }
-
-  Widget _buildBadgeChip(StoreBadge badge) {
-    Color color;
-    switch (badge.type) {
-      case StoreBadgeType.hot:
-        color = Colors.red;
-        break;
-      case StoreBadgeType.myeongdang:
-        color = Colors.amber.shade800;
-        break;
-      case StoreBadgeType.matjip:
-        color = Colors.deepOrange;
-        break;
-      case StoreBadgeType.first:
-        color = Colors.red.shade700;
-        break;
-      case StoreBadgeType.second:
-        color = Colors.orange;
-        break;
-      case StoreBadgeType.regional:
-        color = Colors.purple;
-        break;
-      case StoreBadgeType.streak:
-        color = Colors.blue;
-        break;
-      case StoreBadgeType.rank:
-        color = Colors.teal;
-        break;
-      case StoreBadgeType.pattern:
-        color = Colors.grey.shade700;
-        break;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: badge.type == StoreBadgeType.hot
-            ? color.withValues(alpha: 0.15)
-            : color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: badge.type == StoreBadgeType.hot
-            ? Border.all(color: color.withValues(alpha: 0.5), width: 1)
-            : null,
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (badge.type == StoreBadgeType.hot)
-            Padding(
-              padding: const EdgeInsets.only(right: 3),
-              child: Icon(Icons.monetization_on, size: 13, color: color),
-            ),
-          Text(
-            badge.label,
-            style: TextStyle(
-              fontSize: 10,
-              color: color,
-              fontWeight: badge.type == StoreBadgeType.hot ? FontWeight.bold : FontWeight.w600,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
+   
