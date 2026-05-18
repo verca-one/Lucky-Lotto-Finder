@@ -1787,4 +1787,21 @@ class _SettingsDialogState extends State<_SettingsDialog> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  onPressed: () => widget.onSave
+                  onPressed: () => widget.onSaveProfile(widget.inputController.text),
+                  child: const Text(
+                    '저장',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}

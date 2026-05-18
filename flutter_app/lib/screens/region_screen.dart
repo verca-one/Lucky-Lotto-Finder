@@ -1125,4 +1125,12 @@ class _ReviewDialogState extends State<_ReviewDialog> {
         ),
         ElevatedButton(
           onPressed: (!hasVotes || _isSubmitting) ? null : _submit,
-          style: ElevatedButton.s
+          style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
+          child: _isSubmitting
+              ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
+              : const Text('제출', style: TextStyle(color: Colors.white)),
+        ),
+      ],
+    );
+  }
+}

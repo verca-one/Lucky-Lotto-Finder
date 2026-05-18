@@ -349,4 +349,60 @@ class _AdminCouponScreenState extends State<AdminCouponScreen> {
                     code,
                     style: TextStyle(
                       fontWeight: FontWeight.bold,
-                      fontSize:
+                      fontSize: 16,
+                      fontFamily: 'monospace',
+                      color: isActive ? Colors.black : Colors.grey,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.copy, size: 18),
+                  onPressed: () {
+                    Clipboard.setData(ClipboardData(text: code));
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('코드가 복사되었습니다')),
+                    );
+                  },
+                ),
+                Switch(
+                  value: isActive,
+                  onChanged: (v) => _toggleActive(code, isActive),
+                  activeColor: Colors.deepOrange,
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                _infoChip(typeLabel, Colors.blue),
+                const SizedBox(width: 6),
+                _infoChip('$usedCount / $maxUses 사용', Colors.green),
+                if (isExpired) ...[
+                  const SizedBox(width: 6),
+                  _infoChip('만료됨', Colors.red),
+                ] else if (expiresAt != null) ...[
+                  const SizedBox(width: 6),
+                  _infoChip('~${DateTime.parse(expiresAt).month}/${DateTime.parse(expiresAt).day}', Colors.orange),
+                ],
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _infoChip(String label, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w600),
+      ),
+    );
+  }
+}
