@@ -41,6 +41,7 @@ Future<void> showStoreDetailPopup({
   required Set<String> favorites,
   required Future<void> Function(String code) onToggleFavorite,
   double? distanceKm,
+  bool isLoggedIn = false,
 }) async {
   await showModalBottomSheet(
     context: context,
@@ -51,6 +52,7 @@ Future<void> showStoreDetailPopup({
       favorites: favorites,
       onToggleFavorite: onToggleFavorite,
       distanceKm: distanceKm,
+      isLoggedIn: isLoggedIn,
     ),
   );
 }
@@ -60,12 +62,14 @@ class _StoreDetailSheet extends StatefulWidget {
   final Set<String> favorites;
   final Future<void> Function(String code) onToggleFavorite;
   final double? distanceKm;
+  final bool isLoggedIn;
 
   const _StoreDetailSheet({
     required this.store,
     required this.favorites,
     required this.onToggleFavorite,
     this.distanceKm,
+    this.isLoggedIn = false,
   });
 
   @override
@@ -336,17 +340,18 @@ class _StoreDetailSheetState extends State<_StoreDetailSheet> {
                     ),
                   ),
                 const SizedBox(width: 8),
-                // 신고 버튼
-                TextButton.icon(
-                  onPressed: _showReportDialog,
-                  icon: const Icon(Icons.flag, size: 16, color: Colors.red),
-                  label: const Text('신고', style: TextStyle(fontSize: 12, color: Colors.red)),
-                  style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                // 신고 버튼 (로그인 시에만)
+                if (widget.isLoggedIn)
+                  TextButton.icon(
+                    onPressed: _showReportDialog,
+                    icon: const Icon(Icons.flag, size: 16, color: Colors.red),
+                    label: const Text('신고', style: TextStyle(fontSize: 12, color: Colors.red)),
+                    style: TextButton.styleFrom(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      minimumSize: Size.zero,
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    ),
                   ),
-                ),
               ],
             ),
 
@@ -398,27 +403,29 @@ class _StoreDetailSheetState extends State<_StoreDetailSheet> {
             const Divider(),
             const SizedBox(height: 8),
 
-            // ── 평가 카드 ──
-            const Text(
-              '판매점 평가',
-              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '이 판매점에 대한 의견을 남겨주세요',
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
-            ),
-            const SizedBox(height: 12),
+            // ── 평가 카드 (로그인 시에만) ──
+            if (widget.isLoggedIn) ...[
+              const Text(
+                '판매점 평가',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+              ),
+              const SizedBox(height: 4),
+              Text(
+                '이 판매점에 대한 의견을 남겨주세요',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+              ),
+              const SizedBox(height: 12),
 
-            if (_isLoadingReviews)
-              const Center(child: Padding(
-                padding: EdgeInsets.all(20),
-                child: CircularProgressIndicator(strokeWidth: 2),
-              ))
-            else
-              ...reviewItems.map((item) => _buildReviewRow(item)),
+              if (_isLoadingReviews)
+                const Center(child: Padding(
+                  padding: EdgeInsets.all(20),
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ))
+              else
+                ...reviewItems.map((item) => _buildReviewRow(item)),
 
-            const SizedBox(height: 16),
+              const SizedBox(height: 16),
+            ],
           ],
         ),
       ),
@@ -543,6 +550,12 @@ class _StoreDetailSheetState extends State<_StoreDetailSheet> {
       case StoreBadgeType.hot:
         color = Colors.red;
         break;
+      case StoreBadgeType.myeongdang:
+        color = Colors.amber.shade800;
+        break;
+      case StoreBadgeType.matjip:
+        color = Colors.deepOrange;
+        break;
       case StoreBadgeType.first:
         color = Colors.red.shade700;
         break;
@@ -574,13 +587,23 @@ class _StoreDetailSheetState extends State<_StoreDetailSheet> {
             ? Border.all(color: color.withValues(alpha: 0.5), width: 1)
             : null,
       ),
-      child: Text(
-        badge.label,
-        style: TextStyle(
-          fontSize: 10,
-          color: color,
-          fontWeight: badge.type == StoreBadgeType.hot ? FontWeight.bold : FontWeight.w600,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (badge.type == StoreBadgeType.hot)
+            Padding(
+              padding: const EdgeInsets.only(right: 3),
+              child: Icon(Icons.monetization_on, size: 13, color: color),
+            ),
+          Text(
+            badge.label,
+            style: TextStyle(
+              fontSize: 10,
+              color: color,
+              fontWeight: badge.type == StoreBadgeType.hot ? FontWeight.bold : FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }

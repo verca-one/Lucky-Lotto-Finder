@@ -82,6 +82,32 @@ class LotteryStore {
     );
   }
 
+  Map<String, dynamic> toJson() {
+    return {
+      'dhlottery_code': dhlotteryCode,
+      'store_name': storeName,
+      'address': address,
+      'region': region,
+      'lottery_type': lotteryType,
+      'round': round,
+      'prize_tier': prizeTier,
+      'first_wins': firstWins,
+      'second_wins': secondWins,
+      'first_count': firstCount,
+      'second_count': secondCount,
+      'total_count': totalCount,
+      'purchase_method': purchaseMethod,
+      'game_store_id': gameStoreId,
+      'method': method,
+      'latitude': latitude,
+      'longitude': longitude,
+      'store_rank': storeRank,
+      'winning_amount': winningAmount,
+      'created_at': createdAt,
+      'crawled_at': crawledAt,
+    };
+  }
+
   static double? _parseDouble(dynamic value) {
     if (value == null) return null;
     if (value is double) return value;

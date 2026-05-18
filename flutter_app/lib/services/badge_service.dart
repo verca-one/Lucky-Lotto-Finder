@@ -10,12 +10,14 @@ class StoreBadge {
 
 enum StoreBadgeType {
   hot,        // 이번주 유력 (빨간색 강조)
+  matjip,     // 맛집 (골드/노란)
   first,      // 1등 관련 (빨간)
   second,     // 2등 관련 (주황)
   regional,   // 지역 최다 (보라)
   streak,     // 연속/최근 (파란)
   rank,       // 지역 등수 (초록)
   pattern,    // 평균 주기 (회색)
+  myeongdang, // 복권명당 TOP (금색)
 }
 
 class BadgeService {
@@ -66,12 +68,14 @@ class BadgeService {
   static StoreBadgeType _parseBadgeType(String type) {
     switch (type) {
       case 'hot': return StoreBadgeType.hot;
+      case 'matjip': return StoreBadgeType.matjip;
       case 'first': return StoreBadgeType.first;
       case 'second': return StoreBadgeType.second;
       case 'regional': return StoreBadgeType.regional;
       case 'streak': return StoreBadgeType.streak;
       case 'rank': return StoreBadgeType.rank;
       case 'pattern': return StoreBadgeType.pattern;
+      case 'myeongdang': return StoreBadgeType.myeongdang;
       default: return StoreBadgeType.pattern;
     }
   }
@@ -79,12 +83,14 @@ class BadgeService {
   static int _typeOrder(StoreBadgeType type) {
     switch (type) {
       case StoreBadgeType.hot: return 0;
-      case StoreBadgeType.first: return 1;
-      case StoreBadgeType.second: return 2;
-      case StoreBadgeType.streak: return 3;
-      case StoreBadgeType.regional: return 4;
-      case StoreBadgeType.rank: return 5;
-      case StoreBadgeType.pattern: return 6;
+      case StoreBadgeType.myeongdang: return 1;
+      case StoreBadgeType.matjip: return 2;
+      case StoreBadgeType.first: return 3;
+      case StoreBadgeType.second: return 4;
+      case StoreBadgeType.streak: return 5;
+      case StoreBadgeType.regional: return 6;
+      case StoreBadgeType.rank: return 7;
+      case StoreBadgeType.pattern: return 8;
     }
   }
 }

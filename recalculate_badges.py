@@ -134,27 +134,28 @@ def calculate_badges(stores, lottery_type):
 
     unique_stores = list(store_map.values())
 
-    # ── 1) 1등/2등 횟수 배지 ──
-    for s in unique_stores:
-        code = s["dhlottery_code"]
-        fc = s.get("first_count") or 0
-        sc = s.get("second_count") or 0
-        if fc > 0:
-            badges.append({
-                "dhlottery_code": code,
-                "lottery_type": lottery_type,
-                "badge_type": "first",
-                "badge_label": f"{type_label} 1등 {fc}회",
-                "priority": 10,
-            })
-        if sc > 0:
-            badges.append({
-                "dhlottery_code": code,
-                "lottery_type": lottery_type,
-                "badge_type": "second",
-                "badge_label": f"{type_label} 2등 {sc}회",
-                "priority": 20,
-            })
+    # ── 1) 1등/2등 횟수 배지 (로또 + 연금) ──
+    if lottery_type in ("lotto", "pension"):
+        for s in unique_stores:
+            code = s["dhlottery_code"]
+            fc = s.get("first_count") or 0
+            sc = s.get("second_count") or 0
+            if fc > 0:
+                badges.append({
+                    "dhlottery_code": code,
+                    "lottery_type": lottery_type,
+                    "badge_type": "first",
+                    "badge_label": f"{type_label} 1등 {fc}회",
+                    "priority": 10,
+                })
+            if sc > 0:
+                badges.append({
+                    "dhlottery_code": code,
+                    "lottery_type": lottery_type,
+                    "badge_type": "second",
+                    "badge_label": f"{type_label} 2등 {sc}회",
+                    "priority": 20,
+                })
 
     # ── 1.5) 맛집 배지 (상위 10% 기준) ──
     if lottery_type in ("lotto", "pension", "speedlotto_2000", "speedlotto_1000", "speedlotto_500"):
@@ -320,26 +321,51 @@ def calculate_badges(stores, lottery_type):
             })
 
     # ── 5) 최근 연속 당첨 (연속 회차 당첨) ──
-    for code, rounds in winning_rounds.items():
-        if current_round <= 0:
-            continue
-        rounds_sorted = sorted(rounds, reverse=True)
-        # 최근 회차부터 연속 체크
-        consecutive = 1
-        for i in range(1, len(rounds_sorted)):
-            if rounds_sorted[i-1] - rounds_sorted[i] == 1:
-                consecutive += 1
-            else:
-                break
-        # 최근 연속 2회차 이상 + 가장 최근 당첨이 5회차 이내
-        if consecutive >= 2 and (current_round - rounds_sorted[0]) <= 5:
-            badges.append({
-                "dhlottery_code": code,
-                "lottery_type": lottery_type,
-                "badge_type": "streak",
-                "badge_label": f"최근 연속 {consecutive}회차 당첨",
-                "priority": 2,
-            })
+    # 스피또2000: 1등(first) 기준으로만 연속당첨 계산
+    # 스피또1000/500: 등수 구분 불가 + 당첨자 너무 많아 연속당첨 배지 미생성
+    if lottery_type in ("speedlotto_1000", "speedlotto_500"):
+        pass  # 스피또1000/500은 연속당첨 배지 스킵
+    elif lottery_type == "speedlotto_2000":
+        # 1등(first)만 사용
+        for code, tiers in winning_rounds_by_tier.items():
+            first_rounds = tiers.get("first", [])
+            if len(first_rounds) < 2 or current_round <= 0:
+                continue
+            rounds_sorted = sorted(first_rounds, reverse=True)
+            consecutive = 1
+            for i in range(1, len(rounds_sorted)):
+                if rounds_sorted[i-1] - rounds_sorted[i] == 1:
+                    consecutive += 1
+                else:
+                    break
+            if consecutive >= 2 and (current_round - rounds_sorted[0]) <= 5:
+                badges.append({
+                    "dhlottery_code": code,
+                    "lottery_type": lottery_type,
+                    "badge_type": "streak",
+                    "badge_label": f"{type_label} 1등 연속당첨 ({consecutive}회차)",
+                    "priority": 2,
+                })
+    else:
+        # 로또/연금: 기존 로직 (전체 당첨 기준)
+        for code, rounds in winning_rounds.items():
+            if current_round <= 0:
+                continue
+            rounds_sorted = sorted(rounds, reverse=True)
+            consecutive = 1
+            for i in range(1, len(rounds_sorted)):
+                if rounds_sorted[i-1] - rounds_sorted[i] == 1:
+                    consecutive += 1
+                else:
+                    break
+            if consecutive >= 2 and (current_round - rounds_sorted[0]) <= 5:
+                badges.append({
+                    "dhlottery_code": code,
+                    "lottery_type": lottery_type,
+                    "badge_type": "streak",
+                    "badge_label": f"{type_label} 연속당첨 ({consecutive}회차)",
+                    "priority": 2,
+                })
 
     # ── 주소 파싱 헬퍼 ──
     def _parse_address(address):

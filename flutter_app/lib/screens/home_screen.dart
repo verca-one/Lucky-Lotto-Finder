@@ -8,6 +8,7 @@ import '../services/badge_service.dart';
 import '../widgets/store_detail_popup.dart';
 import 'nearby_screen.dart';
 import 'region_screen.dart';
+import 'recommend_screen.dart';
 import 'favorites_screen.dart';
 import 'admin_screen.dart';
 
@@ -205,6 +206,7 @@ class _HomeScreenState extends State<HomeScreen> {
       const _HomeRankingContent(),
       const NearbyScreen(),
       const RegionScreen(),
+      const RecommendScreen(),
       const FavoritesScreen(),
     ];
 
@@ -267,6 +269,7 @@ class _HomeScreenState extends State<HomeScreen> {
             selectedItemColor: Colors.blue,
             unselectedItemColor: Colors.grey,
             currentIndex: _selectedBottomTab,
+            type: BottomNavigationBarType.fixed,
             onTap: (index) {
               setState(() => _selectedBottomTab = index);
             },
@@ -279,6 +282,10 @@ class _HomeScreenState extends State<HomeScreen> {
               BottomNavigationBarItem(
                 icon: Icon(Icons.location_city),
                 label: '지역',
+              ),
+              BottomNavigationBarItem(
+                icon: Icon(Icons.auto_awesome),
+                label: '추천',
               ),
               BottomNavigationBarItem(icon: Icon(Icons.star), label: '즐겨찾기'),
             ],
@@ -301,6 +308,7 @@ class _HomeRankingContent extends StatefulWidget {
 
 class _HomeRankingContentState extends State<_HomeRankingContent> {
   List<Map<String, dynamic>> _rankedStores = [];
+  List<Map<String, dynamic>> _internetStores = []; // 인터넷구매 지점 (별도 표시)
   Map<String, Map<String, dynamic>> _pensionInfo = {};
   int _latestLottoRound = 0;
   int _latestPensionRound = 0;
@@ -352,15 +360,26 @@ class _HomeRankingContentState extends State<_HomeRankingContent> {
       // 1. 최신 회차 + 로또 1등 기준 TOP 30 조회
       final latestRound = await SupabaseService.getLatestRound('lotto');
       final latestPension = await SupabaseService.getLatestRound('pension');
-      final stores = await SupabaseService.getTopRankedStores(limit: 30);
+      final allStores = await SupabaseService.getTopRankedStores(limit: 40);
 
-      if (stores.isEmpty) {
+      if (allStores.isEmpty) {
         setState(() {
           _rankedStores = [];
+          _internetStores = [];
           _isLoading = false;
         });
         return;
       }
+
+      // 인터넷구매 지점 분리 (store_name이 '인터넷'으로 시작하는 지점)
+      final internetStores = allStores.where((s) {
+        final name = (s['store_name'] ?? '') as String;
+        return name.startsWith('인터넷');
+      }).toList();
+      final stores = allStores.where((s) {
+        final name = (s['store_name'] ?? '') as String;
+        return !name.startsWith('인터넷');
+      }).take(30).toList();
 
       // 2. 순위 변동 계산
       final prefs = await SharedPreferences.getInstance();
@@ -373,6 +392,8 @@ class _HomeRankingContentState extends State<_HomeRankingContent> {
 
       // 현재 순위 리스트
       final codes = stores.map((s) => s['dhlottery_code'] as String).toList();
+      // 인터넷구매 지점 코드도 배지/연금 로드에 포함
+      final allCodes = [...codes, ...internetStores.map((s) => s['dhlottery_code'] as String)];
 
       // 변동 계산
       final Map<String, int> changes = {};
@@ -390,15 +411,16 @@ class _HomeRankingContentState extends State<_HomeRankingContent> {
       await prefs.setStringList('prev_ranking', codes);
       await prefs.setInt('prev_ranking_round', latestRound ?? 0);
 
-      // 3. 배지 로드
-      await BadgeService.loadBadges(codes, lotteryType: 'lotto');
+      // 3. 배지 로드 (인터넷구매 포함)
+      await BadgeService.loadBadges(allCodes);
 
       // 4. 연금복권 당첨 정보 조회 (배지 표시용)
-      final pensionData = await SupabaseService.getPensionInfoForStores(codes);
+      final pensionData = await SupabaseService.getPensionInfoForStores(allCodes);
 
       if (!mounted) return;
       setState(() {
         _rankedStores = stores;
+        _internetStores = internetStores;
         _pensionInfo = pensionData;
         _latestLottoRound = latestRound ?? 0;
         _latestPensionRound = latestPension ?? 0;
@@ -458,6 +480,22 @@ class _HomeRankingContentState extends State<_HomeRankingContent> {
                               ),
                             ),
                           ),
+                    // 인터넷구매 지점 (별도 섹션)
+                    if (_internetStores.isNotEmpty) ...[
+                      SliverToBoxAdapter(child: _buildInternetSection()),
+                      SliverPadding(
+                        padding: const EdgeInsets.symmetric(horizontal: 16),
+                        sliver: SliverList(
+                          delegate: SliverChildBuilderDelegate(
+                            (context, index) {
+                              if (index >= _internetStores.length) return null;
+                              return _buildInternetCard(_internetStores[index]);
+                            },
+                            childCount: _internetStores.length,
+                          ),
+                        ),
+                      ),
+                    ],
                     const SliverToBoxAdapter(child: SizedBox(height: 20)),
                   ],
                 ),
@@ -537,13 +575,44 @@ class _HomeRankingContentState extends State<_HomeRankingContent> {
                         fontWeight: FontWeight.bold,
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      _latestLottoRound > 0
-                          ? '로또 $_latestLottoRound회, 연금 $_latestPensionRound회까지 적용'
-                          : '로또 1등 누적 당첨 횟수 기준',
-                      style: const TextStyle(fontSize: 13, color: Colors.grey),
-                    ),
+                    const SizedBox(height: 6),
+                    if (_latestLottoRound > 0)
+                      Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.blue.shade50,
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: Colors.blue.shade200),
+                            ),
+                            child: Text(
+                              '로또 $_latestLottoRound회',
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blue.shade700),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade50,
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(color: Colors.green.shade200),
+                            ),
+                            child: Text(
+                              '연금 $_latestPensionRound회',
+                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green.shade700),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text('적용', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                        ],
+                      )
+                    else
+                      Text(
+                        '로또 1등 누적 당첨 횟수 기준',
+                        style: const TextStyle(fontSize: 13, color: Colors.grey),
+                      ),
                   ],
                 ),
               ),
@@ -862,6 +931,113 @@ class _HomeRankingContentState extends State<_HomeRankingContent> {
     );
   }
 
+  Widget _buildInternetSection() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Divider(height: 1, color: Colors.grey.shade300),
+          const SizedBox(height: 16),
+          Row(
+            children: [
+              Icon(Icons.computer, color: Colors.indigo.shade400, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                '인터넷 구매',
+                style: TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.indigo.shade700,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: Colors.indigo.shade50,
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  '별도 집계',
+                  style: TextStyle(fontSize: 10, color: Colors.indigo.shade400),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '동행복권 온라인 구매 당첨 현황',
+            style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInternetCard(Map<String, dynamic> store) {
+    final storeName = store['store_name'] ?? '';
+    final firstCount = store['first_count'] ?? 0;
+    final secondCount = store['second_count'] ?? 0;
+    final dhlotteryCode = store['dhlottery_code'] as String;
+    final badges = BadgeService.getBadges(dhlotteryCode);
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.indigo.shade50,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.indigo.shade200, width: 1),
+      ),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: Colors.indigo.shade100,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(Icons.language, color: Colors.indigo.shade600, size: 22),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  storeName,
+                  style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14, color: Colors.indigo.shade800),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 6),
+                Row(
+                  children: [
+                    _buildInfoChip('1등 ${firstCount}회', Colors.red.shade700, Colors.red.shade50),
+                    const SizedBox(width: 6),
+                    if (secondCount > 0)
+                      _buildInfoChip('2등 ${secondCount}회', Colors.orange.shade700, Colors.orange.shade50),
+                  ],
+                ),
+                if (badges.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Wrap(
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: badges.map((b) => _buildBadgeChip(b)).toList(),
+                  ),
+                ],
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   /// 당첨 회차 목록 (로또/연금 구분, 1등 노랑, 2등 은색)
   Widget _buildWinningHistory(String dhlotteryCode) {
     final history = _historyCache[dhlotteryCode];
@@ -954,6 +1130,12 @@ class _HomeRankingContentState extends State<_HomeRankingContent> {
       case StoreBadgeType.hot:
         color = Colors.red;
         break;
+      case StoreBadgeType.myeongdang:
+        color = Colors.amber.shade800;
+        break;
+      case StoreBadgeType.matjip:
+        color = Colors.deepOrange;
+        break;
       case StoreBadgeType.first:
         color = Colors.red.shade700;
         break;
@@ -985,13 +1167,23 @@ class _HomeRankingContentState extends State<_HomeRankingContent> {
             ? Border.all(color: color.withValues(alpha: 0.5), width: 1)
             : null,
       ),
-      child: Text(
-        badge.label,
-        style: TextStyle(
-          fontSize: 10,
-          color: color,
-          fontWeight: badge.type == StoreBadgeType.hot ? FontWeight.bold : FontWeight.w600,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (badge.type == StoreBadgeType.hot)
+            Padding(
+              padding: const EdgeInsets.only(right: 3),
+              child: Icon(Icons.monetization_on, size: 13, color: color),
+            ),
+          Text(
+            badge.label,
+            style: TextStyle(
+              fontSize: 10,
+              color: color,
+              fontWeight: badge.type == StoreBadgeType.hot ? FontWeight.bold : FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }

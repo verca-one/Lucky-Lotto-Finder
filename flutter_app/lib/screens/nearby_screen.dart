@@ -29,6 +29,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
   MapController? _mapController;
   Set<String> _favorites = {};
   Map<String, int> _top30Ranks = {}; // dhlotteryCode -> 순위
+  String _userId = '';
 
   @override
   void initState() {
@@ -36,7 +37,13 @@ class _NearbyScreenState extends State<NearbyScreen> {
     _mapController = MapController();
     _loadFavorites();
     _loadTop30Ranks();
+    _loadUserId();
     _getCurrentLocation();
+  }
+
+  Future<void> _loadUserId() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() => _userId = prefs.getString('userId') ?? '');
   }
 
   Future<void> _loadFavorites() async {
@@ -409,6 +416,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
       favorites: _favorites,
       onToggleFavorite: _toggleFavorite,
       distanceKm: distance,
+      isLoggedIn: _userId.isNotEmpty,
     ).then((_) {
       _loadFavorites();
     });

@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -24,6 +25,22 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
     _loadData();
   }
 
+  List<LotteryStore> _loadFromCache(SharedPreferences prefs) {
+    final cached = prefs.getString('favorite_stores_cache');
+    if (cached == null) return [];
+    try {
+      final list = jsonDecode(cached) as List;
+      return list.map((e) => LotteryStore.fromJson(e as Map<String, dynamic>)).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  void _saveToCache(SharedPreferences prefs, List<LotteryStore> stores) {
+    final json = jsonEncode(stores.map((s) => s.toJson()).toList());
+    prefs.setString('favorite_stores_cache', json);
+  }
+
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
 
@@ -37,10 +54,14 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       return;
     }
 
-    // 즐겨찾기 코드로 해당 판매점만 조회
-    final favStores = await SupabaseService.getStoresByCodes(_favorites.toList());
+    // 캐시에서 먼저 로드, 캐시 미스 시 Supabase 조회
+    List<LotteryStore> favStores = _loadFromCache(prefs);
+    if (favStores.isEmpty || favStores.length < _favorites.length) {
+      favStores = await SupabaseService.getStoresByCodes(_favorites.toList());
+      _saveToCache(prefs, favStores);
+    }
 
-    // 중복 제거
+    // ��복 제거
     final seen = <String>{};
     final uniqueStores = favStores.where((s) {
       if (seen.contains(s.dhlotteryCode)) return false;
@@ -52,7 +73,6 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
     if (uniqueStores.isNotEmpty) {
       await BadgeService.loadBadges(
         uniqueStores.map((s) => s.dhlotteryCode).toList(),
-        lotteryType: 'lotto',
       );
     }
 
@@ -285,6 +305,12 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
       case StoreBadgeType.hot:
         color = Colors.red;
         break;
+      case StoreBadgeType.myeongdang:
+        color = Colors.amber.shade800;
+        break;
+      case StoreBadgeType.matjip:
+        color = Colors.deepOrange;
+        break;
       case StoreBadgeType.first:
         color = Colors.red.shade700;
         break;
@@ -316,13 +342,23 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
             ? Border.all(color: color.withValues(alpha: 0.5), width: 1)
             : null,
       ),
-      child: Text(
-        badge.label,
-        style: TextStyle(
-          fontSize: 10,
-          color: color,
-          fontWeight: badge.type == StoreBadgeType.hot ? FontWeight.bold : FontWeight.w600,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (badge.type == StoreBadgeType.hot)
+            Padding(
+              padding: const EdgeInsets.only(right: 3),
+              child: Icon(Icons.monetization_on, size: 13, color: color),
+            ),
+          Text(
+            badge.label,
+            style: TextStyle(
+              fontSize: 10,
+              color: color,
+              fontWeight: badge.type == StoreBadgeType.hot ? FontWeight.bold : FontWeight.w600,
+            ),
+          ),
+        ],
       ),
     );
   }
