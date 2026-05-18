@@ -9,7 +9,7 @@ import '../widgets/store_detail_popup.dart';
 import 'nearby_screen.dart';
 import 'region_screen.dart';
 import 'recommend_screen.dart';
-import 'favorites_screen.dart';
+import 'favorites_tab_screen.dart';
 import 'admin_screen.dart';
 import '../services/favorites_notifier.dart';
 
@@ -209,7 +209,7 @@ class _HomeScreenState extends State<HomeScreen> {
       const NearbyScreen(),
       const RegionScreen(),
       const RecommendScreen(),
-      const FavoritesScreen(),
+      const FavoritesTabScreen(),
     ];
 
     return Scaffold(
@@ -1787,21 +1787,4 @@ class _SettingsDialogState extends State<_SettingsDialog> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  onPressed: () => widget.onSaveProfile(widget.inputController.text),
-                  child: const Text(
-                    '저장',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
+                  onPressed: () => widget.onSave

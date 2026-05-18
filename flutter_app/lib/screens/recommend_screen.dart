@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'random_number_screen.dart';
 
 class RecommendScreen extends StatelessWidget {
   const RecommendScreen({super.key});
@@ -46,10 +47,11 @@ class RecommendScreen extends StatelessWidget {
             bgColor: Colors.orange.shade50,
             borderColor: Colors.orange.shade200,
             title: '나만의 번호 생성',
-            subtitle: '직접 조건을 설정하여 번호 생성',
+            subtitle: '주사위를 굴려 랜덤 번호 조합',
             onTap: () {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('준비 중입니다')),
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const RandomNumberScreen()),
               );
             },
           ),
@@ -137,9 +139,4 @@ class RecommendScreen extends StatelessWidget {
               ),
             ),
             Icon(Icons.chevron_right, color: Colors.grey.shade400),
-          ],
-        ),
-      ),
-    );
-  }
-}
+       
