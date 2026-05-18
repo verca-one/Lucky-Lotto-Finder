@@ -180,51 +180,54 @@ class _RandomNumberScreenState extends State<RandomNumberScreen>
             ),
             const SizedBox(height: 20),
 
-            // 주사위 굴리기 버튼
+            // 주사위 굴리기 + 이 번호 픽! 버튼 (항상 표시)
             if (_pickedSets.length < 5)
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton.icon(
-                  onPressed: (_isRolling || _hasRolled) ? null : _rollDice,
-                  icon: AnimatedBuilder(
-                    animation: _animController,
-                    builder: (_, child) => Transform.rotate(
-                      angle: _animController.value * 4 * pi,
-                      child: child,
+              Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 50,
+                      child: ElevatedButton.icon(
+                        onPressed: (_isRolling || _hasRolled) ? null : _rollDice,
+                        icon: AnimatedBuilder(
+                          animation: _animController,
+                          builder: (_, child) => Transform.rotate(
+                            angle: _animController.value * 4 * pi,
+                            child: child,
+                          ),
+                          child: const Icon(Icons.casino, size: 20),
+                        ),
+                        label: Text(
+                          _isRolling ? '굴리는 중...' : '주사위 굴리기',
+                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
                     ),
-                    child: const Icon(Icons.casino, size: 22),
                   ),
-                  label: Text(
-                    _isRolling ? '굴리는 중...' : '주사위 굴리기',
-                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: SizedBox(
+                      height: 50,
+                      child: ElevatedButton.icon(
+                        onPressed: _hasRolled ? _pickNumber : null,
+                        icon: const Icon(Icons.check_circle, size: 20),
+                        label: const Text('이 번호 픽!', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.deepOrange,
+                          foregroundColor: Colors.white,
+                          disabledBackgroundColor: Colors.grey.shade300,
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ),
                   ),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.orange,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
+                ],
               ),
-
-            // 이 번호 픽! 버튼
-            if (_hasRolled && _pickedSets.length < 5) ...[
-              const SizedBox(height: 10),
-              SizedBox(
-                width: double.infinity,
-                height: 50,
-                child: ElevatedButton.icon(
-                  onPressed: _pickNumber,
-                  icon: const Icon(Icons.check_circle, size: 22),
-                  label: const Text('이 번호 픽!', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.deepOrange,
-                    foregroundColor: Colors.white,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                ),
-              ),
-            ],
 
             const SizedBox(height: 24),
 
