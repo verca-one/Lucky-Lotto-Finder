@@ -19,6 +19,11 @@ class _AdminCouponScreenState extends State<AdminCouponScreen> {
   List<Map<String, dynamic>> _coupons = [];
   bool _isLoading = true;
 
+  // 기능 체크박스
+  bool _featureInterstitialRemoval = true;
+  // 기간 선택
+  String _durationOption = '7days'; // '7days', '30days'
+
   @override
   void initState() {
     super.initState();
@@ -59,15 +64,28 @@ class _AdminCouponScreenState extends State<AdminCouponScreen> {
       return;
     }
 
+    if (!_featureInterstitialRemoval) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('최소 하나의 기능을 선택하세요')),
+      );
+      return;
+    }
+
     final maxUses = int.tryParse(_maxUsesController.text) ?? 1;
+
+    // 기간에 따라 만료일 자동 설정
+    final duration = _durationOption == '7days'
+        ? const Duration(days: 7)
+        : const Duration(days: 30);
+    final expiresAt = DateTime.now().add(duration);
 
     setState(() => _isCreating = true);
 
     final success = await SupabaseService.createCoupon(
       code: code,
-      type: _selectedType,
+      type: _featureInterstitialRemoval ? 'interstitial_removal' : 'ad_removal',
       maxUses: maxUses,
-      expiresAt: _expiresAt,
+      expiresAt: expiresAt,
     );
 
     if (!mounted) return;
@@ -165,18 +183,68 @@ class _AdminCouponScreenState extends State<AdminCouponScreen> {
                     ),
                     const SizedBox(height: 12),
 
-                    // 타입 선택
-                    DropdownButtonFormField<String>(
-                      value: _selectedType,
-                      decoration: InputDecoration(
-                        labelText: '쿠폰 타입',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    // 기능 선택
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey.shade300),
+                        borderRadius: BorderRadius.circular(8),
                       ),
-                      items: const [
-                        DropdownMenuItem(value: 'ad_removal', child: Text('광고제거')),
-                      ],
-                      onChanged: (v) => setState(() => _selectedType = v ?? 'ad_removal'),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('기능 선택', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                          const SizedBox(height: 4),
+                          CheckboxListTile(
+                            value: _featureInterstitialRemoval,
+                            onChanged: (v) => setState(() => _featureInterstitialRemoval = v ?? false),
+                            title: const Text('전면광고 해제', style: TextStyle(fontSize: 14)),
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            controlAffinity: ListTileControlAffinity.leading,
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+
+                    // 기간 선택
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: Colors.grey.shade300),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text('기간 선택', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: RadioListTile<String>(
+                                  value: '7days',
+                                  groupValue: _durationOption,
+                                  onChanged: (v) => setState(() => _durationOption = v!),
+                                  title: const Text('7일', style: TextStyle(fontSize: 14)),
+                                  dense: true,
+                                  contentPadding: EdgeInsets.zero,
+                                ),
+                              ),
+                              Expanded(
+                                child: RadioListTile<String>(
+                                  value: '30days',
+                                  groupValue: _durationOption,
+                                  onChanged: (v) => setState(() => _durationOption = v!),
+                                  title: const Text('한달', style: TextStyle(fontSize: 14)),
+                                  dense: true,
+                                  contentPadding: EdgeInsets.zero,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                     const SizedBox(height: 12),
 
@@ -189,33 +257,6 @@ class _AdminCouponScreenState extends State<AdminCouponScreen> {
                         labelText: '최대 사용 횟수',
                         border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
                         contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-
-                    // 만료일
-                    InkWell(
-                      onTap: _pickExpiryDate,
-                      child: InputDecorator(
-                        decoration: InputDecoration(
-                          labelText: '만료일 (선택)',
-                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
-                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                          suffixIcon: _expiresAt != null
-                              ? IconButton(
-                                  icon: const Icon(Icons.clear, size: 18),
-                                  onPressed: () => setState(() => _expiresAt = null),
-                                )
-                              : const Icon(Icons.calendar_today, size: 18),
-                        ),
-                        child: Text(
-                          _expiresAt != null
-                              ? '${_expiresAt!.year}-${_expiresAt!.month.toString().padLeft(2, '0')}-${_expiresAt!.day.toString().padLeft(2, '0')}'
-                              : '만료일 없음',
-                          style: TextStyle(
-                            color: _expiresAt != null ? Colors.black : Colors.grey,
-                          ),
-                        ),
                       ),
                     ),
                     const SizedBox(height: 16),
@@ -277,7 +318,17 @@ class _AdminCouponScreenState extends State<AdminCouponScreen> {
     final type = coupon['type'] ?? '';
     final expiresAt = coupon['expires_at'];
 
-    String typeLabel = type == 'ad_removal' ? '광고제거' : type;
+    String typeLabel;
+    switch (type) {
+      case 'ad_removal':
+        typeLabel = '광고제거';
+        break;
+      case 'interstitial_removal':
+        typeLabel = '전면광고해제';
+        break;
+      default:
+        typeLabel = type;
+    }
     bool isExpired = false;
     if (expiresAt != null) {
       isExpired = DateTime.now().isAfter(DateTime.parse(expiresAt));

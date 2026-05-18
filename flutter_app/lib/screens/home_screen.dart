@@ -86,6 +86,7 @@ class _HomeScreenState extends State<HomeScreen> {
         inputController: inputController,
         couponController: couponController,
         adsRemoved: AdService.adsRemoved,
+        isLoggedIn: _userId.isNotEmpty,
         onSaveProfile: (text) {
           if (text.isEmpty) return;
           if (text == '공룡로또') {
@@ -1219,6 +1220,7 @@ class _SettingsDialog extends StatefulWidget {
   final TextEditingController inputController;
   final TextEditingController couponController;
   final bool adsRemoved;
+  final bool isLoggedIn;
   final void Function(String) onSaveProfile;
   final Future<Map<String, dynamic>> Function(String) onRedeemCoupon;
 
@@ -1226,6 +1228,7 @@ class _SettingsDialog extends StatefulWidget {
     required this.inputController,
     required this.couponController,
     required this.adsRemoved,
+    required this.isLoggedIn,
     required this.onSaveProfile,
     required this.onRedeemCoupon,
   });
@@ -1636,8 +1639,8 @@ class _SettingsDialogState extends State<_SettingsDialog> {
               ),
               const SizedBox(height: 20),
 
-              // 쿠폰 입력 섹션
-              Container(
+              // 쿠폰 입력 섹션 (로그인 시에만 표시)
+              if (widget.isLoggedIn) Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: Colors.orange.shade50,
@@ -1685,8 +1688,8 @@ class _SettingsDialogState extends State<_SettingsDialog> {
                             child: TextField(
                               controller: widget.couponController,
                               decoration: InputDecoration(
-                                hintText: 'XXXX-XXXX-XXXX',
-                                hintStyle: const TextStyle(fontSize: 13),
+                                hintText: '쿠폰 코드',
+                                hintStyle: TextStyle(fontSize: 13, color: Colors.grey.shade400),
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(8),
                                 ),
@@ -1788,4 +1791,17 @@ class _SettingsDialogState extends State<_SettingsDialog> {
                   child: const Text(
                     '저장',
                     style: TextStyle(
-                      color: Colo
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
