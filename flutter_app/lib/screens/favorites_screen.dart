@@ -17,6 +17,8 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
   Set<String> _favorites = {};
   List<LotteryStore> _allStores = [];
   bool _isLoading = true;
+  bool _isRefreshing = false;
+  DateTime? _lastRefreshTime;
   final Set<String> _expandedCards = {};
 
   @override
@@ -41,8 +43,30 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
     prefs.setString('favorite_stores_cache', json);
   }
 
+  Future<void> _refresh() async {
+    // 10초 쿨타임 체크
+    if (_lastRefreshTime != null &&
+        DateTime.now().difference(_lastRefreshTime!).inSeconds < 10) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('10초 후에 다시 시도해주세요'), duration: Duration(seconds: 1)),
+        );
+      }
+      return;
+    }
+    // 중복 클릭 방지
+    if (_isRefreshing) return;
+
+    setState(() => _isRefreshing = true);
+    _lastRefreshTime = DateTime.now();
+
+    await _loadData(forceRefresh: true);
+
+    if (mounted) setState(() => _isRefreshing = false);
+  }
+
   Future<void> _loadData({bool forceRefresh = false}) async {
-    setState(() => _isLoading = true);
+    if (!forceRefresh) setState(() => _isLoading = true);
 
     // 즐겨찾기 목록 로드 (StringList 방식)
     final prefs = await SharedPreferences.getInstance();
@@ -59,15 +83,13 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
 
     List<LotteryStore> favStores;
     if (forceRefresh) {
-      // 강제 새로고침: 캐시 무시하고 Supabase에서 직접 조회
+      // Supabase 1회 묶음 조회 → 캐시 갱신
       favStores = await SupabaseService.getStoresByCodes(_favorites.toList());
       _saveToCache(prefs, favStores);
     } else {
-      // 캐시에서 먼저 로드, 현재 즐겨찾기와 매칭 확인
+      // 기본 진입: 로컬 캐시 먼저 표시
       favStores = _loadFromCache(prefs);
-      // 캐시된 목록에서 현재 즐겨찾기에 있는 것만 필터링
       favStores = favStores.where((s) => _favorites.contains(s.dhlotteryCode)).toList();
-      // 캐시에 없는 즐겨찾기가 있으면 Supabase에서 다시 조회
       final cachedCodes = favStores.map((s) => s.dhlotteryCode).toSet();
       final missingCodes = _favorites.difference(cachedCodes);
       if (missingCodes.isNotEmpty) {
@@ -184,7 +206,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
     }
 
     return RefreshIndicator(
-      onRefresh: () => _loadData(forceRefresh: true),
+      onRefresh: _refresh,
       child: ListView.builder(
         padding: const EdgeInsets.all(16),
         itemCount: _allStores.length + 1, // +1 for header
@@ -205,8 +227,17 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                   ),
                   const Spacer(),
                   GestureDetector(
-                    onTap: () => _loadData(forceRefresh: true),
-                    child: Icon(Icons.refresh, color: Colors.grey.shade600, size: 22),
+                    onTap: _refresh,
+                    child: _isRefreshing
+                        ? SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.grey.shade600,
+                            ),
+                          )
+                        : Icon(Icons.refresh, color: Colors.grey.shade600, size: 22),
                   ),
                 ],
               ),
