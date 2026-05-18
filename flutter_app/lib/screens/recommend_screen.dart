@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'random_number_screen.dart';
 import 'ai_number_screen.dart';
+import 'golden_wave_screen.dart';
+import 'saju_number_screen.dart';
 import 'number_meaning_screen.dart';
 
 class RecommendScreen extends StatefulWidget {
@@ -11,37 +13,46 @@ class RecommendScreen extends StatefulWidget {
 }
 
 class _RecommendScreenState extends State<RecommendScreen> {
-  String? _currentSub; // null, 'random', 'ai', 'meaning'
+  // null: 메인메뉴, 'ai_sub': AI하위메뉴, 'ai_7183', 'ai_golden', 'random', 'meaning'
+  String? _currentSub;
 
   @override
   Widget build(BuildContext context) {
-    if (_currentSub == 'random') {
-      return _wrapWithBack(const RandomNumberContent());
+    if (_currentSub == 'ai_7183') {
+      return _wrapWithBack(const AiNumberContent(), 'AI 조합번호 생성', 'ai_sub');
     }
-    if (_currentSub == 'ai') {
-      return _wrapWithBack(const AiNumberContent());
+    if (_currentSub == 'ai_golden') {
+      return _wrapWithBack(const GoldenWaveContent(), 'AI 조합번호 생성', 'ai_sub');
+    }
+    if (_currentSub == 'ai_saju') {
+      return _wrapWithBack(const SajuNumberContent(), 'AI 조합번호 생성', 'ai_sub');
+    }
+    if (_currentSub == 'random') {
+      return _wrapWithBack(const RandomNumberContent(), '번호 추천', null);
     }
     if (_currentSub == 'meaning') {
-      return _wrapWithBack(const NumberMeaningContent());
+      return _wrapWithBack(const NumberMeaningContent(), '번호 추천', null);
+    }
+    if (_currentSub == 'ai_sub') {
+      return _buildAiSubMenu();
     }
     return _buildMenu();
   }
 
-  Widget _wrapWithBack(Widget child) {
+  Widget _wrapWithBack(Widget child, String backLabel, String? backTo) {
     return Column(
       children: [
-        // 뒤로가기 헤더
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           child: Row(
             children: [
               GestureDetector(
-                onTap: () => setState(() => _currentSub = null),
+                onTap: () => setState(() => _currentSub = backTo),
                 child: Row(
                   children: [
                     Icon(Icons.arrow_back_ios, size: 18, color: Colors.grey.shade700),
                     const SizedBox(width: 4),
-                    Text('번호 추천', style: TextStyle(fontSize: 14, color: Colors.grey.shade700)),
+                    Text(backLabel, style: TextStyle(fontSize: 14, color: Colors.grey.shade700)),
                   ],
                 ),
               ),
@@ -53,6 +64,7 @@ class _RecommendScreenState extends State<RecommendScreen> {
     );
   }
 
+  /// 메인 메뉴: AI 조합번호 생성 / 나만의 번호 생성 / 번호별 의미
   Widget _buildMenu() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -76,8 +88,8 @@ class _RecommendScreenState extends State<RecommendScreen> {
             bgColor: Colors.purple.shade50,
             borderColor: Colors.purple.shade200,
             title: 'AI 조합번호 생성',
-            subtitle: '7183 법칙으로 AI 번호 추천',
-            onTap: () => setState(() => _currentSub = 'ai'),
+            subtitle: 'AI 법칙 기반 번호 추천',
+            onTap: () => setState(() => _currentSub = 'ai_sub'),
           ),
           const SizedBox(height: 16),
 
@@ -103,6 +115,84 @@ class _RecommendScreenState extends State<RecommendScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  /// AI 조합번호 하위 메뉴: 7183 법칙 / 황금파동
+  Widget _buildAiSubMenu() {
+    return Column(
+      children: [
+        // 뒤로가기 헤더
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          child: Row(
+            children: [
+              GestureDetector(
+                onTap: () => setState(() => _currentSub = null),
+                child: Row(
+                  children: [
+                    Icon(Icons.arrow_back_ios, size: 18, color: Colors.grey.shade700),
+                    const SizedBox(width: 4),
+                    Text('번호 추천', style: TextStyle(fontSize: 14, color: Colors.grey.shade700)),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+        Expanded(
+          child: SingleChildScrollView(
+            padding: const EdgeInsets.all(20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'AI 조합번호 생성',
+                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  'AI 법칙을 선택하여 번호를 생성하세요',
+                  style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
+                ),
+                const SizedBox(height: 24),
+
+                _buildMenuCard(
+                  icon: Icons.auto_awesome,
+                  iconColor: Colors.purple,
+                  bgColor: Colors.purple.shade50,
+                  borderColor: Colors.purple.shade200,
+                  title: '7183 법칙 생성',
+                  subtitle: '7183 순환 규칙 기반 번호 생성',
+                  onTap: () => setState(() => _currentSub = 'ai_7183'),
+                ),
+                const SizedBox(height: 16),
+
+                _buildMenuCard(
+                  icon: Icons.waves,
+                  iconColor: Colors.amber.shade700,
+                  bgColor: Colors.amber.shade50,
+                  borderColor: Colors.amber.shade200,
+                  title: '황금파동 분석법',
+                  subtitle: '핫/콜드 빈도 + Gap 가중치 AI 분석',
+                  onTap: () => setState(() => _currentSub = 'ai_golden'),
+                ),
+                const SizedBox(height: 16),
+
+                _buildMenuCard(
+                  icon: Icons.auto_graph,
+                  iconColor: Colors.deepPurple,
+                  bgColor: Colors.deepPurple.shade50,
+                  borderColor: Colors.deepPurple.shade200,
+                  title: '오늘의 사주 로또번호',
+                  subtitle: '생년월일시 오행 기반 번호 추천',
+                  onTap: () => setState(() => _currentSub = 'ai_saju'),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ],
     );
   }
 
