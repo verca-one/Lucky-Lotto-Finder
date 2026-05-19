@@ -214,60 +214,72 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.blue,
         title: Row(
           children: [
-            const Text(
-              '복권명당',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-                fontSize: 18,
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(
+                  colors: [Color(0xFFE53935), Color(0xFFFF6B6B)],
+                ),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Center(
+                child: Text('명', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16)),
               ),
             ),
+            const SizedBox(width: 10),
+            const Text('복권명당'),
             if (_userId.isNotEmpty) ...[
               const SizedBox(width: 12),
               Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 4,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: Colors.white24,
-                  borderRadius: BorderRadius.circular(4),
+                  color: const Color(0xFFFFF0F0),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFFFCDD2)),
                 ),
-                child: Text(
-                  _userId,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.normal,
-                    color: Colors.white,
-                  ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _userId,
+                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Color(0xFFE53935)),
+                    ),
+                    const SizedBox(width: 4),
+                    GestureDetector(
+                      onTap: () async {
+                        final prefs = await SharedPreferences.getInstance();
+                        await prefs.remove('userId');
+                        setState(() => _userId = '');
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('로그아웃 되었습니다')),
+                          );
+                        }
+                      },
+                      child: const Icon(Icons.close, color: Color(0xFFE53935), size: 14),
+                    ),
+                  ],
                 ),
-              ),
-              const SizedBox(width: 4),
-              GestureDetector(
-                onTap: () async {
-                  final prefs = await SharedPreferences.getInstance();
-                  await prefs.remove('userId');
-                  setState(() => _userId = '');
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('로그아웃 되었습니다')),
-                    );
-                  }
-                },
-                child: const Icon(Icons.logout, color: Colors.white70, size: 18),
               ),
             ],
           ],
         ),
-        elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.settings, color: Colors.white),
+            icon: Container(
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF5F5F5),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: const Icon(Icons.settings_outlined, color: Color(0xFF666666), size: 20),
+            ),
             onPressed: _showSettingsMenu,
           ),
+          const SizedBox(width: 4),
         ],
       ),
       body: IndexedStack(index: _selectedBottomTab, children: pages),
@@ -280,31 +292,28 @@ class _HomeScreenState extends State<HomeScreen> {
               height: _bannerAd!.size.height.toDouble(),
               child: AdWidget(ad: _bannerAd!),
             ),
-          BottomNavigationBar(
-            backgroundColor: Colors.white,
-            selectedItemColor: Colors.blue,
-            unselectedItemColor: Colors.grey,
-            currentIndex: _selectedBottomTab,
-            type: BottomNavigationBarType.fixed,
-            onTap: (index) {
-              setState(() => _selectedBottomTab = index);
-            },
-            items: const [
-              BottomNavigationBarItem(icon: Icon(Icons.home), label: '홈'),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.location_on),
-                label: '주변판매점',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.location_city),
-                label: '지역',
-              ),
-              BottomNavigationBarItem(
-                icon: Icon(Icons.auto_awesome),
-                label: '추천',
-              ),
-              BottomNavigationBarItem(icon: Icon(Icons.star), label: '즐겨찾기'),
-            ],
+          Container(
+            decoration: BoxDecoration(
+              color: Colors.white,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.06),
+                  blurRadius: 10,
+                  offset: const Offset(0, -2),
+                ),
+              ],
+            ),
+            child: BottomNavigationBar(
+              currentIndex: _selectedBottomTab,
+              onTap: (index) => setState(() => _selectedBottomTab = index),
+              items: const [
+                BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: '홈'),
+                BottomNavigationBarItem(icon: Icon(Icons.near_me_rounded), label: '주변'),
+                BottomNavigationBarItem(icon: Icon(Icons.map_rounded), label: '지역'),
+                BottomNavigationBarItem(icon: Icon(Icons.auto_awesome_rounded), label: '추천'),
+                BottomNavigationBarItem(icon: Icon(Icons.star_rounded), label: '즐겨찾기'),
+              ],
+            ),
           ),
         ],
       ),
@@ -572,78 +581,93 @@ class _HomeRankingContentState extends State<_HomeRankingContent> {
   }
 
   Widget _buildHeader() {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 20, 16, 12),
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFFE53935), Color(0xFFFF6B6B)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFFE53935).withValues(alpha: 0.3),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
               Container(
-                padding: const EdgeInsets.all(8),
+                padding: const EdgeInsets.all(10),
                 decoration: BoxDecoration(
-                  color: Colors.amber.shade50,
-                  borderRadius: BorderRadius.circular(10),
+                  color: Colors.white.withValues(alpha: 0.2),
+                  borderRadius: BorderRadius.circular(12),
                 ),
-                child: Icon(Icons.emoji_events, color: Colors.amber.shade700, size: 28),
+                child: const Icon(Icons.emoji_events_rounded, color: Colors.white, size: 28),
               ),
-              const SizedBox(width: 12),
-              Expanded(
+              const SizedBox(width: 14),
+              const Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
+                    Text(
                       '복권명당 TOP 30',
                       style: TextStyle(
                         fontSize: 20,
-                        fontWeight: FontWeight.bold,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                        letterSpacing: -0.3,
                       ),
                     ),
-                    const SizedBox(height: 6),
-                    if (_latestLottoRound > 0)
-                      Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.blue.shade50,
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(color: Colors.blue.shade200),
-                            ),
-                            child: Text(
-                              '로또 $_latestLottoRound회',
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.blue.shade700),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: Colors.green.shade50,
-                              borderRadius: BorderRadius.circular(6),
-                              border: Border.all(color: Colors.green.shade200),
-                            ),
-                            child: Text(
-                              '연금 $_latestPensionRound회',
-                              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.green.shade700),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Text('적용', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-                        ],
-                      )
-                    else
-                      Text(
-                        '로또 1등 누적 당첨 횟수 기준',
-                        style: const TextStyle(fontSize: 13, color: Colors.grey),
-                      ),
+                    SizedBox(height: 4),
+                    Text(
+                      '로또 1등 누적 당첨 횟수 기준',
+                      style: TextStyle(fontSize: 13, color: Colors.white70),
+                    ),
                   ],
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 16),
-          Divider(height: 1, color: Colors.grey.shade300),
+          if (_latestLottoRound > 0) ...[
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '로또 $_latestLottoRound회',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.2),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '연금 $_latestPensionRound회',
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                const Text('적용', style: TextStyle(fontSize: 12, color: Colors.white60)),
+              ],
+            ),
+          ],
         ],
       ),
     );

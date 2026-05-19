@@ -50,9 +50,9 @@ class _RecommendScreenState extends State<RecommendScreen> {
                 onTap: () => setState(() => _currentSub = backTo),
                 child: Row(
                   children: [
-                    Icon(Icons.arrow_back_ios, size: 18, color: Colors.grey.shade700),
+                    const Icon(Icons.arrow_back_ios_rounded, size: 18, color: Color(0xFF666666)),
                     const SizedBox(width: 4),
-                    Text(backLabel, style: TextStyle(fontSize: 14, color: Colors.grey.shade700)),
+                    Text(backLabel, style: const TextStyle(fontSize: 14, color: Color(0xFF666666), fontWeight: FontWeight.w500)),
                   ],
                 ),
               ),
@@ -131,9 +131,9 @@ class _RecommendScreenState extends State<RecommendScreen> {
                 onTap: () => setState(() => _currentSub = null),
                 child: Row(
                   children: [
-                    Icon(Icons.arrow_back_ios, size: 18, color: Colors.grey.shade700),
+                    const Icon(Icons.arrow_back_ios_rounded, size: 18, color: Color(0xFF666666)),
                     const SizedBox(width: 4),
-                    Text('번호 추천', style: TextStyle(fontSize: 14, color: Colors.grey.shade700)),
+                    const Text('번호 추천', style: TextStyle(fontSize: 14, color: Color(0xFF666666), fontWeight: FontWeight.w500)),
                   ],
                 ),
               ),
@@ -250,7 +250,7 @@ class _RecommendScreenState extends State<RecommendScreen> {
                 ],
               ),
             ),
-            Icon(Icons.chevron_right, color: Colors.grey.shade400),
+            const Icon(Icons.chevron_right_rounded, color: Color(0xFFBBBBBB)),
           ],
         ),
       ),

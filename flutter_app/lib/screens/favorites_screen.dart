@@ -247,16 +247,23 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                   const Spacer(),
                   GestureDetector(
                     onTap: _refresh,
-                    child: _isRefreshing
-                        ? SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.grey.shade600,
-                            ),
-                          )
-                        : Icon(Icons.refresh, color: Colors.grey.shade600, size: 22),
+                    child: Container(
+                      padding: const EdgeInsets.all(6),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFF5F5F5),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: _isRefreshing
+                          ? const SizedBox(
+                              width: 18,
+                              height: 18,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Color(0xFFE53935),
+                              ),
+                            )
+                          : const Icon(Icons.refresh_rounded, color: Color(0xFF666666), size: 20),
+                    ),
                   ),
                 ],
               ),
@@ -274,8 +281,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
     final isExpanded = _expandedCards.contains(store.dhlotteryCode);
 
     return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      color: Colors.amber.shade50,
+      margin: const EdgeInsets.only(bottom: 10),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () {
