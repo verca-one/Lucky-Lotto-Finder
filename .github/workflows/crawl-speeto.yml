@@ -22,6 +22,17 @@ jobs:
       run: |
         python -m pip install --upgrade pip
         pip install -r gooddear/data/crawling/requirements.txt
+        pip install supabase
+
+    - name: Log crawl start
+      id: log_start
+      env:
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        GITHUB_RUN_ID: ${{ github.run_id }}
+      run: |
+        LOG_ID=$(python crawl_log_writer.py start speeto latest)
+        echo "log_id=$LOG_ID" >> $GITHUB_OUTPUT
 
     - name: Run speeto store scraping (최신 회차만)
       env:
@@ -49,6 +60,56 @@ jobs:
         python recalculate_badges.py speedlotto_2000
         python recalculate_badges.py speedlotto_1000
         python recalculate_badges.py speedlotto_500
+
+    - name: Log crawl success
+      if: success()
+      env:
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      run: |
+        python crawl_log_writer.py finish ${{ steps.log_start.outputs.log_id }} success
+
+    - name: Log crawl failure
+      if: failure()
+      env:
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      run: |
+        python crawl_log_writer.py finish ${{ steps.log_start.outputs.log_id }} failure "Workflow step failed"
+
+    - name: Send email notification (success)
+      if: success()
+      uses: dawidd6/action-send-mail@v3
+      with:
+        server_address: smtp.gmail.com
+        server_port: 587
+        username: ${{ secrets.EMAIL_USERNAME }}
+        password: ${{ secrets.EMAIL_PASSWORD }}
+        subject: "✅ 스피또 크롤링 완료"
+        body: |
+          스피또 크롤링이 성공적으로 완료되었습니다.
+
+          Run ID: ${{ github.run_id }}
+          Run URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        to: ${{ secrets.NOTIFY_EMAIL }}
+        from: "Lottery Bot <lottery-bot@github.com>"
+
+    - name: Send email notification (failure)
+      if: failure()
+      uses: dawidd6/action-send-mail@v3
+      with:
+        server_address: smtp.gmail.com
+        server_port: 587
+        username: ${{ secrets.EMAIL_USERNAME }}
+        password: ${{ secrets.EMAIL_PASSWORD }}
+        subject: "❌ 스피또 크롤링 실패"
+        body: |
+          스피또 크롤링이 실패했습니다. 확인이 필요합니다.
+
+          Run ID: ${{ github.run_id }}
+          Run URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        to: ${{ secrets.NOTIFY_EMAIL }}
+        from: "Lottery Bot <lottery-bot@github.com>"
 
     - name: Commit and push results
       run: |

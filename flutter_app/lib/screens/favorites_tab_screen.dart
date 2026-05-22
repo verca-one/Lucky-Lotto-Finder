@@ -33,9 +33,9 @@ class _FavoritesTabScreenState extends State<FavoritesTabScreen>
           color: Colors.white,
           child: TabBar(
             controller: _tabController,
-            labelColor: const Color(0xFFE53935),
+            labelColor: const Color(0xFF1565C0),
             unselectedLabelColor: const Color(0xFFAAAAAA),
-            indicatorColor: const Color(0xFFE53935),
+            indicatorColor: const Color(0xFF1565C0),
             indicatorWeight: 3,
             labelStyle: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
             unselectedLabelStyle: const TextStyle(fontSize: 13),

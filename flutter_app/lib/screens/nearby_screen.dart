@@ -196,13 +196,19 @@ class _NearbyScreenState extends State<NearbyScreen> {
 
   Widget _buildBody() {
     if (_isLoading) {
-      return const Center(
+      return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text('위치를 찾는 중...'),
+            SizedBox(
+              width: 40, height: 40,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                color: const Color(0xFF1565C0),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text('위치를 찾는 중...', style: TextStyle(fontSize: 14, color: Colors.grey.shade500)),
           ],
         ),
       );
@@ -210,36 +216,64 @@ class _NearbyScreenState extends State<NearbyScreen> {
 
     if (_error != null) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, size: 64, color: Colors.red),
-            const SizedBox(height: 16),
-            Text('오류: $_error'),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _getCurrentLocation,
-              child: const Text('다시 시도'),
-            ),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE3F2FD),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.location_off_rounded, size: 48, color: Color(0xFF1565C0)),
+              ),
+              const SizedBox(height: 20),
+              Text('위치를 확인할 수 없습니다', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
+              const SizedBox(height: 8),
+              Text(
+                '$_error',
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: _getCurrentLocation,
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('다시 시도'),
+              ),
+            ],
+          ),
         ),
       );
     }
 
     if (_currentPosition == null) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.location_off, size: 64, color: Colors.grey),
-            const SizedBox(height: 16),
-            const Text('위치를 가져올 수 없습니다'),
-            const SizedBox(height: 16),
-            ElevatedButton(
-              onPressed: _getCurrentLocation,
-              child: const Text('위치 다시 가져오기'),
-            ),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFF5F5F5),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.location_searching_rounded, size: 48, color: Colors.grey.shade400),
+              ),
+              const SizedBox(height: 20),
+              Text('위치를 가져올 수 없습니다', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: _getCurrentLocation,
+                icon: const Icon(Icons.my_location_rounded, size: 18),
+                label: const Text('위치 다시 가져오기'),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -249,20 +283,27 @@ class _NearbyScreenState extends State<NearbyScreen> {
 
     return Column(
       children: [
-        const SizedBox(height: 16),
+        // 지도 영역
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
           child: SizedBox(
-            height: 300,
+            height: 280,
             child: Stack(
               children: [
                 Container(
                   decoration: BoxDecoration(
-                    border: Border.all(color: Colors.grey.shade300),
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFFE0E0E0), width: 1),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.06),
+                        blurRadius: 10,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
                   ),
                   child: ClipRRect(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(16),
                     child: FlutterMap(
                       mapController: _mapController,
                       options: MapOptions(
@@ -290,27 +331,37 @@ class _NearbyScreenState extends State<NearbyScreen> {
                   left: 0,
                   right: 0,
                   child: Center(
-                    child: ElevatedButton.icon(
-                      onPressed: _isSearching ? null : _searchAtMapCenter,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.white,
-                        foregroundColor: Colors.blue.shade700,
-                        elevation: 4,
-                        shadowColor: Colors.black38,
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(20),
+                    child: GestureDetector(
+                      onTap: _isSearching ? null : _searchAtMapCenter,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(24),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.15),
+                              blurRadius: 8,
+                              offset: const Offset(0, 2),
+                            ),
+                          ],
                         ),
-                      ),
-                      icon: _isSearching
-                          ? const SizedBox(
-                              width: 16, height: 16,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Icon(Icons.refresh, size: 18),
-                      label: const Text(
-                        '이 주변 검색',
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _isSearching
+                                ? const SizedBox(
+                                    width: 16, height: 16,
+                                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF1565C0)),
+                                  )
+                                : const Icon(Icons.refresh_rounded, size: 16, color: Color(0xFF1565C0)),
+                            const SizedBox(width: 6),
+                            const Text(
+                              '이 주변 검색',
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF1565C0)),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
@@ -319,26 +370,53 @@ class _NearbyScreenState extends State<NearbyScreen> {
                 Positioned(
                   right: 12,
                   bottom: 12,
-                  child: FloatingActionButton.small(
-                    heroTag: 'nearby_current_location_btn',
-                    backgroundColor: Colors.white,
-                    foregroundColor: Colors.blue,
-                    onPressed: _moveToCurrentLocation,
-                    child: const Icon(Icons.my_location),
+                  child: GestureDetector(
+                    onTap: _moveToCurrentLocation,
+                    child: Container(
+                      width: 42, height: 42,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                        boxShadow: [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.15),
+                            blurRadius: 8,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
+                      ),
+                      child: const Center(
+                        child: Icon(Icons.my_location_rounded, size: 20, color: Color(0xFF1565C0)),
+                      ),
+                    ),
                   ),
                 ),
               ],
             ),
           ),
         ),
-        const SizedBox(height: 16),
+        // 근처 당첨지점 헤더
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
           child: Row(
             children: [
+              const Icon(Icons.store_rounded, size: 18, color: Color(0xFF1565C0)),
+              const SizedBox(width: 6),
               Text(
-                '근처 당첨지점 ($storeCount개)',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+                '근처 당첨지점',
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: Color(0xFF1A1A1A)),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE3F2FD),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '$storeCount개',
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF1565C0)),
+                ),
               ),
             ],
           ),
@@ -349,23 +427,30 @@ class _NearbyScreenState extends State<NearbyScreen> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.search_off, size: 48, color: Colors.grey.shade400),
-                      const SizedBox(height: 12),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFF5F5F5),
+                          shape: BoxShape.circle,
+                        ),
+                        child: Icon(Icons.search_off_rounded, size: 40, color: Colors.grey.shade400),
+                      ),
+                      const SizedBox(height: 14),
                       Text(
                         '이 주변에 당첨지점이 없습니다',
-                        style: TextStyle(color: Colors.grey.shade600),
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Colors.grey.shade600),
                       ),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 6),
                       Text(
                         '지도를 이동한 뒤 "이 주변 검색"을 눌러보세요',
-                        style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                        style: TextStyle(fontSize: 12, color: Colors.grey.shade400),
                       ),
                     ],
                   ),
                 )
               : ListView.builder(
                   controller: _listScrollController,
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
                   itemCount: storeCount,
                   itemBuilder: (context, index) {
                     return _buildStoreCard(_nearbyStores![index], index);
@@ -489,35 +574,28 @@ class _NearbyScreenState extends State<NearbyScreen> {
         setState(() {
           if (isExpanded) {
             _expandedStoreIndices.remove(index);
+            _selectedMarkerIndex = null;
           } else {
-            _expandedStoreIndices.clear(); // 다른 카드 닫기
+            _expandedStoreIndices.clear();
             _expandedStoreIndices.add(index);
+            _selectedMarkerIndex = index;
           }
-          _selectedMarkerIndex = index;
         });
-        // 지도를 해당 지점으로 이동
-        if (store.latitude != null && store.longitude != null && _mapController != null) {
+        if (!isExpanded && store.latitude != null && store.longitude != null && _mapController != null) {
           _mapController!.move(LatLng(store.latitude!, store.longitude!), 15);
         }
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(12),
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: isExpanded ? Colors.blue.shade50 : Colors.white,
-          borderRadius: BorderRadius.circular(12),
+          color: isExpanded ? const Color(0xFFF0F7FF) : Colors.white,
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: isExpanded ? Colors.blue.shade200 : Colors.grey.shade200,
-            width: 1,
+            color: isExpanded ? const Color(0xFF90CAF9) : const Color(0xFFEEEEEE),
+            width: isExpanded ? 1.5 : 1,
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 4,
-              offset: const Offset(0, 2),
-            ),
-          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -528,30 +606,37 @@ class _NearbyScreenState extends State<NearbyScreen> {
                 Expanded(
                   child: Text(
                     store.storeName,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF1A1A1A)),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                   decoration: BoxDecoration(
-                    color: Colors.green,
-                    borderRadius: BorderRadius.circular(4),
+                    color: const Color(0xFFE8F5E9),
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                  child: Text(
-                    '${distance.toStringAsFixed(2)}km',
-                    style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.near_me_rounded, size: 11, color: const Color(0xFF2E7D32)),
+                      const SizedBox(width: 3),
+                      Text(
+                        '${distance.toStringAsFixed(2)}km',
+                        style: const TextStyle(color: Color(0xFF2E7D32), fontSize: 11, fontWeight: FontWeight.w700),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 6),
                 GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTap: () => _toggleFavorite(store.dhlotteryCode),
                   child: Padding(
                     padding: const EdgeInsets.all(4),
                     child: Icon(
-                      isFav ? Icons.star : Icons.star_border,
-                      color: isFav ? Colors.amber : Colors.grey.shade400,
+                      isFav ? Icons.star_rounded : Icons.star_border_rounded,
+                      color: isFav ? Colors.amber : Colors.grey.shade300,
                       size: 24,
                     ),
                   ),
@@ -559,11 +644,19 @@ class _NearbyScreenState extends State<NearbyScreen> {
               ],
             ),
             const SizedBox(height: 4),
-            Text(
-              store.address,
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
+            Row(
+              children: [
+                Icon(Icons.place_outlined, size: 12, color: Colors.grey.shade400),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    store.address,
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 8),
             // 배지
@@ -580,60 +673,77 @@ class _NearbyScreenState extends State<NearbyScreen> {
             ),
             // ── 확장 영역 ──
             if (isExpanded) ...[
-              const SizedBox(height: 10),
-              Divider(height: 1, color: Colors.grey.shade300),
-              const SizedBox(height: 10),
-              // 지도 버튼
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _openExternalMap('naver', store),
-                      icon: const Icon(Icons.map_outlined, size: 16),
-                      label: const Text('네이버지도', style: TextStyle(fontSize: 13)),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _openExternalMap('kakao', store),
-                      icon: const Icon(Icons.place_outlined, size: 16),
-                      label: const Text('카카오지도', style: TextStyle(fontSize: 13)),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              // 당첨 정보
-              Row(
-                children: [
-                  if ((store.firstCount ?? 0) > 0)
-                    _buildInfoChip('로또 1등 ${store.firstCount}회', Colors.red.shade700, Colors.red.shade50),
-                  if ((store.firstCount ?? 0) > 0) const SizedBox(width: 6),
-                  if ((store.secondCount ?? 0) > 0)
-                    _buildInfoChip('로또 2등 ${store.secondCount}회', Colors.orange.shade700, Colors.orange.shade50),
-                ],
-              ),
               const SizedBox(height: 12),
-              Divider(height: 1, color: Colors.grey.shade300),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFE0E0E0)),
+                ),
+                child: Column(
+                  children: [
+                    // 지도 버튼
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildMapButton('네이버지도', Icons.map_outlined, () => _openExternalMap('naver', store)),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _buildMapButton('카카오지도', Icons.place_outlined, () => _openExternalMap('kakao', store)),
+                        ),
+                      ],
+                    ),
+                    if ((store.firstCount ?? 0) > 0 || (store.secondCount ?? 0) > 0) ...[
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          if ((store.firstCount ?? 0) > 0)
+                            _buildInfoChip('1등 ${store.firstCount}회', const Color(0xFFD32F2F), const Color(0xFFFFEBEE)),
+                          if ((store.firstCount ?? 0) > 0) const SizedBox(width: 6),
+                          if ((store.secondCount ?? 0) > 0)
+                            _buildInfoChip('2등 ${store.secondCount}회', const Color(0xFFE65100), const Color(0xFFFFF3E0)),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
               const SizedBox(height: 10),
               // 판매점 평가
               _InlineReviewSection(dhlotteryCode: store.dhlotteryCode),
             ],
             // 확장 아이콘
             if (!isExpanded)
-              Align(
-                alignment: Alignment.center,
-                child: Icon(Icons.expand_more, color: Colors.grey.shade400, size: 18),
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Center(
+                  child: Icon(Icons.keyboard_arrow_down_rounded, color: Colors.grey.shade300, size: 20),
+                ),
               ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMapButton(String label, IconData icon, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF5F5F5),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 16, color: const Color(0xFF666666)),
+            const SizedBox(width: 6),
+            Text(label, style: const TextStyle(fontSize: 13, color: Color(0xFF555555), fontWeight: FontWeight.w500)),
           ],
         ),
       ),
@@ -729,33 +839,33 @@ class _NearbyScreenState extends State<NearbyScreen> {
 
     if (_currentPosition == null) return markers;
 
-    // 현재 위치 마커 (초록색 동그란 아이콘)
+    // 현재 위치 마커
     markers.add(
       Marker(
         point: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
-        width: 50,
-        height: 50,
+        width: 44,
+        height: 44,
         child: Container(
           decoration: BoxDecoration(
-            color: Colors.green,
+            color: const Color(0xFF1565C0),
             shape: BoxShape.circle,
             border: Border.all(color: Colors.white, width: 3),
             boxShadow: [
               BoxShadow(
-                color: Colors.green.withValues(alpha: 0.5),
-                blurRadius: 8,
+                color: const Color(0xFF1565C0).withValues(alpha: 0.4),
+                blurRadius: 10,
                 spreadRadius: 2,
               ),
             ],
           ),
           child: const Center(
-            child: Icon(Icons.my_location, color: Colors.white, size: 24),
+            child: Icon(Icons.my_location_rounded, color: Colors.white, size: 20),
           ),
         ),
       ),
     );
 
-    // 근처 판매점 마커 (파란 지도 마커, 항상 표시)
+    // 근처 판매점 마커
     if (_nearbyStores != null) {
       for (int i = 0; i < _nearbyStores!.length; i++) {
         final store = _nearbyStores![i];
@@ -763,29 +873,28 @@ class _NearbyScreenState extends State<NearbyScreen> {
         if (store.latitude != null && store.longitude != null) {
           final isSelected = _selectedMarkerIndex == index;
 
-          // 마커 (항상 표시, 선택 시 빨간색으로 강조)
           markers.add(
             Marker(
               point: LatLng(store.latitude!, store.longitude!),
-              width: 45,
-              height: 50,
+              width: 42,
+              height: 42,
               child: GestureDetector(
                 onTap: () => _onMarkerTap(store, index),
                 child: Container(
                   decoration: BoxDecoration(
-                    color: isSelected ? Colors.red : Colors.blue,
+                    color: isSelected ? const Color(0xFFFF6D00) : const Color(0xFF1565C0),
                     shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2),
+                    border: Border.all(color: Colors.white, width: 2.5),
                     boxShadow: [
                       BoxShadow(
-                        color: (isSelected ? Colors.red : Colors.blue).withValues(alpha: 0.5),
+                        color: (isSelected ? const Color(0xFFFF6D00) : const Color(0xFF1565C0)).withValues(alpha: 0.4),
                         blurRadius: 6,
                         spreadRadius: 1,
                       ),
                     ],
                   ),
                   child: const Center(
-                    child: Icon(Icons.store, color: Colors.white, size: 20),
+                    child: Icon(Icons.store_rounded, color: Colors.white, size: 18),
                   ),
                 ),
               ),

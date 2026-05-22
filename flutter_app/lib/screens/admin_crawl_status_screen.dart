@@ -8,16 +8,26 @@ class AdminCrawlStatusScreen extends StatefulWidget {
   State<AdminCrawlStatusScreen> createState() => _AdminCrawlStatusScreenState();
 }
 
-class _AdminCrawlStatusScreenState extends State<AdminCrawlStatusScreen> {
+class _AdminCrawlStatusScreenState extends State<AdminCrawlStatusScreen>
+    with SingleTickerProviderStateMixin {
+  late TabController _tabController;
   bool _isLoading = true;
   List<_RoundStatus> _items = [];
+  List<Map<String, dynamic>> _crawlLogs = [];
   final Set<int> _expandedIndices = {};
   final Set<int> _refreshingIndices = {};
 
   @override
   void initState() {
     super.initState();
+    _tabController = TabController(length: 2, vsync: this);
     _loadAll();
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadAll() async {
@@ -32,6 +42,9 @@ class _AdminCrawlStatusScreenState extends State<AdminCrawlStatusScreen> {
         SupabaseService.getPensionStoreCountsByRound(), // 3: 연금 지점 수
         SupabaseService.getAllLottoRounds(),             // 4: lottery_rounds
         SupabaseService.getAllPensionRounds(),           // 5: pension_rounds
+        SupabaseService.getSpeetoStoreCountsByRound(),  // 6: 스피또 지점 수
+        SupabaseService.getSpeetoRounds(),              // 7: 스피또 회차
+        SupabaseService.getCrawlLogs(limit: 50),        // 8: 크롤링 로그
       ]);
 
       final lottoWinnings = results[0] as List;
@@ -40,6 +53,9 @@ class _AdminCrawlStatusScreenState extends State<AdminCrawlStatusScreen> {
       final pensionStoreCounts = results[3] as Map<int, Map<String, int>>;
       final lottoRounds = results[4] as List<Map<String, dynamic>>;
       final pensionRounds = results[5] as List<Map<String, dynamic>>;
+      final speetoStoreCounts = results[6] as Map<int, Map<String, int>>;
+      final speetoRounds = results[7] as List<Map<String, dynamic>>;
+      final crawlLogs = results[8] as List<Map<String, dynamic>>;
 
       // lottery_rounds → Map
       final lottoRoundMap = <int, Map<String, dynamic>>{};
@@ -99,6 +115,27 @@ class _AdminCrawlStatusScreenState extends State<AdminCrawlStatusScreen> {
         ));
       }
 
+      // 스피또 회차
+      for (var r in speetoRounds) {
+        final round = r['round'] as int;
+        final storeCounts = speetoStoreCounts[round];
+
+        items.add(_RoundStatus(
+          type: '스피또',
+          typeColor: Colors.teal,
+          round: round,
+          drawDate: '',
+          hasWinningNumbers: (storeCounts?['total'] ?? 0) > 0,
+          storeTotal: storeCounts?['total'] ?? 0,
+          storeFirst: storeCounts?['first'] ?? 0,
+          storeSecond: storeCounts?['second'] ?? 0,
+          isPublished: (storeCounts?['total'] ?? 0) > 0,
+          publishedAt: null,
+          createdAt: null,
+          lotteryType: 'speeto',
+        ));
+      }
+
       // 최신 회차 → 위로 (type 같으면 round 내림차순)
       items.sort((a, b) {
         final cmp = b.round.compareTo(a.round);
@@ -109,6 +146,7 @@ class _AdminCrawlStatusScreenState extends State<AdminCrawlStatusScreen> {
       if (!mounted) return;
       setState(() {
         _items = items;
+        _crawlLogs = crawlLogs;
         _isLoading = false;
       });
     } catch (e) {
@@ -144,7 +182,7 @@ class _AdminCrawlStatusScreenState extends State<AdminCrawlStatusScreen> {
             publishedAt: ri['published_at'],
           );
         });
-      } else {
+      } else if (item.lotteryType == 'pension') {
         final storeCounts = await SupabaseService.getPensionStoreCountsByRound();
         final rounds = await SupabaseService.getAllPensionRounds();
         final sc = storeCounts[item.round];
@@ -161,6 +199,20 @@ class _AdminCrawlStatusScreenState extends State<AdminCrawlStatusScreen> {
             storeSecond: sc?['second'] ?? 0,
             isPublished: ri['stores_published'] == true,
             publishedAt: ri['published_at'],
+          );
+        });
+      } else {
+        // speeto
+        final storeCounts = await SupabaseService.getSpeetoStoreCountsByRound();
+        final sc = storeCounts[item.round];
+
+        if (!mounted) return;
+        setState(() {
+          _items[index] = item.copyWith(
+            storeTotal: sc?['total'] ?? 0,
+            storeFirst: sc?['first'] ?? 0,
+            storeSecond: sc?['second'] ?? 0,
+            isPublished: (sc?['total'] ?? 0) > 0,
           );
         });
       }
@@ -199,8 +251,14 @@ class _AdminCrawlStatusScreenState extends State<AdminCrawlStatusScreen> {
     bool success;
     if (item.lotteryType == 'lotto') {
       success = await SupabaseService.deleteLottoRound(item.round);
-    } else {
+    } else if (item.lotteryType == 'pension') {
       success = await SupabaseService.deletePensionRound(item.round);
+    } else {
+      // 스피또는 삭제 미지원 (필요시 추가)
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('스피또 회차 삭제는 미지원입니다')),
+      );
+      return;
     }
 
     if (success && mounted) {
@@ -227,28 +285,212 @@ class _AdminCrawlStatusScreenState extends State<AdminCrawlStatusScreen> {
             onPressed: _isLoading ? null : _loadAll,
           ),
         ],
+        bottom: TabBar(
+          controller: _tabController,
+          indicatorColor: Colors.white,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white60,
+          tabs: const [
+            Tab(text: '회차 현황'),
+            Tab(text: '크롤링 로그'),
+          ],
+        ),
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _items.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.inbox, size: 48, color: Colors.grey.shade400),
-                      const SizedBox(height: 12),
-                      Text('등록된 회차가 없습니다', style: TextStyle(color: Colors.grey.shade600)),
-                    ],
+          : TabBarView(
+              controller: _tabController,
+              children: [
+                _buildRoundsTab(),
+                _buildLogsTab(),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildRoundsTab() {
+    if (_items.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.inbox, size: 48, color: Colors.grey.shade400),
+            const SizedBox(height: 12),
+            Text('등록된 회차가 없습니다', style: TextStyle(color: Colors.grey.shade600)),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadAll,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(12),
+        itemCount: _items.length,
+        itemBuilder: (context, index) => _buildCard(index),
+      ),
+    );
+  }
+
+  Widget _buildLogsTab() {
+    if (_crawlLogs.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.history, size: 48, color: Colors.grey.shade400),
+            const SizedBox(height: 12),
+            Text('크롤링 실행 기록이 없습니다', style: TextStyle(color: Colors.grey.shade600)),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadAll,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(12),
+        itemCount: _crawlLogs.length,
+        itemBuilder: (context, index) => _buildLogCard(_crawlLogs[index]),
+      ),
+    );
+  }
+
+  Widget _buildLogCard(Map<String, dynamic> log) {
+    final status = log['status'] as String? ?? 'unknown';
+    final lotteryType = log['lottery_type'] as String? ?? '';
+    final startedAt = log['started_at'] as String?;
+    final completedAt = log['completed_at'] as String?;
+    final duration = log['duration_seconds'] as int?;
+    final errorMsg = log['error_message'] as String?;
+    final runId = log['workflow_run_id'] as String?;
+
+    Color statusColor;
+    IconData statusIcon;
+    String statusText;
+    switch (status) {
+      case 'success':
+        statusColor = Colors.green;
+        statusIcon = Icons.check_circle;
+        statusText = '성공';
+        break;
+      case 'failure':
+        statusColor = Colors.red;
+        statusIcon = Icons.error;
+        statusText = '실패';
+        break;
+      case 'running':
+        statusColor = Colors.blue;
+        statusIcon = Icons.sync;
+        statusText = '실행중';
+        break;
+      default:
+        statusColor = Colors.grey;
+        statusIcon = Icons.help_outline;
+        statusText = status;
+    }
+
+    String typeLabel;
+    Color typeColor;
+    switch (lotteryType) {
+      case 'lotto':
+        typeLabel = '로또';
+        typeColor = Colors.purple;
+        break;
+      case 'pension':
+        typeLabel = '연금';
+        typeColor = Colors.orange;
+        break;
+      case 'speeto':
+        typeLabel = '스피또';
+        typeColor = Colors.teal;
+        break;
+      default:
+        typeLabel = lotteryType;
+        typeColor = Colors.grey;
+    }
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      elevation: 1,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(10),
+        side: BorderSide(color: statusColor.withValues(alpha: 0.3), width: 1),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 상단: 타입 + 상태
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: typeColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(4),
                   ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _loadAll,
-                  child: ListView.builder(
-                    padding: const EdgeInsets.all(12),
-                    itemCount: _items.length,
-                    itemBuilder: (context, index) => _buildCard(index),
+                  child: Text(
+                    typeLabel,
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: typeColor),
                   ),
                 ),
+                const SizedBox(width: 8),
+                Icon(statusIcon, size: 16, color: statusColor),
+                const SizedBox(width: 4),
+                Text(
+                  statusText,
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: statusColor),
+                ),
+                const Spacer(),
+                if (duration != null)
+                  Text(
+                    '${duration}초',
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            // 시간 정보
+            if (startedAt != null)
+              Text(
+                '시작: ${_formatDateTime(startedAt)}',
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+              ),
+            if (completedAt != null)
+              Text(
+                '완료: ${_formatDateTime(completedAt)}',
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+              ),
+            // 에러 메시지
+            if (errorMsg != null && errorMsg.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  errorMsg,
+                  style: TextStyle(fontSize: 11, color: Colors.red.shade700),
+                ),
+              ),
+            ],
+            // Run ID
+            if (runId != null && runId.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Text(
+                  'Run: $runId',
+                  style: TextStyle(fontSize: 10, color: Colors.grey.shade400),
+                ),
+              ),
+          ],
+        ),
+      ),
     );
   }
 
@@ -351,11 +593,13 @@ class _AdminCrawlStatusScreenState extends State<AdminCrawlStatusScreen> {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 2),
-                        Text(
-                          item.drawDate,
-                          style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
-                        ),
+                        if (item.drawDate.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            item.drawDate,
+                            style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                          ),
+                        ],
                       ],
                     ),
                   ),

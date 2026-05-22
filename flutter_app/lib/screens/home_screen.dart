@@ -12,6 +12,7 @@ import 'recommend_screen.dart';
 import 'favorites_tab_screen.dart';
 import 'admin_screen.dart';
 import '../services/favorites_notifier.dart';
+import '../services/donation_service.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -23,6 +24,8 @@ class HomeScreen extends StatefulWidget {
 class _HomeScreenState extends State<HomeScreen> {
   int _selectedBottomTab = 0;
   String _userId = '';
+  bool _isAdmin = false;
+  final GlobalKey<RecommendScreenState> _recommendKey = GlobalKey<RecommendScreenState>();
   BannerAd? _bannerAd;
   bool _isBannerLoaded = false;
 
@@ -54,6 +57,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final prefs = await SharedPreferences.getInstance();
     setState(() {
       _userId = prefs.getString('userId') ?? '';
+      _isAdmin = prefs.getBool('isAdmin') ?? false;
     });
   }
 
@@ -87,6 +91,11 @@ class _HomeScreenState extends State<HomeScreen> {
         couponController: couponController,
         adsRemoved: AdService.adsRemoved,
         isLoggedIn: _userId.isNotEmpty,
+        isAdmin: _isAdmin,
+        onAdminTap: _isAdmin ? () {
+          Navigator.pop(dialogContext);
+          Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminScreen()));
+        } : null,
         onSaveProfile: (text) {
           if (text.isEmpty) return;
           if (text == '공룡로또') {
@@ -169,8 +178,11 @@ class _HomeScreenState extends State<HomeScreen> {
                       borderRadius: BorderRadius.circular(8),
                     ),
                   ),
-                  onPressed: () {
+                  onPressed: () async {
                     if (adminController.text == ADMIN_PASSWORD) {
+                      final prefs = await SharedPreferences.getInstance();
+                      await prefs.setBool('isAdmin', true);
+                      setState(() => _isAdmin = true);
                       Navigator.pop(context);
                       Navigator.push(
                         context,
@@ -208,7 +220,7 @@ class _HomeScreenState extends State<HomeScreen> {
       const _HomeRankingContent(),
       const NearbyScreen(),
       const RegionScreen(),
-      const RecommendScreen(),
+      RecommendScreen(key: _recommendKey),
       const FavoritesTabScreen(),
     ];
 
@@ -216,36 +228,68 @@ class _HomeScreenState extends State<HomeScreen> {
       appBar: AppBar(
         title: Row(
           children: [
-            Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFFE53935), Color(0xFFFF6B6B)],
-                ),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Center(
-                child: Text('명', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 16)),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(9),
+              child: Image.asset(
+                'assets/app_icon_internal.png',
+                width: 70,
+                height: 70,
+                fit: BoxFit.cover,
               ),
             ),
             const SizedBox(width: 10),
-            const Text('복권명당'),
-            if (_userId.isNotEmpty) ...[
-              const SizedBox(width: 12),
+            const Text('복권명당 찾기'),
+            if (_isAdmin) ...[
+              const SizedBox(width: 8),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                 decoration: BoxDecoration(
-                  color: const Color(0xFFFFF0F0),
+                  color: Colors.purple.shade50,
                   borderRadius: BorderRadius.circular(20),
-                  border: Border.all(color: const Color(0xFFFFCDD2)),
+                  border: Border.all(color: Colors.purple.shade200),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.admin_panel_settings, size: 14, color: Colors.purple.shade700),
+                    const SizedBox(width: 4),
+                    Text(
+                      '관리자',
+                      style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.purple.shade700),
+                    ),
+                    const SizedBox(width: 4),
+                    GestureDetector(
+                      onTap: () async {
+                        final prefs = await SharedPreferences.getInstance();
+                        await prefs.setBool('isAdmin', false);
+                        setState(() => _isAdmin = false);
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            const SnackBar(content: Text('관리자 로그아웃 되었습니다')),
+                          );
+                        }
+                      },
+                      child: Icon(Icons.close, color: Colors.purple.shade400, size: 14),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+            if (_userId.isNotEmpty) ...[
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE3F2FD),
+                  borderRadius: BorderRadius.circular(20),
+                  border: Border.all(color: const Color(0xFFBBDEFB)),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
                       _userId,
-                      style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: Color(0xFFE53935)),
+                      style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF1565C0)),
                     ),
                     const SizedBox(width: 4),
                     GestureDetector(
@@ -259,7 +303,7 @@ class _HomeScreenState extends State<HomeScreen> {
                           );
                         }
                       },
-                      child: const Icon(Icons.close, color: Color(0xFFE53935), size: 14),
+                      child: const Icon(Icons.close, color: Color(0xFF1565C0), size: 14),
                     ),
                   ],
                 ),
@@ -305,7 +349,12 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
             child: BottomNavigationBar(
               currentIndex: _selectedBottomTab,
-              onTap: (index) => setState(() => _selectedBottomTab = index),
+              onTap: (index) {
+                if (index == 3 && _selectedBottomTab == 3) {
+                  _recommendKey.currentState?.resetToMain();
+                }
+                setState(() => _selectedBottomTab = index);
+              },
               items: const [
                 BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: '홈'),
                 BottomNavigationBarItem(icon: Icon(Icons.near_me_rounded), label: '주변'),
@@ -331,7 +380,7 @@ class _HomeRankingContent extends StatefulWidget {
   State<_HomeRankingContent> createState() => _HomeRankingContentState();
 }
 
-class _HomeRankingContentState extends State<_HomeRankingContent> {
+class _HomeRankingContentState extends State<_HomeRankingContent> with SingleTickerProviderStateMixin {
   List<Map<String, dynamic>> _rankedStores = [];
   List<Map<String, dynamic>> _internetStores = []; // 인터넷구매 지점 (별도 표시)
   Map<String, Map<String, dynamic>> _pensionInfo = {};
@@ -339,6 +388,9 @@ class _HomeRankingContentState extends State<_HomeRankingContent> {
   int _latestPensionRound = 0;
   bool _isLoading = true;
   String? _error;
+  bool _badgeLoadFailed = false;
+  // 크롤링 안내문
+  List<Map<String, dynamic>> _recentCrawlLogs = [];
 
   // 확장된 카드 관리
   final Set<String> _expandedCards = {};
@@ -349,9 +401,16 @@ class _HomeRankingContentState extends State<_HomeRankingContent> {
   // 순위 변동 (dhlotteryCode -> 변동값, 양수=상승, 음수=하락, 0=유지)
   Map<String, int> _rankChanges = {};
 
+  // 1~3위 카드 빛나기 애니메이션
+  late AnimationController _glowController;
+
   @override
   void initState() {
     super.initState();
+    _glowController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 3000),
+    )..repeat();
     _loadFavorites();
     _loadRanking();
     favoritesNotifier.addListener(_loadFavorites);
@@ -359,6 +418,7 @@ class _HomeRankingContentState extends State<_HomeRankingContent> {
 
   @override
   void dispose() {
+    _glowController.dispose();
     favoritesNotifier.removeListener(_loadFavorites);
     super.dispose();
   }
@@ -450,6 +510,12 @@ class _HomeRankingContentState extends State<_HomeRankingContent> {
       // 4. 연금복권 당첨 정보 조회 (배지 표시용)
       final pensionData = await SupabaseService.getPensionInfoForStores(allCodes);
 
+      // 5. 최근 24시간 크롤링 성공 로그 조회
+      List<Map<String, dynamic>> crawlLogs = [];
+      try {
+        crawlLogs = await SupabaseService.getRecentSuccessLogs(hours: 24);
+      } catch (_) {}
+
       if (!mounted) return;
       setState(() {
         _rankedStores = stores;
@@ -458,6 +524,8 @@ class _HomeRankingContentState extends State<_HomeRankingContent> {
         _latestLottoRound = latestRound ?? 0;
         _latestPensionRound = latestPension ?? 0;
         _rankChanges = changes;
+        _badgeLoadFailed = BadgeService.loadFailed;
+        _recentCrawlLogs = crawlLogs;
         _isLoading = false;
       });
     } catch (e) {
@@ -496,6 +564,9 @@ class _HomeRankingContentState extends State<_HomeRankingContent> {
                       SliverToBoxAdapter(child: _buildUpdateBanner()),
                     // 헤더
                     SliverToBoxAdapter(child: _buildHeader()),
+                    // 배지 로딩 실패 안내
+                    if (_badgeLoadFailed)
+                      SliverToBoxAdapter(child: _buildBadgeFailBanner()),
                     // 랭킹 리스트
                     _rankedStores.isEmpty
                         ? const SliverFillRemaining(
@@ -532,6 +603,30 @@ class _HomeRankingContentState extends State<_HomeRankingContent> {
                     const SliverToBoxAdapter(child: SizedBox(height: 20)),
                   ],
                 ),
+    );
+  }
+
+  Widget _buildBadgeFailBanner() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.orange.shade50,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.orange.shade200),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline, size: 18, color: Colors.orange.shade700),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              '배지 정보를 불러오지 못했습니다. 아래로 당겨 새로고침 해주세요.',
+              style: TextStyle(fontSize: 12, color: Colors.orange.shade800),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -586,14 +681,14 @@ class _HomeRankingContentState extends State<_HomeRankingContent> {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         gradient: const LinearGradient(
-          colors: [Color(0xFFE53935), Color(0xFFFF6B6B)],
+          colors: [Color(0xFF1565C0), Color(0xFF42A5F5)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: const Color(0xFFE53935).withValues(alpha: 0.3),
+            color: const Color(0xFF1565C0).withValues(alpha: 0.3),
             blurRadius: 12,
             offset: const Offset(0, 4),
           ),
@@ -668,9 +763,120 @@ class _HomeRankingContentState extends State<_HomeRankingContent> {
               ],
             ),
           ],
+          // 크롤링 안내문 (예약/완료)
+          ..._buildCrawlNotices(),
         ],
       ),
     );
+  }
+
+  /// 크롤링 안내문 목록 생성
+  List<Widget> _buildCrawlNotices() {
+    final notices = <Widget>[];
+    final now = DateTime.now();
+    final todayStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
+
+    // 오늘 완료된 크롤링 로그 확인
+    final todayLogs = _recentCrawlLogs.where((log) {
+      final completedAt = log['completed_at'] as String?;
+      if (completedAt == null) return false;
+      return completedAt.startsWith(todayStr);
+    }).toList();
+
+    // 완료된 로그가 있으면 표시
+    if (todayLogs.isNotEmpty) {
+      final typeLabels = <String>[];
+      for (var log in todayLogs) {
+        final type = log['lottery_type'] as String? ?? '';
+        final rounds = log['rounds_processed'] as String? ?? '';
+        String label;
+        switch (type) {
+          case 'lotto':
+            label = '로또';
+            break;
+          case 'pension':
+            label = '연금';
+            break;
+          case 'speeto':
+            label = '스피또';
+            break;
+          default:
+            label = type;
+        }
+        if (rounds.isNotEmpty && rounds != 'latest') {
+          label += ' $rounds회차';
+        }
+        typeLabels.add(label);
+      }
+
+      notices.add(const SizedBox(height: 10));
+      notices.add(
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.15),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Row(
+            children: [
+              const Icon(Icons.check_circle_outline, color: Colors.lightGreenAccent, size: 16),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '${typeLabels.join(', ')} 업데이트 완료',
+                  style: const TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
+    } else {
+      // 완료 로그가 없으면 오늘 예약 정보 표시
+      // 스케줄: 목요일 19:30 연금, 토요일 06:00 스피또, 토요일 21:30 로또
+      String? scheduleMsg;
+      if (now.weekday == DateTime.thursday) {
+        scheduleMsg = '오늘 19:30 연금복권 업데이트 예정';
+      } else if (now.weekday == DateTime.saturday) {
+        if (now.hour < 10) {
+          scheduleMsg = '오늘 06:00 스피또 / 21:30 로또 업데이트 예정';
+        } else if (now.hour < 22) {
+          scheduleMsg = '오늘 21:30 로또 업데이트 예정';
+        }
+      } else if (now.weekday == DateTime.friday) {
+        // 금요일 UTC 21:00 = 토요일 KST 06:00이므로 금요일에도 안내
+        scheduleMsg = '내일 06:00 스피또 업데이트 예정';
+      }
+
+      if (scheduleMsg != null) {
+        notices.add(const SizedBox(height: 10));
+        notices.add(
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.schedule, color: Colors.amberAccent, size: 16),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    scheduleMsg,
+                    style: const TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+    }
+
+    return notices;
   }
 
   void _toggleCard(String code) async {
@@ -769,61 +975,122 @@ class _HomeRankingContentState extends State<_HomeRankingContent> {
     // 순위별 색상
     Color rankColor;
     Color rankBgColor;
+    IconData? medalIcon;
     if (rank == 1) {
       rankColor = Colors.white;
       rankBgColor = const Color(0xFFFFD700);
+      medalIcon = Icons.emoji_events_rounded;
     } else if (rank == 2) {
       rankColor = Colors.white;
-      rankBgColor = const Color(0xFFC0C0C0);
+      rankBgColor = const Color(0xFFA8A8A8);
+      medalIcon = Icons.emoji_events_rounded;
     } else if (rank == 3) {
       rankColor = Colors.white;
       rankBgColor = const Color(0xFFCD7F32);
+      medalIcon = Icons.emoji_events_rounded;
     } else {
       rankColor = Colors.grey.shade700;
       rankBgColor = Colors.grey.shade200;
+      medalIcon = null;
     }
 
-    return GestureDetector(
+    // 1~3위: 순차 빛나기 (각 1초씩 오프셋)
+    final bool isTop3 = rank <= 3;
+    final double glowOffset = rank == 1 ? 0.0 : (rank == 2 ? 0.33 : 0.66);
+
+    // 연속당첨 배지 분리 (지점명 옆에 표시할 것)
+    final streakBadges = badges.where((b) => b.type == StoreBadgeType.streak).toList();
+    final otherBadges = badges.where((b) => b.type != StoreBadgeType.streak).toList();
+
+    // 금/은/동 카드 그라데이션
+    List<Color>? cardGradient;
+    if (rank == 1) {
+      cardGradient = [const Color(0xFFFFFDF0), const Color(0xFFFFF8E1), const Color(0xFFFFF0C0)];
+    } else if (rank == 2) {
+      cardGradient = [const Color(0xFFFAFAFA), const Color(0xFFF0F0F0), const Color(0xFFE8E8E8)];
+    } else if (rank == 3) {
+      cardGradient = [const Color(0xFFFDF8F4), const Color(0xFFF5EDE6), const Color(0xFFEDE0D4)];
+    }
+
+    Widget cardWidget = GestureDetector(
       onTap: () => _toggleCard(dhlotteryCode),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         margin: const EdgeInsets.only(bottom: 10),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          border: rank <= 3
-              ? Border.all(color: rankBgColor.withValues(alpha: 0.6), width: 1.5)
+          gradient: isTop3
+              ? LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: cardGradient!,
+                )
+              : null,
+          color: isTop3 ? null : Colors.white,
+          borderRadius: BorderRadius.circular(14),
+          border: isTop3
+              ? Border.all(color: rankBgColor.withValues(alpha: 0.5), width: 2)
               : Border.all(color: isExpanded ? Colors.blue.shade200 : Colors.grey.shade200, width: 1),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 4,
-              offset: const Offset(0, 2),
-            ),
-          ],
+          boxShadow: isTop3
+              ? [
+                  BoxShadow(
+                    color: rankBgColor.withValues(alpha: 0.25),
+                    blurRadius: 14,
+                    spreadRadius: 1,
+                    offset: const Offset(0, 3),
+                  ),
+                ]
+              : [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.04),
+                    blurRadius: 4,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
         ),
         child: Column(
           children: [
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // 순위 원
+                // 순위 메달
                 Container(
-                  width: 36,
-                  height: 36,
+                  width: isTop3 ? 42 : 36,
+                  height: isTop3 ? 42 : 36,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: rankBgColor,
+                    gradient: isTop3
+                        ? LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              rankBgColor,
+                              rankBgColor.withValues(alpha: 0.7),
+                              rankBgColor,
+                            ],
+                          )
+                        : null,
+                    color: isTop3 ? null : rankBgColor,
                     shape: BoxShape.circle,
+                    border: isTop3 ? Border.all(color: rankBgColor.withValues(alpha: 0.8), width: 2) : null,
+                    boxShadow: isTop3
+                        ? [BoxShadow(color: rankBgColor.withValues(alpha: 0.4), blurRadius: 6, spreadRadius: 1)]
+                        : null,
                   ),
-                  child: Text(
-                    '$rank위',
-                    style: TextStyle(
-                      color: rankColor,
-                      fontWeight: FontWeight.bold,
-                      fontSize: rank <= 3 ? 13 : 11,
-                    ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      if (isTop3) Icon(medalIcon, size: 16, color: Colors.white),
+                      Text(
+                        '$rank',
+                        style: TextStyle(
+                          color: rankColor,
+                          fontWeight: FontWeight.w900,
+                          fontSize: isTop3 ? 11 : 11,
+                          height: 1,
+                        ),
+                      ),
+                    ],
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -832,11 +1099,21 @@ class _HomeRankingContentState extends State<_HomeRankingContent> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        storeName,
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              storeName,
+                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (streakBadges.isNotEmpty) ...[
+                            const SizedBox(width: 6),
+                            ...streakBadges.map((b) => _buildStreakBadgeGlow(b)),
+                          ],
+                        ],
                       ),
                       const SizedBox(height: 2),
                       Row(
@@ -883,13 +1160,13 @@ class _HomeRankingContentState extends State<_HomeRankingContent> {
                           ],
                         ),
                       ],
-                      // store_badges 배지
-                      if (badges.isNotEmpty) ...[
+                      // store_badges 배지 (연속당첨은 지점명 옆에 이미 표시)
+                      if (otherBadges.isNotEmpty) ...[
                         const SizedBox(height: 6),
                         Wrap(
                           spacing: 6,
                           runSpacing: 4,
-                          children: badges.map((b) => _buildBadgeChip(b)).toList(),
+                          children: otherBadges.map((b) => _buildBadgeChip(b)).toList(),
                         ),
                       ],
                     ],
@@ -967,6 +1244,39 @@ class _HomeRankingContentState extends State<_HomeRankingContent> {
         ),
       ),
     );
+
+    // 1~3위: 순차적 빛나기 효과 (shimmer border)
+    if (isTop3) {
+      return AnimatedBuilder(
+        animation: _glowController,
+        builder: (context, child) {
+          // 순차 오프셋: 1위→2위→3위 순서로 빛남
+          final t = (_glowController.value + glowOffset) % 1.0;
+          // 0.0~0.3 구간에서 빛나고 나머지는 안 빛남
+          final glowIntensity = t < 0.3 ? (0.5 + 0.5 * (1 - (t / 0.3 - 0.5).abs() * 2)).clamp(0.0, 1.0) : 0.0;
+
+          return Container(
+            margin: const EdgeInsets.only(bottom: 0),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(15),
+              boxShadow: glowIntensity > 0.05
+                  ? [
+                      BoxShadow(
+                        color: rankBgColor.withValues(alpha: 0.3 * glowIntensity),
+                        blurRadius: 16 * glowIntensity,
+                        spreadRadius: 2 * glowIntensity,
+                      ),
+                    ]
+                  : null,
+            ),
+            child: child,
+          );
+        },
+        child: cardWidget,
+      );
+    }
+
+    return cardWidget;
   }
 
   Widget _buildInternetSection() {
@@ -1154,6 +1464,55 @@ class _HomeRankingContentState extends State<_HomeRankingContent> {
     );
   }
 
+  /// 연속당첨 배지 - 빛나는 특별 효과
+  Widget _buildStreakBadgeGlow(StoreBadge badge) {
+    return AnimatedBuilder(
+      animation: _glowController,
+      builder: (context, child) {
+        final t = (_glowController.value * 2) % 1.0;
+        final glow = (0.4 + 0.6 * (0.5 + 0.5 * (t < 0.5 ? t * 2 : 2 - t * 2))).clamp(0.0, 1.0);
+        return Container(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              colors: [
+                const Color(0xFFFF6D00).withValues(alpha: 0.15 + 0.1 * glow),
+                const Color(0xFFFFAB00).withValues(alpha: 0.15 + 0.1 * glow),
+              ],
+            ),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: Color.lerp(const Color(0xFFFF8F00), const Color(0xFFFFD600), glow)!.withValues(alpha: 0.8),
+              width: 1.5,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFFFFAB00).withValues(alpha: 0.3 * glow),
+                blurRadius: 6 * glow,
+                spreadRadius: 1 * glow,
+              ),
+            ],
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(Icons.local_fire_department, size: 12, color: Color.lerp(const Color(0xFFFF6D00), const Color(0xFFFFD600), glow)),
+              const SizedBox(width: 2),
+              Text(
+                badge.label,
+                style: const TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: Color(0xFFE65100),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildBadgeChip(StoreBadge badge) {
     Color color;
     switch (badge.type) {
@@ -1227,6 +1586,8 @@ class _SettingsDialog extends StatefulWidget {
   final TextEditingController couponController;
   final bool adsRemoved;
   final bool isLoggedIn;
+  final bool isAdmin;
+  final VoidCallback? onAdminTap;
   final void Function(String) onSaveProfile;
   final Future<Map<String, dynamic>> Function(String) onRedeemCoupon;
 
@@ -1235,6 +1596,8 @@ class _SettingsDialog extends StatefulWidget {
     required this.couponController,
     required this.adsRemoved,
     required this.isLoggedIn,
+    this.isAdmin = false,
+    this.onAdminTap,
     required this.onSaveProfile,
     required this.onRedeemCoupon,
   });
@@ -1593,6 +1956,9 @@ class _SettingsDialogState extends State<_SettingsDialog> {
   String? _couponMessage;
   bool? _couponSuccess;
   late bool _adsRemoved;
+  bool _isDonating = false;
+  String? _donationMessage;
+  bool? _donationSuccess;
 
   @override
   void initState() {
@@ -1627,6 +1993,45 @@ class _SettingsDialogState extends State<_SettingsDialog> {
         widget.couponController.clear();
       }
     });
+  }
+
+  Future<void> _handleDonation() async {
+    setState(() {
+      _isDonating = true;
+      _donationMessage = null;
+    });
+
+    final donation = DonationService();
+    donation.onPurchaseResult = (success, message) {
+      if (!mounted) return;
+      setState(() {
+        _isDonating = false;
+        _donationSuccess = success;
+        _donationMessage = message;
+      });
+    };
+
+    if (!donation.isAvailable) {
+      // 스토어 미연결 시 초기화 시도
+      await donation.initialize();
+    }
+
+    if (!donation.isAvailable) {
+      if (!mounted) return;
+      setState(() {
+        _isDonating = false;
+        _donationSuccess = false;
+        _donationMessage = '스토어에 연결할 수 없습니다. 나중에 다시 시도해 주세요.';
+      });
+      return;
+    }
+
+    final started = await donation.buyCoffee();
+    if (!started && mounted) {
+      setState(() {
+        _isDonating = false;
+      });
+    }
   }
 
   @override
@@ -1752,6 +2157,82 @@ class _SettingsDialogState extends State<_SettingsDialog> {
                 ),
               ),
 
+              const SizedBox(height: 16),
+
+              // 커피 후원 섹션
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFFFF8E1),
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: const Color(0xFFFFD54F)),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        const Text('☕', style: TextStyle(fontSize: 22)),
+                        const SizedBox(width: 8),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                '개발자에게 커피 후원하기',
+                                style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Color(0xFF5D4037)),
+                              ),
+                              SizedBox(height: 2),
+                              Text(
+                                '앱 개발에 큰 힘이 됩니다!',
+                                style: TextStyle(fontSize: 12, color: Color(0xFF8D6E63)),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _isDonating ? null : _handleDonation,
+                        icon: _isDonating
+                            ? const SizedBox(
+                                width: 16, height: 16,
+                                child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                              )
+                            : const Text('☕', style: TextStyle(fontSize: 16)),
+                        label: Text(
+                          _isDonating ? '처리 중...' : '커피 한 잔 후원하기',
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF6D4C41),
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                          elevation: 2,
+                        ),
+                      ),
+                    ),
+                    if (_donationMessage != null) ...[
+                      const SizedBox(height: 8),
+                      Text(
+                        _donationMessage!,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: _donationSuccess == true ? Colors.green.shade700 : Colors.red,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+
               const SizedBox(height: 20),
               const Divider(),
               const SizedBox(height: 16),
@@ -1804,6 +2285,25 @@ class _SettingsDialogState extends State<_SettingsDialog> {
                   ),
                 ),
               ),
+              // 관리자 바로가기
+              if (widget.isAdmin && widget.onAdminTap != null) ...[
+                const SizedBox(height: 16),
+                const Divider(),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  child: OutlinedButton.icon(
+                    onPressed: widget.onAdminTap,
+                    icon: Icon(Icons.admin_panel_settings, size: 18, color: Colors.purple.shade700),
+                    label: Text('관리자 페이지', style: TextStyle(color: Colors.purple.shade700, fontWeight: FontWeight.w600)),
+                    style: OutlinedButton.styleFrom(
+                      side: BorderSide(color: Colors.purple.shade200),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                  ),
+                ),
+              ],
             ],
           ),
         ),

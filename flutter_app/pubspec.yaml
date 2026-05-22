@@ -40,6 +40,7 @@ dependencies:
   flutter_map: ^6.0.0
   latlong2: ^0.9.1
   url_launcher: ^6.3.2
+  in_app_purchase: ^3.2.0
 
 dev_dependencies:
   flutter_test:
@@ -70,6 +71,10 @@ flutter:
     - assets/zero_base_speedlotto_2000_stores_latest.json
     - assets/zero_base_speedlotto_1000_stores_latest.json
     - assets/zero_base_speedlotto_500_stores_latest.json
+    - assets/app_icon_internal.png
+    - assets/app_icon_512.png
+    - assets/app_icon_1024.png
+    - assets/pig.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

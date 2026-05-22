@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'screens/home_screen.dart';
 import 'services/local_data_service.dart';
+import 'services/donation_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,6 +17,9 @@ void main() async {
 
   // Google Mobile Ads 초기화
   MobileAds.instance.initialize();
+
+  // 인앱결제(커피 후원) 초기화
+  DonationService().initialize();
 
   runApp(const LuckyLottoApp());
 }
@@ -34,9 +38,9 @@ class LuckyLottoApp extends StatelessWidget {
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
           colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFFE53935),
-            primary: const Color(0xFFE53935),
-            secondary: const Color(0xFFFF6B6B),
+            seedColor: const Color(0xFF1565C0),
+            primary: const Color(0xFF1565C0),
+            secondary: const Color(0xFF42A5F5),
             surface: Colors.white,
             background: const Color(0xFFF5F5F5),
           ),
@@ -57,7 +61,7 @@ class LuckyLottoApp extends StatelessWidget {
           ),
           bottomNavigationBarTheme: const BottomNavigationBarThemeData(
             backgroundColor: Colors.white,
-            selectedItemColor: Color(0xFFE53935),
+            selectedItemColor: Color(0xFF1565C0),
             unselectedItemColor: Color(0xFFAAAAAA),
             type: BottomNavigationBarType.fixed,
             elevation: 8,
@@ -75,7 +79,7 @@ class LuckyLottoApp extends StatelessWidget {
           ),
           elevatedButtonTheme: ElevatedButtonThemeData(
             style: ElevatedButton.styleFrom(
-              backgroundColor: const Color(0xFFE53935),
+              backgroundColor: const Color(0xFF1565C0),
               foregroundColor: Colors.white,
               elevation: 0,
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -104,7 +108,7 @@ class LuckyLottoApp extends StatelessWidget {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0xFFE53935), width: 1.5),
+              borderSide: const BorderSide(color: Color(0xFF1565C0), width: 1.5),
             ),
             contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
           ),

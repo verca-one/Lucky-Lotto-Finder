@@ -4,20 +4,31 @@ import 'ai_number_screen.dart';
 import 'golden_wave_screen.dart';
 import 'saju_number_screen.dart';
 import 'number_meaning_screen.dart';
+import 'ac_value_screen.dart';
+import 'zone_balance_screen.dart';
+import 'tax_calculator_screen.dart';
 
 class RecommendScreen extends StatefulWidget {
   const RecommendScreen({super.key});
 
   @override
-  State<RecommendScreen> createState() => _RecommendScreenState();
+  State<RecommendScreen> createState() => RecommendScreenState();
 }
 
-class _RecommendScreenState extends State<RecommendScreen> {
-  // null: 메인메뉴, 'ai_sub': AI하위메뉴, 'ai_7183', 'ai_golden', 'random', 'meaning'
+class RecommendScreenState extends State<RecommendScreen> {
+  // null: 메인메뉴, 'tax': 세금계산기, 'ai_sub': AI하위메뉴, ...
   String? _currentSub;
+
+  /// 메인 메뉴로 초기화
+  void resetToMain() {
+    setState(() => _currentSub = null);
+  }
 
   @override
   Widget build(BuildContext context) {
+    if (_currentSub == 'tax') {
+      return _wrapWithBack(const TaxCalculatorContent(), '도구', null);
+    }
     if (_currentSub == 'ai_7183') {
       return _wrapWithBack(const AiNumberContent(), 'AI 조합번호 생성', 'ai_sub');
     }
@@ -26,6 +37,12 @@ class _RecommendScreenState extends State<RecommendScreen> {
     }
     if (_currentSub == 'ai_saju') {
       return _wrapWithBack(const SajuNumberContent(), 'AI 조합번호 생성', 'ai_sub');
+    }
+    if (_currentSub == 'ai_ac') {
+      return _wrapWithBack(const AcValueContent(), 'AI 조합번호 생성', 'ai_sub');
+    }
+    if (_currentSub == 'ai_zone') {
+      return _wrapWithBack(const ZoneBalanceContent(), 'AI 조합번호 생성', 'ai_sub');
     }
     if (_currentSub == 'random') {
       return _wrapWithBack(const RandomNumberContent(), '번호 추천', null);
@@ -43,17 +60,26 @@ class _RecommendScreenState extends State<RecommendScreen> {
     return Column(
       children: [
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
           child: Row(
             children: [
-              GestureDetector(
+              InkWell(
                 onTap: () => setState(() => _currentSub = backTo),
-                child: Row(
-                  children: [
-                    const Icon(Icons.arrow_back_ios_rounded, size: 18, color: Color(0xFF666666)),
-                    const SizedBox(width: 4),
-                    Text(backLabel, style: const TextStyle(fontSize: 14, color: Color(0xFF666666), fontWeight: FontWeight.w500)),
-                  ],
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF5F5F5),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.arrow_back_rounded, size: 20, color: Color(0xFF1565C0)),
+                      const SizedBox(width: 6),
+                      Text(backLabel, style: const TextStyle(fontSize: 14, color: Color(0xFF333333), fontWeight: FontWeight.w600)),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -64,7 +90,7 @@ class _RecommendScreenState extends State<RecommendScreen> {
     );
   }
 
-  /// 메인 메뉴: AI 조합번호 생성 / 나만의 번호 생성 / 번호별 의미
+  /// 메인 메뉴: 세금계산기 / 번호 추천
   Widget _buildMenu() {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(20),
@@ -72,15 +98,39 @@ class _RecommendScreenState extends State<RecommendScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            '번호 추천',
+            '도구',
             style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 8),
           Text(
-            '나만의 행운 번호를 만들어보세요',
+            '로또 당첨금 계산과 번호 추천',
             style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
           ),
           const SizedBox(height: 24),
+
+          // ─── 세금계산기 ───
+          _buildMenuCard(
+            icon: Icons.receipt_long_rounded,
+            iconColor: const Color(0xFF1565C0),
+            bgColor: const Color(0xFFE3F2FD),
+            borderColor: const Color(0xFF90CAF9),
+            title: '로또 세금계산기',
+            subtitle: '당첨금 실수령액 계산',
+            onTap: () => setState(() => _currentSub = 'tax'),
+          ),
+          const SizedBox(height: 24),
+
+          // ─── 번호 추천 섹션 ───
+          Text(
+            '번호 추천',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.grey.shade700),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '나만의 행운 번호를 만들어보세요',
+            style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
+          ),
+          const SizedBox(height: 16),
 
           _buildMenuCard(
             icon: Icons.auto_awesome,
@@ -118,23 +168,32 @@ class _RecommendScreenState extends State<RecommendScreen> {
     );
   }
 
-  /// AI 조합번호 하위 메뉴: 7183 법칙 / 황금파동
+  /// AI 조합번호 하위 메뉴
   Widget _buildAiSubMenu() {
     return Column(
       children: [
         // 뒤로가기 헤더
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
           child: Row(
             children: [
-              GestureDetector(
+              InkWell(
                 onTap: () => setState(() => _currentSub = null),
-                child: Row(
-                  children: [
-                    const Icon(Icons.arrow_back_ios_rounded, size: 18, color: Color(0xFF666666)),
-                    const SizedBox(width: 4),
-                    const Text('번호 추천', style: TextStyle(fontSize: 14, color: Color(0xFF666666), fontWeight: FontWeight.w500)),
-                  ],
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF5F5F5),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.arrow_back_rounded, size: 20, color: Color(0xFF1565C0)),
+                      const SizedBox(width: 6),
+                      const Text('도구', style: TextStyle(fontSize: 14, color: Color(0xFF333333), fontWeight: FontWeight.w600)),
+                    ],
+                  ),
                 ),
               ),
             ],
@@ -142,20 +201,20 @@ class _RecommendScreenState extends State<RecommendScreen> {
         ),
         Expanded(
           child: SingleChildScrollView(
-            padding: const EdgeInsets.all(20),
+            padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  'AI 조합번호 생성',
-                  style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+                // pig.png 이미지
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(20),
+                  child: Image.asset(
+                    'assets/pig.png',
+                    width: double.infinity,
+                    fit: BoxFit.fitWidth,
+                  ),
                 ),
-                const SizedBox(height: 8),
-                Text(
-                  'AI 법칙을 선택하여 번호를 생성하세요',
-                  style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
-                ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 16),
 
                 _buildMenuCard(
                   icon: Icons.auto_awesome,
@@ -187,6 +246,28 @@ class _RecommendScreenState extends State<RecommendScreen> {
                   title: '오늘의 사주 로또번호',
                   subtitle: '생년월일시 오행 기반 번호 추천',
                   onTap: () => setState(() => _currentSub = 'ai_saju'),
+                ),
+                const SizedBox(height: 16),
+
+                _buildMenuCard(
+                  icon: Icons.calculate_rounded,
+                  iconColor: Colors.indigo,
+                  bgColor: Colors.indigo.shade50,
+                  borderColor: Colors.indigo.shade200,
+                  title: 'AC값 분석법',
+                  subtitle: '산술 복잡도 기반 조합 최적화',
+                  onTap: () => setState(() => _currentSub = 'ai_ac'),
+                ),
+                const SizedBox(height: 16),
+
+                _buildMenuCard(
+                  icon: Icons.equalizer_rounded,
+                  iconColor: Colors.teal,
+                  bgColor: Colors.teal.shade50,
+                  borderColor: Colors.teal.shade200,
+                  title: '구간밸런스 분석법',
+                  subtitle: '5구간 분포 최적화 기반 번호 생성',
+                  onTap: () => setState(() => _currentSub = 'ai_zone'),
                 ),
               ],
             ),

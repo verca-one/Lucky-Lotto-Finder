@@ -24,34 +24,43 @@ class BadgeService {
   // 캐시: dhlottery_code → badges
   static Map<String, List<StoreBadge>>? _badgeCache;
 
+  // 배지 로딩 실패 여부
+  static bool _loadFailed = false;
+  static bool get loadFailed => _loadFailed;
+
   /// store_badges 테이블에서 배지 데이터 로드
   static Future<void> loadBadges(List<String> dhlotteryCodes, {String? lotteryType}) async {
     _badgeCache ??= {};
+    _loadFailed = false;
 
     if (dhlotteryCodes.isEmpty) return;
 
-    final rawBadges = await SupabaseService.getStoreBadges(
-      dhlotteryCodes,
-      lotteryType: lotteryType,
-    );
+    try {
+      final rawBadges = await SupabaseService.getStoreBadges(
+        dhlotteryCodes,
+        lotteryType: lotteryType,
+      );
 
-    for (var row in rawBadges) {
-      final code = row['dhlottery_code'] as String;
-      final badgeType = _parseBadgeType(row['badge_type'] as String);
-      final label = row['badge_label'] as String;
+      for (var row in rawBadges) {
+        final code = row['dhlottery_code'] as String;
+        final badgeType = _parseBadgeType(row['badge_type'] as String);
+        final label = row['badge_label'] as String;
 
-      _badgeCache!.putIfAbsent(code, () => []);
-      // 중복 방지
-      final exists = _badgeCache![code]!.any((b) => b.label == label);
-      if (!exists) {
-        _badgeCache![code]!.add(StoreBadge(label, badgeType));
+        _badgeCache!.putIfAbsent(code, () => []);
+        // 중복 방지
+        final exists = _badgeCache![code]!.any((b) => b.label == label);
+        if (!exists) {
+          _badgeCache![code]!.add(StoreBadge(label, badgeType));
+        }
       }
-    }
 
-    // priority 기준 정렬
-    for (var entry in _badgeCache!.entries) {
-      // hot → first → second → streak → regional → rank → pattern 순
-      entry.value.sort((a, b) => _typeOrder(a.type).compareTo(_typeOrder(b.type)));
+      // priority 기준 정렬
+      for (var entry in _badgeCache!.entries) {
+        // hot → first → second → streak → regional → rank → pattern 순
+        entry.value.sort((a, b) => _typeOrder(a.type).compareTo(_typeOrder(b.type)));
+      }
+    } catch (_) {
+      _loadFailed = true;
     }
   }
 

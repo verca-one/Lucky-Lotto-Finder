@@ -850,6 +850,96 @@ class SupabaseService {
     }
   }
 
+  // ========================
+  // 스피또 크롤링 상태 (관리자용)
+  // ========================
+
+  /// 스피또 회차별 당첨지점 수 조회
+  static Future<Map<int, Map<String, int>>> getSpeetoStoreCountsByRound() async {
+    try {
+      final response = await _supabase
+          .from('winning_history')
+          .select('round, prize_tier')
+          .or('lottery_type.eq.speedlotto_2000,lottery_type.eq.speedlotto_1000,lottery_type.eq.speedlotto_500');
+
+      final Map<int, Map<String, int>> result = {};
+      for (var row in (response as List)) {
+        final round = row['round'] as int;
+        final tier = row['prize_tier'] as String? ?? '';
+        result.putIfAbsent(round, () => {'total': 0, 'first': 0, 'second': 0});
+        result[round]!['total'] = (result[round]!['total'] ?? 0) + 1;
+        if (tier == '1') result[round]!['first'] = (result[round]!['first'] ?? 0) + 1;
+        if (tier == '2') result[round]!['second'] = (result[round]!['second'] ?? 0) + 1;
+      }
+      return result;
+    } catch (e) {
+      print('스피또 지점 수 조회 오류: $e');
+      return {};
+    }
+  }
+
+  /// 스피또 당첨번호 전체 조회 (회차 목록 대용)
+  static Future<List<Map<String, dynamic>>> getSpeetoRounds() async {
+    try {
+      // winning_history에서 스피또 회차만 distinct하게 가져옴
+      final response = await _supabase
+          .from('winning_history')
+          .select('round')
+          .or('lottery_type.eq.speedlotto_2000,lottery_type.eq.speedlotto_1000,lottery_type.eq.speedlotto_500')
+          .order('round', ascending: false);
+
+      // 중복 제거
+      final Set<int> seen = {};
+      final List<Map<String, dynamic>> unique = [];
+      for (var row in (response as List)) {
+        final round = row['round'] as int;
+        if (seen.add(round)) {
+          unique.add({'round': round});
+        }
+      }
+      return unique;
+    } catch (e) {
+      print('스피또 회차 조회 오류: $e');
+      return [];
+    }
+  }
+
+  // ========================
+  // 크롤링 로그 (관리자용)
+  // ========================
+
+  /// 최근 크롤링 로그 조회
+  static Future<List<Map<String, dynamic>>> getCrawlLogs({int limit = 30}) async {
+    try {
+      final response = await _supabase
+          .from('crawl_logs')
+          .select()
+          .order('started_at', ascending: false)
+          .limit(limit);
+      return (response as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      print('크롤링 로그 조회 오류: $e');
+      return [];
+    }
+  }
+
+  /// 최근 성공한 크롤링 로그 조회 (앱 안내문용)
+  static Future<List<Map<String, dynamic>>> getRecentSuccessLogs({int hours = 24}) async {
+    try {
+      final since = DateTime.now().subtract(Duration(hours: hours)).toUtc().toIso8601String();
+      final response = await _supabase
+          .from('crawl_logs')
+          .select()
+          .eq('status', 'success')
+          .gte('completed_at', since)
+          .order('completed_at', ascending: false);
+      return (response as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      print('최근 크롤링 로그 조회 오류: $e');
+      return [];
+    }
+  }
+
   /// 관리자: 전체 쿠폰 목록 조회
   static Future<List<Map<String, dynamic>>> getAllCoupons() async {
     try {

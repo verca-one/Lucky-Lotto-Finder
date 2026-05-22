@@ -259,7 +259,7 @@ class _FavoritesScreenState extends State<FavoritesScreen> {
                               height: 18,
                               child: CircularProgressIndicator(
                                 strokeWidth: 2,
-                                color: Color(0xFFE53935),
+                                color: Color(0xFF1565C0),
                               ),
                             )
                           : const Icon(Icons.refresh_rounded, color: Color(0xFF666666), size: 20),

@@ -162,13 +162,19 @@ class _RegionScreenState extends State<RegionScreen> {
   @override
   Widget build(BuildContext context) {
     if (_isLoading) {
-      return const Center(
+      return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            CircularProgressIndicator(),
-            SizedBox(height: 16),
-            Text('지역 데이터 로딩중...'),
+            SizedBox(
+              width: 40, height: 40,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                color: const Color(0xFF1565C0),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text('지역 데이터 로딩중...', style: TextStyle(fontSize: 14, color: Colors.grey.shade500)),
           ],
         ),
       );
@@ -176,15 +182,31 @@ class _RegionScreenState extends State<RegionScreen> {
 
     if (_error != null) {
       return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, size: 64, color: Colors.red),
-            const SizedBox(height: 16),
-            Text('오류: $_error'),
-            const SizedBox(height: 16),
-            ElevatedButton(onPressed: _loadStores, child: const Text('다시 시도')),
-          ],
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(Icons.wifi_off_rounded, size: 48, color: Colors.red.shade300),
+              ),
+              const SizedBox(height: 20),
+              Text('데이터를 불러올 수 없습니다', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
+              const SizedBox(height: 8),
+              Text('네트워크 연결을 확인해주세요', style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
+              const SizedBox(height: 24),
+              ElevatedButton.icon(
+                onPressed: _loadStores,
+                icon: const Icon(Icons.refresh_rounded, size: 18),
+                label: const Text('다시 시도'),
+              ),
+            ],
+          ),
         ),
       );
     }
@@ -199,26 +221,6 @@ class _RegionScreenState extends State<RegionScreen> {
     );
   }
 
-  Widget _buildGameChip(String value, String label) {
-    final isSelected = _selectedGame == value;
-    return ChoiceChip(
-      label: Text(label, style: TextStyle(
-        fontSize: 12,
-        color: isSelected ? Colors.white : Colors.black87,
-      )),
-      selected: isSelected,
-      selectedColor: Colors.blue,
-      onSelected: (selected) {
-        if (selected) {
-          setState(() {
-            _selectedGame = value;
-          });
-          _loadStores();
-        }
-      },
-    );
-  }
-
   Widget _buildFavoritesSection() {
     if (_favorites.isEmpty) return const SizedBox.shrink();
 
@@ -228,7 +230,6 @@ class _RegionScreenState extends State<RegionScreen> {
 
     if (favStores.isEmpty) return const SizedBox.shrink();
 
-    // 중복 제거 (같은 dhlotteryCode)
     final seen = <String>{};
     final uniqueFavStores = favStores.where((s) {
       if (seen.contains(s.dhlotteryCode)) return false;
@@ -239,19 +240,19 @@ class _RegionScreenState extends State<RegionScreen> {
     uniqueFavStores.sort((a, b) => (b.totalCount ?? 0).compareTo(a.totalCount ?? 0));
 
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16),
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 4),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.amber.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.amber.shade300),
+        color: const Color(0xFFFFF8E1),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFFFE082)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
             children: [
-              Icon(Icons.star, color: Colors.amber.shade700, size: 20),
+              Icon(Icons.star_rounded, color: Colors.amber.shade700, size: 20),
               const SizedBox(width: 6),
               Text(
                 '즐겨찾기 (${uniqueFavStores.length})',
@@ -269,7 +270,7 @@ class _RegionScreenState extends State<RegionScreen> {
             style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
           ),
           const SizedBox(height: 8),
-          ...uniqueFavStores.take(5).map((store) => _buildStoreRow(store, showRegion: true)),
+          ...uniqueFavStores.take(5).map((store) => _buildFavStoreRow(store)),
           if (uniqueFavStores.length > 5)
             Padding(
               padding: const EdgeInsets.only(top: 4),
@@ -282,6 +283,51 @@ class _RegionScreenState extends State<RegionScreen> {
       ),
     );
   }
+
+  Widget _buildFavStoreRow(LotteryStore store) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  store.storeName,
+                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
+                  overflow: TextOverflow.ellipsis,
+                ),
+                Text(
+                  store.region,
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            '${store.totalCount ?? 0}회',
+            style: const TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF1565C0),
+            ),
+          ),
+          const SizedBox(width: 4),
+          InkWell(
+            onTap: () => _toggleFavorite(store.dhlotteryCode),
+            child: Icon(
+              Icons.star_rounded,
+              color: Colors.amber,
+              size: 20,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // _buildStoreRow removed — replaced by _buildFavStoreRow
 
   // 박스 안에 박스 구조 (도 > 시/구 > 판매점)
   Widget _buildExpandableContent() {
@@ -301,33 +347,77 @@ class _RegionScreenState extends State<RegionScreen> {
       });
 
     return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       itemCount: sorted.length,
       itemBuilder: (context, index) {
         final entry = sorted[index];
         final totalWins = entry.value.fold<int>(0, (sum, s) => sum + (s.totalCount ?? 0));
-        final storeCount = entry.value.toSet().length;
+        final seen = <String>{};
+        final storeCount = entry.value.where((s) {
+          if (seen.contains(s.dhlotteryCode)) return false;
+          seen.add(s.dhlotteryCode);
+          return true;
+        }).length;
 
-        return Card(
-          margin: const EdgeInsets.only(bottom: 6),
+        return Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: const Color(0xFFE0E0E0), width: 1),
+          ),
           clipBehavior: Clip.antiAlias,
-          color: Colors.blue.shade50,
-          child: ExpansionTile(
-            tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-            iconColor: Colors.blue.shade700,
-            collapsedIconColor: Colors.blue.shade400,
-            title: Text(
-              entry.key,
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15, color: Colors.blue.shade900),
+          child: Theme(
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+              tilePadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+              childrenPadding: EdgeInsets.zero,
+              iconColor: const Color(0xFF1565C0),
+              collapsedIconColor: const Color(0xFF999999),
+              leading: Container(
+                width: 36, height: 36,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE3F2FD),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.location_city_rounded, size: 18, color: Color(0xFF1565C0)),
+              ),
+              title: Text(
+                entry.key,
+                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15, color: Color(0xFF1A1A1A)),
+              ),
+              subtitle: Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Row(
+                  children: [
+                    _buildMiniTag('$storeCount개', const Color(0xFF1565C0)),
+                    const SizedBox(width: 6),
+                    _buildMiniTag('당첨 $totalWins회', const Color(0xFFFF8F00)),
+                  ],
+                ),
+              ),
+              children: [
+                Divider(height: 1, color: Colors.grey.shade200),
+                _buildSiGuExpansion(entry.value, entry.key),
+              ],
             ),
-            subtitle: Text(
-              '판매점 $storeCount개 · 총 당첨 $totalWins회',
-              style: TextStyle(fontSize: 12, color: Colors.blue.shade400),
-            ),
-            children: [_buildSiGuExpansion(entry.value, entry.key)],
           ),
         );
       },
+    );
+  }
+
+  Widget _buildMiniTag(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(fontSize: 11, color: color, fontWeight: FontWeight.w600),
+      ),
     );
   }
 
@@ -347,7 +437,7 @@ class _RegionScreenState extends State<RegionScreen> {
       });
 
     return Container(
-      color: Colors.grey.shade100,
+      color: const Color(0xFFFAFAFA),
       child: Column(
         children: sorted.map((entry) {
           final totalWins = entry.value.fold<int>(0, (sum, s) => sum + (s.totalCount ?? 0));
@@ -356,25 +446,45 @@ class _RegionScreenState extends State<RegionScreen> {
 
           return Container(
             decoration: BoxDecoration(
-              border: Border(bottom: BorderSide(color: Colors.grey.shade300, width: 0.5)),
+              border: Border(bottom: BorderSide(color: Colors.grey.shade200, width: 0.5)),
             ),
-            child: ExpansionTile(
-              backgroundColor: Colors.grey.shade50,
-              tilePadding: const EdgeInsets.symmetric(horizontal: 24),
-              title: Text(
-                entry.key,
-                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Colors.grey.shade800),
+            child: Theme(
+              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                backgroundColor: const Color(0xFFF5F5F5),
+                tilePadding: const EdgeInsets.symmetric(horizontal: 20),
+                iconColor: const Color(0xFF1565C0),
+                collapsedIconColor: const Color(0xFFBBBBBB),
+                title: Row(
+                  children: [
+                    Container(
+                      width: 6, height: 6,
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1565C0).withValues(alpha: 0.4),
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      entry.key,
+                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14, color: Color(0xFF333333)),
+                    ),
+                  ],
+                ),
+                subtitle: Padding(
+                  padding: const EdgeInsets.only(left: 16),
+                  child: Text(
+                    '$storeCount개 · 당첨 $totalWins회',
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                  ),
+                ),
+                onExpansionChanged: (expanded) {
+                  if (expanded) {
+                    _loadBadgesForSiGu(siGuKey, entry.value);
+                  }
+                },
+                children: [_buildDongExpansion(entry.value, siGuKey)],
               ),
-              subtitle: Text(
-                '판매점 $storeCount개 · 당첨 $totalWins회',
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
-              ),
-            onExpansionChanged: (expanded) {
-              if (expanded) {
-                _loadBadgesForSiGu(siGuKey, entry.value);
-              }
-            },
-            children: [_buildDongExpansion(entry.value, siGuKey)],
             ),
           );
         }).toList(),
@@ -405,17 +515,31 @@ class _RegionScreenState extends State<RegionScreen> {
           final storeCount = entry.value.length;
           final dongKey = '$siGuKey/${entry.key}';
 
-          return ExpansionTile(
-            tilePadding: const EdgeInsets.symmetric(horizontal: 36),
-            title: Text(
-              entry.key,
-              style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+          return Theme(
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+              tilePadding: const EdgeInsets.symmetric(horizontal: 32),
+              iconColor: const Color(0xFF1565C0),
+              collapsedIconColor: const Color(0xFFCCCCCC),
+              title: Row(
+                children: [
+                  Icon(Icons.subdirectory_arrow_right_rounded, size: 14, color: Colors.grey.shade400),
+                  const SizedBox(width: 8),
+                  Text(
+                    entry.key,
+                    style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13, color: Color(0xFF444444)),
+                  ),
+                ],
+              ),
+              subtitle: Padding(
+                padding: const EdgeInsets.only(left: 22),
+                child: Text(
+                  '$storeCount개 · $totalWins회',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade400),
+                ),
+              ),
+              children: [_buildStoreListInBox(entry.value, siGuKey: dongKey)],
             ),
-            subtitle: Text(
-              '$storeCount개 · $totalWins회',
-              style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
-            ),
-            children: [_buildStoreListInBox(entry.value, siGuKey: dongKey)],
           );
         }).toList(),
       ),
@@ -453,16 +577,32 @@ class _RegionScreenState extends State<RegionScreen> {
           if (remaining > 0)
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
-              child: OutlinedButton(
-                onPressed: () {
+              child: InkWell(
+                onTap: () {
                   setState(() {
                     _siGuShowCount[siGuKey] = showCount + 20;
                   });
                 },
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size(double.infinity, 40),
+                borderRadius: BorderRadius.circular(10),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF5F5F5),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.add_rounded, size: 16, color: Color(0xFF1565C0)),
+                      const SizedBox(width: 6),
+                      Text(
+                        '더보기 ($remaining개 남음)',
+                        style: const TextStyle(fontSize: 13, color: Color(0xFF1565C0), fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
                 ),
-                child: Text('더보기 ($remaining개 남음)'),
               ),
             ),
         ],
@@ -470,51 +610,7 @@ class _RegionScreenState extends State<RegionScreen> {
     );
   }
 
-  Widget _buildStoreRow(LotteryStore store, {bool showRegion = false}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  store.storeName,
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600),
-                  overflow: TextOverflow.ellipsis,
-                ),
-                if (showRegion)
-                  Text(
-                    store.region,
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-                  ),
-              ],
-            ),
-          ),
-          Text(
-            '${store.totalCount ?? 0}회',
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              color: Colors.blue.shade700,
-            ),
-          ),
-          const SizedBox(width: 4),
-          InkWell(
-            onTap: () => _toggleFavorite(store.dhlotteryCode),
-            child: Icon(
-              _favorites.contains(store.dhlotteryCode) ? Icons.star : Icons.star_border,
-              color: _favorites.contains(store.dhlotteryCode)
-                  ? Colors.amber
-                  : Colors.grey.shade400,
-              size: 20,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  // _buildStoreRow removed — favorites section now handled in dedicated tab
 
   // 시/구별 표시 개수 추적
   final Map<String, int> _siGuShowCount = {};
@@ -570,23 +666,14 @@ class _RegionScreenState extends State<RegionScreen> {
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: isExpanded
-              ? Colors.blue.shade50
-              : (isFav ? Colors.amber.shade50 : Colors.white),
-          borderRadius: BorderRadius.circular(12),
+          color: isExpanded ? const Color(0xFFF0F7FF) : Colors.white,
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: isExpanded ? Colors.blue.shade200 : Colors.grey.shade200,
-            width: 1,
+            color: isExpanded ? const Color(0xFF90CAF9) : const Color(0xFFEEEEEE),
+            width: isExpanded ? 1.5 : 1,
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 4,
-              offset: const Offset(0, 2),
-            ),
-          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -597,7 +684,7 @@ class _RegionScreenState extends State<RegionScreen> {
                 Expanded(
                   child: Text(
                     store.storeName,
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF1A1A1A)),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -607,8 +694,8 @@ class _RegionScreenState extends State<RegionScreen> {
                   child: Padding(
                     padding: const EdgeInsets.all(4),
                     child: Icon(
-                      isFav ? Icons.star : Icons.star_border,
-                      color: isFav ? Colors.amber : Colors.grey.shade400,
+                      isFav ? Icons.star_rounded : Icons.star_border_rounded,
+                      color: isFav ? Colors.amber : Colors.grey.shade300,
                       size: 24,
                     ),
                   ),
@@ -616,13 +703,21 @@ class _RegionScreenState extends State<RegionScreen> {
               ],
             ),
             const SizedBox(height: 4),
-            Text(
-              store.address,
-              style: TextStyle(fontSize: 11, color: Colors.grey.shade600),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
+            Row(
+              children: [
+                Icon(Icons.place_outlined, size: 12, color: Colors.grey.shade400),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    store.address,
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
             ),
-            const SizedBox(height: 6),
+            const SizedBox(height: 8),
             // 배지
             Wrap(
               spacing: 6,
@@ -637,60 +732,77 @@ class _RegionScreenState extends State<RegionScreen> {
             ),
             // ── 확장 영역 ──
             if (isExpanded) ...[
-              const SizedBox(height: 10),
-              Divider(height: 1, color: Colors.grey.shade300),
-              const SizedBox(height: 10),
-              // 지도 버튼
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _openMap('naver', store),
-                      icon: const Icon(Icons.map_outlined, size: 16),
-                      label: const Text('네이버지도', style: TextStyle(fontSize: 13)),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _openMap('kakao', store),
-                      icon: const Icon(Icons.place_outlined, size: 16),
-                      label: const Text('카카오지도', style: TextStyle(fontSize: 13)),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              // 당첨 정보
-              Row(
-                children: [
-                  if ((store.firstCount ?? 0) > 0)
-                    _buildInfoChip('로또 1등 ${store.firstCount}회', Colors.red.shade700, Colors.red.shade50),
-                  if ((store.firstCount ?? 0) > 0) const SizedBox(width: 6),
-                  if ((store.secondCount ?? 0) > 0)
-                    _buildInfoChip('로또 2등 ${store.secondCount}회', Colors.orange.shade700, Colors.orange.shade50),
-                ],
-              ),
               const SizedBox(height: 12),
-              Divider(height: 1, color: Colors.grey.shade300),
+              Container(
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: const Color(0xFFE0E0E0)),
+                ),
+                child: Column(
+                  children: [
+                    // 지도 버튼
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildMapButton('네이버지도', Icons.map_outlined, () => _openMap('naver', store)),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: _buildMapButton('카카오지도', Icons.place_outlined, () => _openMap('kakao', store)),
+                        ),
+                      ],
+                    ),
+                    if ((store.firstCount ?? 0) > 0 || (store.secondCount ?? 0) > 0) ...[
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          if ((store.firstCount ?? 0) > 0)
+                            _buildInfoChip('1등 ${store.firstCount}회', const Color(0xFFD32F2F), const Color(0xFFFFEBEE)),
+                          if ((store.firstCount ?? 0) > 0) const SizedBox(width: 6),
+                          if ((store.secondCount ?? 0) > 0)
+                            _buildInfoChip('2등 ${store.secondCount}회', const Color(0xFFE65100), const Color(0xFFFFF3E0)),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
               const SizedBox(height: 10),
               // 판매점 평가
               _InlineReviewSection(dhlotteryCode: store.dhlotteryCode),
             ],
             // 확장 아이콘
             if (!isExpanded)
-              Align(
-                alignment: Alignment.center,
-                child: Icon(Icons.expand_more, color: Colors.grey.shade400, size: 18),
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Center(
+                  child: Icon(Icons.keyboard_arrow_down_rounded, color: Colors.grey.shade300, size: 20),
+                ),
               ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMapButton(String label, IconData icon, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        decoration: BoxDecoration(
+          color: const Color(0xFFF5F5F5),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(icon, size: 16, color: const Color(0xFF666666)),
+            const SizedBox(width: 6),
+            Text(label, style: const TextStyle(fontSize: 13, color: Color(0xFF555555), fontWeight: FontWeight.w500)),
           ],
         ),
       ),
