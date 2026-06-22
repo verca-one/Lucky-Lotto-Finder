@@ -52,6 +52,13 @@ jobs:
       run: |
         python lotto_verca_uploader.py
 
+    - name: Recalculate store counts from winning_history (로또)
+      env:
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      run: |
+        python recalculate_store_counts.py lotto
+
     - name: Recalculate badges (로또)
       env:
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
