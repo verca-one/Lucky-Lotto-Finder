@@ -5,7 +5,7 @@ import 'package:in_app_purchase/in_app_purchase.dart';
 
 /// 개발자 커피 후원 인앱결제 서비스
 class DonationService {
-  static const String _coffeeProductId = 'donation_coffee';
+  static const String _coffeeProductId = 'coffee3000';
 
   static final DonationService _instance = DonationService._();
   factory DonationService() => _instance;
