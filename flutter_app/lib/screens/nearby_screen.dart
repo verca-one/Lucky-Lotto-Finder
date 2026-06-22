@@ -5,10 +5,12 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:math' as math;
 import '../models/lottery_store.dart';
 import '../services/supabase_service.dart';
 import '../services/badge_service.dart';
+import '../services/ad_service.dart';
 import '../widgets/store_detail_popup.dart';
 import '../services/favorites_notifier.dart';
 
@@ -24,6 +26,8 @@ class _NearbyScreenState extends State<NearbyScreen> {
   List<LotteryStore>? _nearbyStores;
   bool _isLoading = false;
   bool _isSearching = false; // 이 지역 검색 로딩
+  bool _rewardedAdEnabled = false;
+  bool _isLoadingRewardedAd = false;
   String? _error;
   final String _selectedGame = 'lotto';
   double _searchRadiusKm = 1.3;
@@ -40,6 +44,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
     _loadTop30Ranks();
     _loadUserId();
     _getCurrentLocation();
+    _loadRewardedAdConfig();
     favoritesNotifier.addListener(_onFavoritesChanged);
   }
 
@@ -50,6 +55,65 @@ class _NearbyScreenState extends State<NearbyScreen> {
   Future<void> _loadUserId() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() => _userId = prefs.getString('userId') ?? '');
+  }
+
+  Future<void> _loadRewardedAdConfig() async {
+    try {
+      final res = await Supabase.instance.client
+          .from('app_config')
+          .select('value')
+          .eq('key', 'rewarded_ad_enabled')
+          .single();
+      if (mounted) {
+        setState(() => _rewardedAdEnabled = res['value'] == 'true');
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _showRewardedAdAndSearch() async {
+    setState(() => _isLoadingRewardedAd = true);
+    final loaded = await AdService.loadRewardedAd();
+    if (!loaded) {
+      if (mounted) {
+        setState(() => _isLoadingRewardedAd = false);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('광고를 불러올 수 없습니다. 잠시 후 다시 시도해주세요.')),
+        );
+      }
+      return;
+    }
+    setState(() => _isLoadingRewardedAd = false);
+    await AdService.showRewardedAd(onRewarded: () {
+      if (mounted) _searchAtMapCenterExtended();
+    });
+  }
+
+  Future<void> _searchAtMapCenterExtended() async {
+    if (_mapController == null) return;
+    setState(() => _isSearching = true);
+    try {
+      final center = _mapController!.camera.center;
+      final stores = await SupabaseService.getNearbyStores(
+        latitude: center.latitude,
+        longitude: center.longitude,
+        radiusKm: 5.0,
+        lotteryType: _selectedGame,
+      );
+      BadgeService.clearCache();
+      final codes = stores.map((s) => s.dhlotteryCode).toSet().toList();
+      await BadgeService.loadBadges(codes);
+      setState(() {
+        _nearbyStores = stores;
+        _isSearching = false;
+      });
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('반경 5km로 확장 검색 완료!')),
+        );
+      }
+    } catch (e) {
+      setState(() => _isSearching = false);
+    }
   }
 
   Future<void> _loadFavorites() async {
@@ -366,6 +430,49 @@ class _NearbyScreenState extends State<NearbyScreen> {
                     ),
                   ),
                 ),
+                // 보상형 광고 버튼 (상단 중앙, 이 주변 검색 아래)
+                if (_rewardedAdEnabled)
+                  Positioned(
+                    top: 58,
+                    left: 0,
+                    right: 0,
+                    child: Center(
+                      child: GestureDetector(
+                        onTap: (_isLoadingRewardedAd || _isSearching) ? null : _showRewardedAdAndSearch,
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFFFF8E1),
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: const Color(0xFFFFCC02), width: 1),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.08),
+                                blurRadius: 8,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              _isLoadingRewardedAd
+                                  ? const SizedBox(
+                                      width: 14, height: 14,
+                                      child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFFF8F00)),
+                                    )
+                                  : const Icon(Icons.play_circle_outline, size: 15, color: Color(0xFFFF8F00)),
+                              const SizedBox(width: 5),
+                              const Text(
+                                '광고 보고 5km 검색',
+                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFFF8F00)),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
                 // 내 위치 버튼 (우측 하단)
                 Positioned(
                   right: 12,

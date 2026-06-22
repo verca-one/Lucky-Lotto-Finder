@@ -330,12 +330,6 @@ class _HomeScreenState extends State<HomeScreen> {
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (!AdService.adsRemoved && _isBannerLoaded && _bannerAd != null)
-            SizedBox(
-              width: _bannerAd!.size.width.toDouble(),
-              height: _bannerAd!.size.height.toDouble(),
-              child: AdWidget(ad: _bannerAd!),
-            ),
           Container(
             decoration: BoxDecoration(
               color: Colors.white,
@@ -364,6 +358,12 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
           ),
+          if (!AdService.adsRemoved && _isBannerLoaded && _bannerAd != null)
+            SizedBox(
+              width: _bannerAd!.size.width.toDouble(),
+              height: _bannerAd!.size.height.toDouble(),
+              child: AdWidget(ad: _bannerAd!),
+            ),
         ],
       ),
     );
