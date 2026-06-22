@@ -92,79 +92,114 @@ class RecommendScreenState extends State<RecommendScreen> {
 
   /// 메인 메뉴: 세금계산기 / 번호 추천
   Widget _buildMenu() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
+    return Container(
+      color: const Color(0xFFF2F4F8),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            '도구',
-            style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
+          // 헤더
+          Container(
+            width: double.infinity,
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                colors: [Color(0xFF1565C0), Color(0xFF1E88E5)],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.only(
+                bottomLeft: Radius.circular(28),
+                bottomRight: Radius.circular(28),
+              ),
+            ),
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 22),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('번호 추천', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.white60, letterSpacing: 1.0)),
+                      SizedBox(height: 4),
+                      Text('도구', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -0.5, height: 1.1)),
+                      SizedBox(height: 4),
+                      Text('당첨금 계산 · 나만의 번호', style: TextStyle(fontSize: 13, color: Colors.white70)),
+                    ],
+                  ),
+                ),
+                Container(
+                  width: 56, height: 56,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withValues(alpha: 0.15),
+                    shape: BoxShape.circle,
+                  ),
+                  child: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 28),
+                ),
+              ],
+            ),
           ),
-          const SizedBox(height: 8),
-          Text(
-            '로또 당첨금 계산과 번호 추천',
-            style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
-          ),
-          const SizedBox(height: 24),
-
-          // ─── 세금계산기 ───
-          _buildMenuCard(
-            icon: Icons.receipt_long_rounded,
-            iconColor: const Color(0xFF1565C0),
-            bgColor: const Color(0xFFE3F2FD),
-            borderColor: const Color(0xFF90CAF9),
-            title: '로또 세금계산기',
-            subtitle: '당첨금 실수령액 계산',
-            onTap: () => setState(() => _currentSub = 'tax'),
-          ),
-          const SizedBox(height: 24),
-
-          // ─── 번호 추천 섹션 ───
-          Text(
-            '번호 추천',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w700, color: Colors.grey.shade700),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '나만의 행운 번호를 만들어보세요',
-            style: TextStyle(fontSize: 13, color: Colors.grey.shade500),
-          ),
-          const SizedBox(height: 16),
-
-          _buildMenuCard(
-            icon: Icons.auto_awesome,
-            iconColor: Colors.purple,
-            bgColor: Colors.purple.shade50,
-            borderColor: Colors.purple.shade200,
-            title: 'AI 조합번호 생성',
-            subtitle: 'AI 법칙 기반 번호 추천',
-            onTap: () => setState(() => _currentSub = 'ai_sub'),
-          ),
-          const SizedBox(height: 16),
-
-          _buildMenuCard(
-            icon: Icons.casino,
-            iconColor: Colors.orange,
-            bgColor: Colors.orange.shade50,
-            borderColor: Colors.orange.shade200,
-            title: '나만의 번호 생성',
-            subtitle: '주사위를 굴려 랜덤 번호 조합',
-            onTap: () => setState(() => _currentSub = 'random'),
-          ),
-          const SizedBox(height: 16),
-
-          _buildMenuCard(
-            icon: Icons.menu_book,
-            iconColor: Colors.teal,
-            bgColor: Colors.teal.shade50,
-            borderColor: Colors.teal.shade200,
-            title: '번호별 의미',
-            subtitle: '1~45 각 번호의 상징과 법칙 연계',
-            onTap: () => setState(() => _currentSub = 'meaning'),
+          // 메뉴 목록
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _buildSectionLabel('도구'),
+                  const SizedBox(height: 10),
+                  _buildMenuCard(
+                    icon: Icons.receipt_long_rounded,
+                    iconColor: const Color(0xFF1565C0),
+                    bgColor: Colors.white,
+                    borderColor: const Color(0xFFE8EDF5),
+                    title: '로또 세금계산기',
+                    subtitle: '당첨금 실수령액 계산',
+                    onTap: () => setState(() => _currentSub = 'tax'),
+                  ),
+                  const SizedBox(height: 20),
+                  _buildSectionLabel('번호 추천'),
+                  const SizedBox(height: 10),
+                  _buildMenuCard(
+                    icon: Icons.auto_awesome,
+                    iconColor: Colors.purple,
+                    bgColor: Colors.white,
+                    borderColor: const Color(0xFFE8EDF5),
+                    title: 'AI 조합번호 생성',
+                    subtitle: 'AI 법칙 기반 번호 추천',
+                    onTap: () => setState(() => _currentSub = 'ai_sub'),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildMenuCard(
+                    icon: Icons.casino,
+                    iconColor: Colors.orange,
+                    bgColor: Colors.white,
+                    borderColor: const Color(0xFFE8EDF5),
+                    title: '나만의 번호 생성',
+                    subtitle: '주사위를 굴려 랜덤 번호 조합',
+                    onTap: () => setState(() => _currentSub = 'random'),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildMenuCard(
+                    icon: Icons.menu_book,
+                    iconColor: Colors.teal,
+                    bgColor: Colors.white,
+                    borderColor: const Color(0xFFE8EDF5),
+                    title: '번호별 의미',
+                    subtitle: '1~45 각 번호의 상징과 법칙 연계',
+                    onTap: () => setState(() => _currentSub = 'meaning'),
+                  ),
+                ],
+              ),
+            ),
           ),
         ],
       ),
+    );
+  }
+
+  Widget _buildSectionLabel(String text) {
+    return Text(
+      text,
+      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Color(0xFF1A1A2E)),
     );
   }
 
@@ -286,53 +321,50 @@ class RecommendScreenState extends State<RecommendScreen> {
     required String subtitle,
     required VoidCallback onTap,
   }) {
-    return InkWell(
-      onTap: onTap,
+    return Material(
+      color: bgColor,
       borderRadius: BorderRadius.circular(16),
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: bgColor,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: borderColor, width: 1.5),
-        ),
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(12),
-                boxShadow: [
-                  BoxShadow(
-                    color: iconColor.withValues(alpha: 0.2),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: borderColor, width: 1),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
               ),
-              child: Icon(icon, color: iconColor, size: 28),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    title,
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    subtitle,
-                    style: TextStyle(fontSize: 13, color: Colors.grey.shade600),
-                  ),
-                ],
+            ],
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: 48, height: 48,
+                decoration: BoxDecoration(
+                  color: iconColor.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(icon, color: iconColor, size: 24),
               ),
-            ),
-            const Icon(Icons.chevron_right_rounded, color: Color(0xFFBBBBBB)),
-          ],
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: Color(0xFF1A1A2E))),
+                    const SizedBox(height: 2),
+                    Text(subtitle, style: TextStyle(fontSize: 12, color: Colors.grey.shade500)),
+                  ],
+                ),
+              ),
+              Icon(Icons.chevron_right_rounded, color: Colors.grey.shade300, size: 20),
+            ],
+          ),
         ),
       ),
     );

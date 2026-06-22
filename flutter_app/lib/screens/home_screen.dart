@@ -557,16 +557,48 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with SingleTic
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? Center(child: Text('오류: $_error'))
-              : CustomScrollView(
+              : Container(
+                  color: const Color(0xFFF2F4F8),
+                  child: CustomScrollView(
                   slivers: [
+                    // 헤더 (파란 배경 영역)
+                    SliverToBoxAdapter(child: _buildHeader()),
                     // 업데이트 안내 배너
                     if (_isUpdateTime)
                       SliverToBoxAdapter(child: _buildUpdateBanner()),
-                    // 헤더
-                    SliverToBoxAdapter(child: _buildHeader()),
                     // 배지 로딩 실패 안내
                     if (_badgeLoadFailed)
                       SliverToBoxAdapter(child: _buildBadgeFailBanner()),
+                    // 랭킹 섹션 타이틀
+                    SliverToBoxAdapter(
+                      child: Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+                        child: Row(
+                          children: [
+                            const Text(
+                              '랭킹',
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF1A1A2E),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF1565C0),
+                                borderRadius: BorderRadius.circular(10),
+                              ),
+                              child: Text(
+                                'TOP ${_rankedStores.length}',
+                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                     // 랭킹 리스트
                     _rankedStores.isEmpty
                         ? const SliverFillRemaining(
@@ -602,6 +634,7 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with SingleTic
                     ],
                     const SliverToBoxAdapter(child: SizedBox(height: 20)),
                   ],
+                ),
                 ),
     );
   }
@@ -677,96 +710,95 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with SingleTic
 
   Widget _buildHeader() {
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        gradient: const LinearGradient(
-          colors: [Color(0xFF1565C0), Color(0xFF42A5F5)],
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFF1565C0), Color(0xFF1E88E5)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
-        borderRadius: BorderRadius.circular(20),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF1565C0).withValues(alpha: 0.3),
-            blurRadius: 12,
-            offset: const Offset(0, 4),
-          ),
-        ],
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(32),
+          bottomRight: Radius.circular(32),
+        ),
       ),
+      padding: const EdgeInsets.fromLTRB(24, 20, 24, 28),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.2),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Icon(Icons.emoji_events_rounded, color: Colors.white, size: 28),
-              ),
-              const SizedBox(width: 14),
-              const Expanded(
+              Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '복권명당 TOP 30',
+                    const Text(
+                      '복권명당',
                       style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                        color: Colors.white,
-                        letterSpacing: -0.3,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w500,
+                        color: Colors.white60,
+                        letterSpacing: 1.2,
                       ),
                     ),
-                    SizedBox(height: 4),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'TOP 30',
+                      style: TextStyle(
+                        fontSize: 36,
+                        fontWeight: FontWeight.w900,
+                        color: Colors.white,
+                        letterSpacing: -1,
+                        height: 1.1,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
                     Text(
                       '로또 1등 누적 당첨 횟수 기준',
-                      style: TextStyle(fontSize: 13, color: Colors.white70),
+                      style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.7)),
                     ),
                   ],
                 ),
               ),
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.15),
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(Icons.emoji_events_rounded, color: Colors.white, size: 38),
+              ),
             ],
           ),
           if (_latestLottoRound > 0) ...[
-            const SizedBox(height: 14),
+            const SizedBox(height: 18),
             Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    '로또 $_latestLottoRound회',
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white),
-                  ),
-                ),
+                _buildHeaderChip('로또 $_latestLottoRound회'),
                 const SizedBox(width: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.2),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    '연금 $_latestPensionRound회',
-                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white),
-                  ),
-                ),
+                _buildHeaderChip('연금 $_latestPensionRound회'),
                 const SizedBox(width: 8),
-                const Text('적용', style: TextStyle(fontSize: 12, color: Colors.white60)),
+                Text('기준', style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.5))),
               ],
             ),
           ],
-          // 크롤링 안내문 (예약/완료)
           ..._buildCrawlNotices(),
         ],
       ),
+    );
+  }
+
+  Widget _buildHeaderChip(String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.25), width: 1),
+      ),
+      child: Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white)),
     );
   }
 
@@ -1077,20 +1109,14 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with SingleTic
                         ? [BoxShadow(color: rankBgColor.withValues(alpha: 0.4), blurRadius: 6, spreadRadius: 1)]
                         : null,
                   ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      if (isTop3) Icon(medalIcon, size: 16, color: Colors.white),
-                      Text(
-                        '$rank',
-                        style: TextStyle(
-                          color: rankColor,
-                          fontWeight: FontWeight.w900,
-                          fontSize: isTop3 ? 11 : 11,
-                          height: 1,
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    '$rank',
+                    style: TextStyle(
+                      color: rankColor,
+                      fontWeight: FontWeight.w900,
+                      fontSize: isTop3 ? 15 : 13,
+                      height: 1,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),

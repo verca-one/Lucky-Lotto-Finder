@@ -16,7 +16,11 @@ void main() async {
   );
 
   // Google Mobile Ads 초기화
-  MobileAds.instance.initialize();
+  await MobileAds.instance.initialize();
+  // 테스트 기기 설정 (기기 ID는 로그에서 확인 후 추가)
+  MobileAds.instance.updateRequestConfiguration(
+    RequestConfiguration(testDeviceIds: []),
+  );
 
   // 인앱결제(커피 후원) 초기화
   DonationService().initialize();

@@ -345,7 +345,9 @@ class _NearbyScreenState extends State<NearbyScreen> {
     // 지도는 항상 표시
     final storeCount = _nearbyStores?.length ?? 0;
 
-    return Column(
+    return Container(
+      color: const Color(0xFFF2F4F8),
+      child: Column(
       children: [
         // 지도 영역
         Padding(
@@ -565,6 +567,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
                 ),
         ),
       ],
+      ),
     );
   }
 

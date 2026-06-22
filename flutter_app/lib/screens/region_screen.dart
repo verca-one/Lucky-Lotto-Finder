@@ -211,13 +211,103 @@ class _RegionScreenState extends State<RegionScreen> {
       );
     }
 
-    return Column(
-      children: [
-        // 즐겨찾기 섹션
-        _buildFavoritesSection(),
-        // 메인 콘텐츠 (박스 안에 박스)
-        Expanded(child: _buildExpandableContent()),
-      ],
+    return Container(
+      color: const Color(0xFFF2F4F8),
+      child: Column(
+        children: [
+          // 헤더
+          _buildRegionHeader(),
+          // 즐겨찾기 섹션
+          _buildFavoritesSection(),
+          // 메인 콘텐츠
+          Expanded(child: _buildExpandableContent()),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRegionHeader() {
+    return Container(
+      width: double.infinity,
+      decoration: const BoxDecoration(
+        gradient: LinearGradient(
+          colors: [Color(0xFF1565C0), Color(0xFF1E88E5)],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.only(
+          bottomLeft: Radius.circular(28),
+          bottomRight: Radius.circular(28),
+        ),
+      ),
+      padding: const EdgeInsets.fromLTRB(24, 16, 24, 22),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '지역별 명당',
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.white60, letterSpacing: 1.0),
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  '전국 판매점',
+                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -0.5, height: 1.1),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    _buildRegionChip('all', '전체'),
+                    const SizedBox(width: 8),
+                    _buildRegionChip('lotto', '로또'),
+                    const SizedBox(width: 8),
+                    _buildRegionChip('pension', '연금'),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          Container(
+            width: 56, height: 56,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.15),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.map_rounded, color: Colors.white, size: 28),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRegionChip(String value, String label) {
+    final selected = _selectedGame == value;
+    return GestureDetector(
+      onTap: () {
+        if (_selectedGame != value) {
+          setState(() => _selectedGame = value);
+          _loadStores();
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+        decoration: BoxDecoration(
+          color: selected ? Colors.white : Colors.white.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: selected ? Colors.white : Colors.white.withValues(alpha: 0.3), width: 1),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
+            color: selected ? const Color(0xFF1565C0) : Colors.white,
+          ),
+        ),
+      ),
     );
   }
 
