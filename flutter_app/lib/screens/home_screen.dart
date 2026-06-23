@@ -40,7 +40,7 @@ class _HomeScreenState extends State<HomeScreen> {
     await AdService.loadAdsRemovedState();
     if (AdService.adsRemoved) return;
     if (!mounted) return;
-    final loaded = await AdService.loadBannerAd(context);
+    final loaded = await AdService.loadBannerAd();
     if (!mounted) return;
     setState(() {
       _isBannerLoaded = loaded;
