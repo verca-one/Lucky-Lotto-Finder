@@ -39,7 +39,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _initAdsAndBanner() async {
     await AdService.loadAdsRemovedState();
     if (AdService.adsRemoved) return;
-    final loaded = await AdService.loadBannerAd();
+    if (!mounted) return;
+    final loaded = await AdService.loadBannerAd(context);
     if (!mounted) return;
     setState(() {
       _isBannerLoaded = loaded;
@@ -360,7 +361,7 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           if (!AdService.adsRemoved && _isBannerLoaded && _bannerAd != null)
             SizedBox(
-              width: _bannerAd!.size.width.toDouble(),
+              width: double.infinity,
               height: _bannerAd!.size.height.toDouble(),
               child: AdWidget(ad: _bannerAd!),
             ),

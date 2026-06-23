@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -40,18 +41,21 @@ class AdService {
     }
   }
 
-  // 배너 광고 로드 (Completer로 로드 완료까지 대기)
-  static Future<bool> loadBannerAd() async {
+  // 배너 광고 로드 - 화면 너비에 맞는 앵커 적응형 배너
+  static Future<bool> loadBannerAd(BuildContext context) async {
     if (_adsRemoved) return false;
     final completer = Completer<bool>();
+
+    final width = MediaQuery.of(context).size.width.truncate();
+    final adSize = await AdSize.getCurrentOrientationAnchoredAdaptiveBannerAdSize(width);
+    if (adSize == null) return false;
 
     _bannerAd = BannerAd(
       adUnitId: bannerAdUnitId,
       request: const AdRequest(),
-      size: AdSize.banner,
+      size: adSize,
       listener: BannerAdListener(
         onAdLoaded: (ad) {
-          print('배너 광고 로드됨');
           _isLoaded = true;
           if (!completer.isCompleted) completer.complete(true);
         },
@@ -59,16 +63,15 @@ class AdService {
           ad.dispose();
           _bannerAd = null;
           _isLoaded = false;
-          print('배너 광고 로드 실패: ${error.message}');
+          debugPrint('배너 광고 로드 실패: ${error.message}');
           if (!completer.isCompleted) completer.complete(false);
         },
       ),
     );
     await _bannerAd?.load();
 
-    // 5초 타임아웃
     return completer.future.timeout(
-      const Duration(seconds: 5),
+      const Duration(seconds: 10),
       onTimeout: () => _isLoaded,
     );
   }
@@ -94,7 +97,7 @@ class AdService {
         onAdFailedToLoad: (error) {
           _rewardedAd = null;
           _isRewardedLoaded = false;
-          print('보상형 광고 로드 실패: ${error.message}');
+          debugPrint('보상형 광고 로드 실패: ${error.message}');
           if (!completer.isCompleted) completer.complete(false);
         },
       ),
@@ -115,7 +118,7 @@ class AdService {
       onAdDismissedFullScreenContent: (ad) => ad.dispose(),
       onAdFailedToShowFullScreenContent: (ad, error) {
         ad.dispose();
-        print('보상형 광고 표시 실패: ${error.message}');
+        debugPrint('보상형 광고 표시 실패: ${error.message}');
       },
     );
     ad.show(onUserEarnedReward: (_, __) => onRewarded());
