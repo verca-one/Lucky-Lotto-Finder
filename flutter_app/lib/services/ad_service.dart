@@ -5,8 +5,14 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class AdService {
   static const String appId = 'ca-app-pub-8658921158210502~3234497602';
-  static const String bannerAdUnitId = 'ca-app-pub-8658921158210502/7117902298';
-  static const String rewardedAdUnitId = 'ca-app-pub-8658921158210502/3178657282';
+
+  // 디버그 모드에서는 구글 공식 테스트 광고 ID 사용 (실제 광고는 release에서만)
+  static String get bannerAdUnitId => kDebugMode
+      ? 'ca-app-pub-3940256099942544/6300978111'
+      : 'ca-app-pub-8658921158210502/7117902298';
+  static String get rewardedAdUnitId => kDebugMode
+      ? 'ca-app-pub-3940256099942544/5224354917'
+      : 'ca-app-pub-8658921158210502/3178657282';
 
   static BannerAd? _bannerAd;
   static bool _isLoaded = false;

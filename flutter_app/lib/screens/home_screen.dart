@@ -331,7 +331,10 @@ class _HomeScreenState extends State<HomeScreen> {
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
+          MediaQuery.removePadding(
+            context: context,
+            removeBottom: true,
+            child: Container(
             decoration: BoxDecoration(
               color: Colors.white,
               boxShadow: [
@@ -343,6 +346,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             ),
             child: BottomNavigationBar(
+              elevation: 0,
               currentIndex: _selectedBottomTab,
               onTap: (index) {
                 if (index == 3 && _selectedBottomTab == 3) {
@@ -358,6 +362,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 BottomNavigationBarItem(icon: Icon(Icons.star_rounded), label: '즐겨찾기'),
               ],
             ),
+          ),
           ),
           if (!AdService.adsRemoved && _isBannerLoaded && _bannerAd != null)
             SizedBox(
