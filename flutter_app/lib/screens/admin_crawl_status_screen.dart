@@ -71,9 +71,11 @@ class _AdminCrawlStatusScreenState extends State<AdminCrawlStatusScreen>
 
       final List<_RoundStatus> items = [];
 
-      // 로또 회차
+      // 로또 회차 - winning_numbers 기준
+      final coveredLottoRounds = <int>{};
       for (var w in lottoWinnings) {
         final round = w.round as int;
+        coveredLottoRounds.add(round);
         final storeCounts = lottoStoreCounts[round];
         final roundInfo = lottoRoundMap[round];
 
@@ -92,10 +94,32 @@ class _AdminCrawlStatusScreenState extends State<AdminCrawlStatusScreen>
           lotteryType: 'lotto',
         ));
       }
+      // winning_history에만 있는 로또 회차 추가 (당첨번호 미등록)
+      for (final round in lottoStoreCounts.keys) {
+        if (coveredLottoRounds.contains(round)) continue;
+        final storeCounts = lottoStoreCounts[round];
+        final roundInfo = lottoRoundMap[round];
+        items.add(_RoundStatus(
+          type: '로또',
+          typeColor: Colors.purple,
+          round: round,
+          drawDate: '',
+          hasWinningNumbers: false,
+          storeTotal: storeCounts?['total'] ?? 0,
+          storeFirst: storeCounts?['first'] ?? 0,
+          storeSecond: storeCounts?['second'] ?? 0,
+          isPublished: roundInfo?['status'] == 'published',
+          publishedAt: roundInfo?['published_at'],
+          createdAt: roundInfo?['created_at'],
+          lotteryType: 'lotto',
+        ));
+      }
 
       // 연금 회차
+      final coveredPensionRounds = <int>{};
       for (var w in pensionWinnings) {
         final round = w.round as int;
+        coveredPensionRounds.add(round);
         final storeCounts = pensionStoreCounts[round];
         final roundInfo = pensionRoundMap[round];
 
@@ -105,6 +129,26 @@ class _AdminCrawlStatusScreenState extends State<AdminCrawlStatusScreen>
           round: round,
           drawDate: w.drawDate,
           hasWinningNumbers: true,
+          storeTotal: storeCounts?['total'] ?? 0,
+          storeFirst: storeCounts?['first'] ?? 0,
+          storeSecond: storeCounts?['second'] ?? 0,
+          isPublished: roundInfo?['stores_published'] == true,
+          publishedAt: roundInfo?['published_at'],
+          createdAt: roundInfo?['created_at'],
+          lotteryType: 'pension',
+        ));
+      }
+      // winning_history에만 있는 연금 회차 추가
+      for (final round in pensionStoreCounts.keys) {
+        if (coveredPensionRounds.contains(round)) continue;
+        final storeCounts = pensionStoreCounts[round];
+        final roundInfo = pensionRoundMap[round];
+        items.add(_RoundStatus(
+          type: '연금',
+          typeColor: Colors.orange,
+          round: round,
+          drawDate: '',
+          hasWinningNumbers: false,
           storeTotal: storeCounts?['total'] ?? 0,
           storeFirst: storeCounts?['first'] ?? 0,
           storeSecond: storeCounts?['second'] ?? 0,
