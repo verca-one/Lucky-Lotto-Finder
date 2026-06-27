@@ -350,27 +350,11 @@ class _NearbyScreenState extends State<NearbyScreen> {
       child: Column(
       children: [
         // 지도 영역
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-          child: SizedBox(
-            height: 280,
-            child: Stack(
-              children: [
-                Container(
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: const Color(0xFFE0E0E0), width: 1),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: 0.06),
-                        blurRadius: 10,
-                        offset: const Offset(0, 2),
-                      ),
-                    ],
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(16),
-                    child: FlutterMap(
+        SizedBox(
+          height: MediaQuery.of(context).size.height * 0.5,
+          child: Stack(
+            children: [
+              FlutterMap(
                       mapController: _mapController,
                       options: MapOptions(
                         initialCenter: LatLng(
@@ -389,8 +373,6 @@ class _NearbyScreenState extends State<NearbyScreen> {
                         MarkerLayer(markers: _buildMapMarkers()),
                       ],
                     ),
-                  ),
-                ),
                 // 이 주변 검색 버튼 (상단 중앙)
                 Positioned(
                   top: 12,
@@ -503,7 +485,6 @@ class _NearbyScreenState extends State<NearbyScreen> {
               ],
             ),
           ),
-        ),
         // 근처 당첨지점 헤더
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
