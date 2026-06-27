@@ -9,22 +9,18 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
-  late AnimationController _controller;
-  late Animation<double> _fadeAnim;
+class _SplashScreenState extends State<SplashScreen> {
 
   @override
   void initState() {
     super.initState();
-    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 800));
-    _fadeAnim = CurvedAnimation(parent: _controller, curve: Curves.easeIn);
-    _controller.forward();
-    _init();
+    // 네이티브 스플래시 즉시 제거 → Flutter 스플래시가 끊김 없이 이어받음
+    FlutterNativeSplash.remove();
+    _navigate();
   }
 
-  Future<void> _init() async {
+  Future<void> _navigate() async {
     await Future.delayed(const Duration(seconds: 2));
-    FlutterNativeSplash.remove();
     if (!mounted) return;
     Navigator.of(context).pushReplacement(
       PageRouteBuilder(
@@ -37,22 +33,13 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
   }
 
   @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: FadeTransition(
-        opacity: _fadeAnim,
-        child: SizedBox.expand(
-          child: Image.asset(
-            'assets/splash.png',
-            fit: BoxFit.cover,
-          ),
+      body: SizedBox.expand(
+        child: Image.asset(
+          'assets/splash.png',
+          fit: BoxFit.cover,
         ),
       ),
     );
