@@ -126,12 +126,16 @@ class _RandomNumberContentState extends State<RandomNumberContent>
       padding: const EdgeInsets.all(20),
       child: Column(
         children: [
-          Icon(
-            Icons.casino,
-            size: 50,
-            color: _isRolling ? Colors.orange : Colors.grey.shade400,
+          ClipRRect(
+            borderRadius: BorderRadius.circular(16),
+            child: Image.asset(
+              'assets/mynum.png',
+              width: double.infinity,
+              height: 160,
+              fit: BoxFit.cover,
+            ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 16),
           const Text(
             '주사위를 굴려 행운의 번호를 뽑아보세요!',
             style: TextStyle(fontSize: 15, color: Colors.black87),
