@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
-import 'screens/home_screen.dart';
+import 'screens/splash_screen.dart';
 import 'services/local_data_service.dart';
 import 'services/donation_service.dart';
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
+  final binding = WidgetsFlutterBinding.ensureInitialized();
+  FlutterNativeSplash.preserve(widgetsBinding: binding);
 
   // Supabase 초기화
   await Supabase.initialize(
@@ -121,7 +123,7 @@ class LuckyLottoApp extends StatelessWidget {
             thickness: 1,
           ),
         ),
-        home: const HomeScreen(),
+        home: const SplashScreen(),
       ),
     );
   }
