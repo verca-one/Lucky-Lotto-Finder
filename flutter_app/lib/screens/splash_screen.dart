@@ -36,11 +36,33 @@ class _SplashScreenState extends State<SplashScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: SizedBox.expand(
-        child: Image.asset(
-          'assets/splash.png',
-          fit: BoxFit.cover,
-        ),
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          Image.asset('assets/splash.png', fit: BoxFit.cover),
+          Positioned(
+            bottom: 40,
+            left: 0,
+            right: 0,
+            child: Center(
+              child: Text(
+                '© 2026 HiCL Studio · All Rights Reserved',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: Colors.white.withValues(alpha: 0.9),
+                  fontWeight: FontWeight.w500,
+                  letterSpacing: 0.5,
+                  shadows: const [
+                    Shadow(offset: Offset(-1, -1), blurRadius: 3, color: Colors.black),
+                    Shadow(offset: Offset(1, -1), blurRadius: 3, color: Colors.black),
+                    Shadow(offset: Offset(-1,  1), blurRadius: 3, color: Colors.black),
+                    Shadow(offset: Offset(1,  1), blurRadius: 3, color: Colors.black),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
