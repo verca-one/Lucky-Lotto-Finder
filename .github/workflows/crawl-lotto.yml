@@ -2,8 +2,8 @@ name: Crawl Lotto
 
 on:
   schedule:
-    # 매주 토요일 12:30 UTC (토요일 21:30 KST)
-    - cron: '30 12 * * 6'
+    # 매주 토요일 12:45 UTC (토요일 21:45 KST)
+    - cron: '45 12 * * 6'
   workflow_dispatch:
 
 jobs:
