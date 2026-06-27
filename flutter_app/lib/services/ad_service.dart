@@ -38,12 +38,25 @@ class AdService {
     }
   }
 
-  // 배너 광고 로드
+  // 배너 광고 로드 (실패 시 1회 재시도)
   static Future<bool> loadBannerAd() async {
     if (_adsRemoved) return false;
     if (_isLoaded && _bannerAd != null) return true;
 
+    for (int attempt = 0; attempt < 2; attempt++) {
+      final result = await _tryLoadBanner();
+      if (result) return true;
+      if (attempt == 0) await Future.delayed(const Duration(seconds: 3));
+    }
+    return false;
+  }
+
+  static Future<bool> _tryLoadBanner() async {
     final completer = Completer<bool>();
+
+    _bannerAd?.dispose();
+    _bannerAd = null;
+    _isLoaded = false;
 
     _bannerAd = BannerAd(
       adUnitId: bannerAdUnitId,
@@ -58,7 +71,7 @@ class AdService {
           ad.dispose();
           _bannerAd = null;
           _isLoaded = false;
-          debugPrint('배너 광고 로드 실패: ${error.message}');
+          debugPrint('배너 광고 로드 실패: ${error.message} (code: ${error.code})');
           if (!completer.isCompleted) completer.complete(false);
         },
       ),
@@ -66,7 +79,7 @@ class AdService {
     await _bannerAd?.load();
 
     return completer.future.timeout(
-      const Duration(seconds: 10),
+      const Duration(seconds: 15),
       onTimeout: () => _isLoaded,
     );
   }

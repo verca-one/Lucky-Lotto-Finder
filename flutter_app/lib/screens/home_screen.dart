@@ -365,11 +365,18 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
           ),
           if (!AdService.adsRemoved && _isBannerLoaded && _bannerAd != null)
-            SizedBox(
-              width: double.infinity,
-              height: _bannerAd!.size.height.toDouble(),
-              child: AdWidget(ad: _bannerAd!),
-            ),
+            SafeArea(
+              top: false,
+              left: false,
+              right: false,
+              child: SizedBox(
+                width: double.infinity,
+                height: _bannerAd!.size.height.toDouble(),
+                child: AdWidget(ad: _bannerAd!),
+              ),
+            )
+          else
+            SafeArea(top: false, left: false, right: false, child: const SizedBox.shrink()),
         ],
       ),
     );
