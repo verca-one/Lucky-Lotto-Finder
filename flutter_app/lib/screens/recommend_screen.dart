@@ -65,19 +65,19 @@ class RecommendScreenState extends State<RecommendScreen> {
             children: [
               InkWell(
                 onTap: () => setState(() => _currentSub = backTo),
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
                   decoration: BoxDecoration(
                     color: const Color(0xFFF5F5F5),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      const Icon(Icons.arrow_back_rounded, size: 20, color: Color(0xFF1565C0)),
-                      const SizedBox(width: 6),
-                      Text(backLabel, style: const TextStyle(fontSize: 14, color: Color(0xFF333333), fontWeight: FontWeight.w600)),
+                      const Icon(Icons.arrow_back_rounded, size: 26, color: Color(0xFF1565C0)),
+                      const SizedBox(width: 8),
+                      Text(backLabel, style: const TextStyle(fontSize: 16, color: Color(0xFF333333), fontWeight: FontWeight.w700)),
                     ],
                   ),
                 ),
