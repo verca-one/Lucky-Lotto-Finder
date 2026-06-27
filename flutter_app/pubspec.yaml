@@ -41,11 +41,11 @@ dependencies:
   latlong2: ^0.9.1
   url_launcher: ^6.3.2
   in_app_purchase: ^3.2.0
+  flutter_native_splash: ^2.4.3
 
 dev_dependencies:
   flutter_test:
     sdk: flutter
-  flutter_native_splash: ^2.4.3
 
   # The "flutter_lints" package below contains a set of recommended lints to
   # encourage good coding practices. The lint set provided by the package is
