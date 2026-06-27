@@ -80,6 +80,12 @@ class _NumberMeaningContentState extends State<NumberMeaningContent> {
     final list = _filtered;
     return Column(
       children: [
+        Image.asset(
+          'assets/gi.png',
+          width: double.infinity,
+          height: 300,
+          fit: BoxFit.cover,
+        ),
         // 검색
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
