@@ -123,19 +123,18 @@ class _RandomNumberContentState extends State<RandomNumberContent>
   @override
   Widget build(BuildContext context) {
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(20),
       child: Column(
         children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(16),
-            child: Image.asset(
-              'assets/mynum.png',
-              width: double.infinity,
-              height: 160,
-              fit: BoxFit.cover,
-            ),
+          Image.asset(
+            'assets/mynum.png',
+            width: double.infinity,
+            height: 300,
+            fit: BoxFit.cover,
           ),
-          const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+            child: Column(
+              children: [
           const Text(
             '주사위를 굴려 행운의 번호를 뽑아보세요!',
             style: TextStyle(fontSize: 15, color: Colors.black87),
@@ -312,6 +311,9 @@ class _RandomNumberContentState extends State<RandomNumberContent>
                     style: TextStyle(fontSize: 12, color: Colors.blue.shade700),
                   ),
                 ),
+              ],
+            ),
+          ),
               ],
             ),
           ),
