@@ -29,6 +29,7 @@ LOTTERY_TYPES = ["lotto", "pension", "speedlotto_2000", "speedlotto_1000", "spee
 
 
 def fetch_all_paginated(table, select="*", filters=None, page_size=1000):
+    """Supabase는 최대 1000개/요청 반환 → page_size=1000 고정, 0개 반환 시 종료"""
     all_rows = []
     offset = 0
     while True:
@@ -57,7 +58,7 @@ def recalculate_counts(lottery_type: str):
         "winning_history",
         select="dhlottery_code, prize_tier, round",
         filters={"lottery_type": lottery_type},
-        page_size=5000,
+        page_size=1000,
     )
     print(f"  → {len(histories)}개 이력 로드")
 

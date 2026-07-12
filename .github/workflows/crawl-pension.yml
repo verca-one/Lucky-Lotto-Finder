@@ -66,6 +66,19 @@ jobs:
       run: |
         python recalculate_badges.py pension --force
 
+    - name: Verify crawl result (DB vs 공식 최신 회차)
+      id: verify
+      env:
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      run: |
+        VERIFY_OUT=$(python verify_crawl_result.py pension)
+        echo "$VERIFY_OUT"
+        ROUND=$(echo "$VERIFY_OUT" | grep "CRAWL_ROUND_PENSION=" | cut -d'=' -f2)
+        if [ -n "$ROUND" ]; then
+          echo "crawl_round=$ROUND" >> $GITHUB_OUTPUT
+        fi
+
     - name: Log crawl success
       if: success()
       env:
@@ -90,11 +103,11 @@ jobs:
         server_port: 587
         username: ${{ secrets.EMAIL_USERNAME }}
         password: ${{ secrets.EMAIL_PASSWORD }}
-        subject: "✅ 연금복권 크롤링 완료"
+        subject: "✅ 연금복권 크롤링 완료 (${{ steps.verify.outputs.crawl_round }}회)"
         body: |
           연금복권 크롤링이 성공적으로 완료되었습니다.
 
-          실행 시간: ${{ github.event.head_commit.timestamp || github.event.repository.updated_at }}
+          최신 회차: ${{ steps.verify.outputs.crawl_round }}회
           Run ID: ${{ github.run_id }}
           Run URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
         to: ${{ secrets.NOTIFY_EMAIL }}
@@ -118,9 +131,10 @@ jobs:
         from: "Lottery Bot <lottery-bot@github.com>"
 
     - name: Commit and push results
+      if: success()
       run: |
         git config user.name "Lottery Bot"
         git config user.email "lottery-bot@github.com"
         git add -A
-        git commit -m "Auto: Update pension lottery data - $(date '+%Y-%m-%d %H:%M:%S')" || true
+        git commit -m "Auto: Update pension lottery data (${{ steps.verify.outputs.crawl_round }}회) - $(date '+%Y-%m-%d %H:%M:%S')" || true
         git push

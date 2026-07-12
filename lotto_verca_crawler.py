@@ -643,32 +643,80 @@ class DHLotteryCrawler:
             except Exception as e:
                 logger.error(f"{game_type} 이력정보 파일 저장 실패: {e}")
 
-    def get_latest_round(self, game_type: str) -> Optional[int]:
-        """각 게임의 최신 회차 조회 (날짜 계산 기반, HTTP 요청 없음)"""
+    def _estimate_round_from_date(self, game_type: str) -> int:
+        """날짜 계산 기반 회차 추정 (시작점 확보용)"""
         from datetime import date, timedelta
-
         today = date.today()
 
         if game_type == "lotto":
-            # 로또 1회차 추첨일: 2002-12-07 (토요일)
-            # 지난 토요일까지의 회차를 계산 (당첨지점은 추첨 다음주 월요일쯤 업로드)
             base_date = date(2002, 12, 7)
-            # 가장 최근 지난 토요일 계산
-            days_since_saturday = (today.weekday() + 2) % 7  # 토요일=0
+            days_since_saturday = (today.weekday() + 2) % 7
             last_saturday = today - timedelta(days=days_since_saturday)
-            estimated = (last_saturday - base_date).days // 7 + 1
-            logger.info(f"로또 최신 회차 (추정): {estimated}회")
-            return estimated
-
+            return (last_saturday - base_date).days // 7 + 1
         elif game_type == "pension":
-            # 연금복권: 날짜 추정 후 API로 실제 최신 회차 확인 (명절 등 쉬는 주 보정)
             base_date = date(2020, 4, 2)
             days_since_thursday = (today.weekday() - 3) % 7
             last_thursday = today - timedelta(days=days_since_thursday)
-            estimated = (last_thursday - base_date).days // 7 + 1
+            return (last_thursday - base_date).days // 7 + 1
+        return 1
 
-            # API로 실제 최신 회차 검증 (높은 회차부터 내려가며 데이터 있는 회차 찾기)
-            for try_round in range(estimated, max(estimated - 10, 0), -1):
+    def _get_db_latest_round(self, game_type: str) -> Optional[int]:
+        """Supabase DB에서 해당 게임의 가장 최근 1등 당첨 회차 조회"""
+        try:
+            supabase_url = os.environ.get("SUPABASE_URL", "")
+            supabase_key = os.environ.get("SUPABASE_KEY", "")
+            if not supabase_url or not supabase_key:
+                return None
+
+            from supabase import create_client
+            sb = create_client(supabase_url, supabase_key)
+            result = sb.table("winning_history") \
+                .select("round") \
+                .eq("lottery_type", game_type) \
+                .eq("prize_tier", "first") \
+                .order("round", desc=True) \
+                .limit(1) \
+                .execute()
+
+            if result.data:
+                return result.data[0]["round"]
+            return None
+        except Exception as e:
+            logger.warning(f"DB 최신 회차 조회 실패: {e}")
+            return None
+
+    def get_latest_round(self, game_type: str) -> Optional[int]:
+        """각 게임의 최신 회차 조회 (공식 사이트 API 실제 확인)"""
+        if "speedlotto" in game_type:
+            logger.info(f"{game_type} 최신 기록 조회")
+            return 1
+
+        estimated = self._estimate_round_from_date(game_type)
+        logger.info(f"[{game_type}] 날짜 기반 추정 회차: {estimated}회")
+        logger.info(f"[{game_type}] 공식 사이트 API로 최신 회차 실제 확인 중...")
+
+        if game_type == "lotto":
+            # 추정값 +5 ~ 추정값 -5 범위에서 API 실제 확인
+            for try_round in range(estimated + 5, max(estimated - 5, 1), -1):
+                try:
+                    url = f"{self.base_url}/common.do"
+                    params = {"method": "getLottoNumber", "drwNo": try_round}
+                    response = self._safe_request(url, params=params)
+                    if response:
+                        data = response.json()
+                        if data.get("returnValue") == "success":
+                            logger.info(f"[로또] 공식 최신 회차 확인: {try_round}회 (출처: {url}?method=getLottoNumber&drwNo={try_round})")
+                            return try_round
+                    time.sleep(random.uniform(1.0, 2.0))
+                except Exception:
+                    pass
+
+            logger.error(f"[로또] 공식 사이트에서 최신 회차 조회 실패. 크롤링 중단.")
+            return None
+
+        elif game_type == "pension":
+            # 추정값 +5 ~ 추정값 -10 범위에서 API 실제 확인
+            for try_round in range(estimated + 5, max(estimated - 10, 1), -1):
                 try:
                     url = "https://www.dhlottery.co.kr/wnprchsplcsrch/selectPtWnShp.do"
                     params = {"srchWnShpRnk": "all", "srchLtEpsd": try_round, "srchShpLctn": ""}
@@ -676,63 +724,75 @@ class DHLotteryCrawler:
                     if response:
                         data = response.json()
                         if data.get("data") and data["data"].get("list") and len(data["data"]["list"]) > 0:
-                            logger.info(f"연금복권 최신 회차 (API 확인): {try_round}회")
+                            logger.info(f"[연금복권] 공식 최신 회차 확인: {try_round}회 (출처: {url}?srchLtEpsd={try_round})")
                             return try_round
-                    time.sleep(random.uniform(2.0, 4.0))
+                    time.sleep(random.uniform(1.0, 2.0))
                 except Exception:
                     pass
 
-            logger.warning(f"연금복권 최신 회차 API 확인 실패, 추정치 사용: {estimated}회")
-            return estimated
-
-        elif "speedlotto" in game_type:
-            # 스피또는 회차 개념이 다름, 항상 1 리턴
-            logger.info(f"{game_type} 최신 기록 조회")
-            return 1
+            logger.error(f"[연금복권] 공식 사이트에서 최신 회차 조회 실패. 크롤링 중단.")
+            return None
 
         return None
 
     def run_latest_by_game(self, game_type: str, count: int = 5):
-        """게임 타입별 최신 N개 회차 크롤링"""
+        """게임 타입별 최신 회차 크롤링 (공식 최신 회차 ~ DB 마지막 회차+1)"""
+        import sys
         logger.info("=" * 70)
-        logger.info(f"[{game_type}] 최신 {count}개 회차 크롤링 시작")
+        logger.info(f"[{game_type}] 최신 회차 크롤링 시작")
         logger.info("=" * 70)
 
         if game_type == "lotto":
-            latest = self.get_latest_round("lotto")
-            if not latest:
-                logger.error("로또 최신 회차 조회 실패")
-                return
-            for i in range(count):
-                round_num = latest - i
-                if round_num <= 0:
-                    break
-                logger.info(f"\n[{i+1}/{count}] 로또 {round_num}회 크롤링 중...")
-                self.crawl_lotto_stores(round_num)
-                if (i + 1) % 50 == 0:
-                    self.save_to_files()
-                    logger.info(f"[중간저장] 로또 {round_num}회 완료")
-                time.sleep(random.uniform(2.0, 4.0))
+            official_latest = self.get_latest_round("lotto")
+            if not official_latest:
+                logger.error("[로또] 공식 최신 회차 조회 실패 → 크롤링 중단")
+                sys.exit(1)
+
+            db_latest = self._get_db_latest_round("lotto")
+            start_round = (db_latest + 1) if db_latest else max(official_latest - count + 1, 1)
+
+            logger.info(f"[로또] 공식 최신 회차: {official_latest}회")
+            logger.info(f"[로또] DB 마지막 회차: {db_latest}회" if db_latest else "[로또] DB 마지막 회차: 없음")
+            logger.info(f"[로또] 수집 예정 회차: {start_round}~{official_latest}회")
+
+            if start_round > official_latest:
+                logger.info(f"[로또] DB가 이미 최신 상태 ({official_latest}회). 크롤링 생략.")
+            else:
+                rounds_to_crawl = list(range(official_latest, start_round - 1, -1))
+                for i, round_num in enumerate(rounds_to_crawl, 1):
+                    logger.info(f"\n[{i}/{len(rounds_to_crawl)}] 로또 {round_num}회 크롤링 중...")
+                    self.crawl_lotto_stores(round_num)
+                    if i % 50 == 0:
+                        self.save_to_files()
+                        logger.info(f"[중간저장] 로또 {round_num}회 완료")
+                    time.sleep(random.uniform(2.0, 4.0))
 
         elif game_type == "pension":
-            latest = self.get_latest_round("pension")
-            if not latest:
-                logger.error("연금복권 최신 회차 조회 실패")
-                return
-            for i in range(count):
-                round_num = latest - i
-                if round_num <= 0:
-                    break
-                logger.info(f"\n[{i+1}/{count}] 연금복권 {round_num}회 크롤링 중...")
-                self.crawl_pension_stores(round_num)
-                # 50회마다 중간저장 (매회 저장 불필요)
-                if (i + 1) % 50 == 0:
-                    self.save_to_files()
-                    logger.info(f"[중간저장] 연금복권 {round_num}회 완료")
-                time.sleep(random.uniform(2.0, 4.0))
+            official_latest = self.get_latest_round("pension")
+            if not official_latest:
+                logger.error("[연금복권] 공식 최신 회차 조회 실패 → 크롤링 중단")
+                sys.exit(1)
+
+            db_latest = self._get_db_latest_round("pension")
+            start_round = (db_latest + 1) if db_latest else max(official_latest - count + 1, 1)
+
+            logger.info(f"[연금복권] 공식 최신 회차: {official_latest}회")
+            logger.info(f"[연금복권] DB 마지막 회차: {db_latest}회" if db_latest else "[연금복권] DB 마지막 회차: 없음")
+            logger.info(f"[연금복권] 수집 예정 회차: {start_round}~{official_latest}회")
+
+            if start_round > official_latest:
+                logger.info(f"[연금복권] DB가 이미 최신 상태 ({official_latest}회). 크롤링 생략.")
+            else:
+                rounds_to_crawl = list(range(official_latest, start_round - 1, -1))
+                for i, round_num in enumerate(rounds_to_crawl, 1):
+                    logger.info(f"\n[{i}/{len(rounds_to_crawl)}] 연금복권 {round_num}회 크롤링 중...")
+                    self.crawl_pension_stores(round_num)
+                    if i % 50 == 0:
+                        self.save_to_files()
+                        logger.info(f"[중간저장] 연금복권 {round_num}회 완료")
+                    time.sleep(random.uniform(2.0, 4.0))
 
         elif game_type == "speed":
-            # 스피또는 자체 회차 사용 (로또 회차와 다름)
             speed_max = {
                 "speedlotto_2000": 68,
                 "speedlotto_1000": 106,
@@ -762,7 +822,7 @@ class DHLotteryCrawler:
 
         self.save_to_files()
         logger.info("=" * 70)
-        logger.info(f"[{game_type}] 최신 {count}개 회차 크롤링 완료!")
+        logger.info(f"[{game_type}] 크롤링 완료!")
         logger.info(f"총 누적 지점: {len(self.stores_data)}")
         logger.info(f"총 HTTP 요청: {self._total_requests}건")
         logger.info("=" * 70)
