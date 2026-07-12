@@ -2,9 +2,9 @@ name: Crawl Speeto
 
 on:
   schedule:
-    # 수요일 01:00 KST = 화요일 16:00 UTC / 금요일 01:00 KST = 목요일 16:00 UTC
-    - cron: '0 16 * * 2'
-    - cron: '0 16 * * 4'
+    # 수요일 22:00 KST = 수요일 13:00 UTC / 금요일 22:00 KST = 금요일 13:00 UTC
+    - cron: '0 13 * * 3'
+    - cron: '0 13 * * 5'
   workflow_dispatch:
 
 jobs:
@@ -67,9 +67,9 @@ jobs:
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
       run: |
-        python recalculate_badges.py speedlotto_2000
-        python recalculate_badges.py speedlotto_1000
-        python recalculate_badges.py speedlotto_500
+        python recalculate_badges.py speedlotto_2000 --force
+        python recalculate_badges.py speedlotto_1000 --force
+        python recalculate_badges.py speedlotto_500 --force
 
     - name: Log crawl success
       if: success()

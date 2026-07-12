@@ -2,8 +2,8 @@ name: Crawl Pension Lottery
 
 on:
   schedule:
-    # 매주 목요일 11:00 UTC (목요일 20:00 KST)
-    - cron: '0 11 * * 4'
+    # 매주 목요일 13:00 UTC (목요일 22:00 KST)
+    - cron: '0 13 * * 4'
   workflow_dispatch:
 
 jobs:
@@ -64,7 +64,7 @@ jobs:
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
       run: |
-        python recalculate_badges.py pension
+        python recalculate_badges.py pension --force
 
     - name: Log crawl success
       if: success()
