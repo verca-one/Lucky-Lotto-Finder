@@ -808,83 +808,102 @@ class DHLotteryCrawler:
             return []
 
     def _probe_round(self, game_type: str, try_round: int) -> bool:
-        """단일 회차가 공식 사이트에 존재하는지 확인. 상세 로그 포함."""
+        """단일 회차가 공식 사이트에 존재하는지 확인."""
         import traceback
-
         if game_type == "lotto":
-            url = f"{self.base_url}/common.do"
-            params = {"method": "getLottoNumber", "drwNo": try_round}
-            referer = "https://www.dhlottery.co.kr/gameResult.do?method=byWin"
+            return self._probe_lotto_html(try_round)
         else:
-            url = "https://www.dhlottery.co.kr/wnprchsplcsrch/selectPtWnShp.do"
-            params = {"srchWnShpRnk": "all", "srchLtEpsd": try_round, "srchShpLctn": ""}
-            referer = "https://www.dhlottery.co.kr/wnprchsplcsrch/wnprchsplcsrch.do"
+            return self._probe_pension_api(try_round)
 
-        # AJAX 헤더 + 회차별 Referer
-        headers = {**self.ajax_headers, "Referer": referer}
+    def _probe_lotto_html(self, try_round: int) -> bool:
+        """로또 회차 존재 확인: gameResult.do HTML 파싱 (common.do는 GitHub Actions에서 302 차단됨)"""
+        import traceback
+        from bs4 import BeautifulSoup
+
+        url = "https://dhlottery.co.kr/gameResult.do"
+        params = {"method": "byWin", "drwNo": try_round}
+        headers = {
+            **self.headers,
+            "Referer": "https://dhlottery.co.kr/gameResult.do?method=byWin",
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        }
         import urllib.parse
         full_url = url + "?" + urllib.parse.urlencode(params)
-        logger.info(f"[{game_type}] 회차 확인 요청: {full_url}")
-        logger.info(f"[{game_type}] 요청 헤더: {headers}")
+        logger.info(f"[로또] {try_round}회 HTML 탐색: {full_url}")
 
         try:
-            # allow_redirects=False 로 리다이렉트 먼저 확인
             resp_nr = self.session.get(url, params=params, headers=headers, timeout=60,
                                        verify=False, allow_redirects=False)
             if resp_nr.status_code in (301, 302, 303, 307, 308):
                 location = resp_nr.headers.get("Location", "")
-                logger.warning(f"[{game_type}] {try_round}회 리다이렉트 감지: "
-                               f"HTTP {resp_nr.status_code} → {location}")
+                logger.warning(f"[로또] {try_round}회 리다이렉트: HTTP {resp_nr.status_code} → {location}")
 
-            # 실제 최종 응답 (리다이렉트 따라가기)
             response = self.session.get(url, params=params, headers=headers, timeout=60, verify=False)
-
             ct = response.headers.get("Content-Type", "")
-            final_url = response.url
-            body_size = len(response.content)
-            preview = response.text[:500].replace("\n", " ").replace("\r", "")
+            logger.info(f"[로또] {try_round}회 HTTP {response.status_code} | {len(response.content)} bytes"
+                        f" | Content-Type: {ct} | 최종 URL: {response.url}")
 
-            logger.info(f"[{game_type}] {try_round}회 HTTP {response.status_code} "
-                        f"| {body_size} bytes | Content-Type: {ct}")
-            logger.info(f"[{game_type}] {try_round}회 최종 URL: {final_url}")
-            logger.info(f"[{game_type}] {try_round}회 응답 앞 500자: {preview}")
+            soup = BeautifulSoup(response.text, "html.parser")
 
-            # Cloudflare / WAF / 차단 페이지 감지
-            block_signals = {
-                "cloudflare": "cf-ray" in str(response.headers).lower() and response.status_code in (403, 503),
-                "captcha": any(k in response.text.lower() for k in ["captcha", "challenge"]),
-                "access_denied": any(k in response.text.lower() for k in ["access denied", "접근 제한", "차단"]),
-                "login_page": any(k in response.text.lower() for k in ["로그인", "login required"]),
-                "html_page": "<!doctype" in response.text[:200].lower() or "<html" in response.text[:200].lower(),
-            }
-            triggered = [k for k, v in block_signals.items() if v]
-            if triggered:
-                logger.warning(f"[{game_type}] {try_round}회 ⚠️  차단/HTML 페이지 감지: {triggered}")
-                if "html_page" in triggered and body_size > 50000:
-                    logger.warning(f"[{game_type}] {try_round}회 → JSON 아닌 홈페이지 HTML 반환됨 (AJAX 헤더 미인식 가능성)")
-                return False
+            # 방법 1: ball_645 숫자 개수로 판단 (7개 이상 = 유효 회차)
+            balls = soup.select(".win_result .ball_645")
+            numbers = [t.get_text(strip=True) for t in balls if t.get_text(strip=True).isdigit()]
+            logger.info(f"[로또] {try_round}회 ball_645 파싱: {len(numbers)}개 숫자 → {numbers}")
+            if len(numbers) >= 7:
+                logger.info(f"[로또] {try_round}회 데이터 존재: True (ball_645 {len(numbers)}개)")
+                return True
 
-            # Content-Type 검사
-            if "json" not in ct.lower() and "javascript" not in ct.lower():
-                logger.warning(f"[{game_type}] {try_round}회 Content-Type이 JSON 아님: {ct}")
-                return False
+            # 방법 2: 페이지 내 "제{round}회" 텍스트 존재 여부
+            if f"제{try_round}회" in response.text or f"{try_round}회" in response.text[:3000]:
+                logger.info(f"[로또] {try_round}회 데이터 존재: True (회차 텍스트 발견)")
+                return True
 
-            try:
-                data = response.json()
-            except Exception as je:
-                logger.warning(f"[{game_type}] {try_round}회 JSON 파싱 실패: {je}")
-                return False
-
-            if game_type == "lotto":
-                ok = data.get("returnValue") == "success"
-            else:
-                ok = bool(data.get("data") and data["data"].get("list") and len(data["data"]["list"]) > 0)
-
-            logger.info(f"[{game_type}] {try_round}회 데이터 존재: {ok}")
-            return ok
+            # 방법 3: .win_result 섹션 자체가 없으면 결과 없음
+            win_result = soup.select_one(".win_result")
+            logger.info(f"[로또] {try_round}회 .win_result 존재: {win_result is not None}")
+            logger.info(f"[로또] {try_round}회 데이터 존재: False")
+            return False
 
         except Exception:
-            logger.warning(f"[{game_type}] {try_round}회 예외:\n{traceback.format_exc()}")
+            logger.warning(f"[로또] {try_round}회 HTML 탐색 예외:\n{traceback.format_exc()}")
+            return False
+
+    def _probe_pension_api(self, try_round: int) -> bool:
+        """연금복권 회차 존재 확인: selectPtWnShp.do JSON API"""
+        import traceback, urllib.parse
+
+        url = "https://www.dhlottery.co.kr/wnprchsplcsrch/selectPtWnShp.do"
+        params = {"srchWnShpRnk": "all", "srchLtEpsd": try_round, "srchShpLctn": ""}
+        headers = {**self.ajax_headers, "Referer": "https://www.dhlottery.co.kr/wnprchsplcsrch/wnprchsplcsrch.do"}
+        full_url = url + "?" + urllib.parse.urlencode(params)
+        logger.info(f"[연금] {try_round}회 API 탐색: {full_url}")
+
+        try:
+            resp_nr = self.session.get(url, params=params, headers=headers, timeout=60,
+                                       verify=False, allow_redirects=False)
+            if resp_nr.status_code in (301, 302, 303, 307, 308):
+                logger.warning(f"[연금] {try_round}회 리다이렉트: HTTP {resp_nr.status_code}"
+                               f" → {resp_nr.headers.get('Location', '')}")
+
+            response = self.session.get(url, params=params, headers=headers, timeout=60, verify=False)
+            ct = response.headers.get("Content-Type", "")
+            logger.info(f"[연금] {try_round}회 HTTP {response.status_code} | {len(response.content)} bytes"
+                        f" | Content-Type: {ct} | 최종 URL: {response.url}")
+            preview = response.text[:300].replace("\n", " ")
+            logger.info(f"[연금] {try_round}회 응답 앞 300자: {preview}")
+
+            if "json" not in ct.lower():
+                logger.warning(f"[연금] {try_round}회 JSON 아님: {ct}")
+                return False
+
+            data = response.json()
+            has_list = bool(data.get("data") and data["data"].get("list"))
+            store_count = len(data["data"]["list"]) if has_list else 0
+            logger.info(f"[연금] {try_round}회 데이터 존재: {has_list} (판매점 {store_count}개)")
+            return has_list
+
+        except Exception:
+            logger.warning(f"[연금] {try_round}회 API 탐색 예외:\n{traceback.format_exc()}")
             return False
 
     def _validate_confirmed_round(self, game_type: str, confirmed: int) -> bool:
@@ -893,20 +912,13 @@ class DHLotteryCrawler:
         label = "로또" if game_type == "lotto" else "연금"
         try:
             if game_type == "lotto":
-                url = f"{self.base_url}/common.do"
-                params = {"method": "getLottoNumber", "drwNo": confirmed}
-                resp = self.session.get(url, params=params, headers=self.ajax_headers, timeout=60, verify=False)
-                data = resp.json()
-                if data.get("returnValue") != "success":
-                    logger.error(f"[{label}] 확정 {confirmed}회 검증 실패: returnValue={data.get('returnValue')}")
+                # HTML 파싱으로 재검증 (common.do는 GitHub Actions에서 차단됨)
+                if not self._probe_lotto_html(confirmed):
+                    logger.error(f"[{label}] 확정 {confirmed}회 HTML 재검증 실패")
                     return False
-                if not data.get("drwNoDate"):
-                    logger.error(f"[{label}] 확정 {confirmed}회 검증 실패: drwNoDate 없음")
-                    return False
-                logger.info(f"[{label}] 확정 {confirmed}회 검증: returnValue=success, 추첨일={data['drwNoDate']} ✅")
+                logger.info(f"[{label}] 확정 {confirmed}회 검증: HTML ball_645 파싱 성공 ✅")
             else:
-                # 연금은 판매점 API 자체가 "존재 여부" 확인이므로 probe로 대체
-                if not self._probe_round(game_type, confirmed):
+                if not self._probe_pension_api(confirmed):
                     logger.error(f"[{label}] 확정 {confirmed}회 재검증 실패")
                     return False
                 logger.info(f"[{label}] 확정 {confirmed}회 검증 완료 ✅")
