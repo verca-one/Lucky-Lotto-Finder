@@ -773,8 +773,61 @@ class DHLotteryCrawler:
             logger.warning(f"pending 회차 조회 실패: {e}")
             return []
 
+    def _probe_round(self, game_type: str, try_round: int) -> bool:
+        """단일 회차가 공식 사이트에 존재하는지 확인. 상세 로그 포함."""
+        import traceback
+
+        if game_type == "lotto":
+            url = f"{self.base_url}/common.do"
+            params = {"method": "getLottoNumber", "drwNo": try_round}
+            full_url = f"{url}?method=getLottoNumber&drwNo={try_round}"
+        else:
+            url = "https://www.dhlottery.co.kr/wnprchsplcsrch/selectPtWnShp.do"
+            params = {"srchWnShpRnk": "all", "srchLtEpsd": try_round, "srchShpLctn": ""}
+            full_url = f"{url}?srchLtEpsd={try_round}"
+
+        logger.info(f"[{game_type}] 회차 확인 요청: {full_url}")
+        try:
+            response = self._safe_request(url, params=params)
+            if not response:
+                logger.warning(f"[{game_type}] {try_round}회 response=None (연결 실패 또는 IP 차단)")
+                return False
+
+            ct = response.headers.get("Content-Type", "")
+            logger.info(f"[{game_type}] {try_round}회 HTTP {response.status_code} | {len(response.content)} bytes | Content-Type: {ct}")
+            logger.info(f"[{game_type}] {try_round}회 응답 헤더: {dict(response.headers)}")
+            preview = response.text[:500].replace("\n", " ").replace("\r", "")
+            logger.info(f"[{game_type}] {try_round}회 응답 앞 500자: {preview}")
+
+            # 차단/오류 페이지 감지
+            block_keywords = ["로그인", "login", "접근 제한", "Access Denied", "<!DOCTYPE", "<html"]
+            is_blocked = any(kw.lower() in response.text.lower() for kw in block_keywords)
+            if is_blocked:
+                logger.warning(f"[{game_type}] {try_round}회 ⚠️  HTML/차단 페이지 감지 (JSON 아님)")
+                return False
+
+            try:
+                data = response.json()
+            except Exception as je:
+                logger.warning(f"[{game_type}] {try_round}회 JSON 파싱 실패: {je}")
+                return False
+
+            if game_type == "lotto":
+                ok = data.get("returnValue") == "success"
+            else:
+                ok = bool(data.get("data") and data["data"].get("list") and len(data["data"]["list"]) > 0)
+
+            logger.info(f"[{game_type}] {try_round}회 데이터 존재: {ok}")
+            return ok
+
+        except Exception as e:
+            logger.warning(f"[{game_type}] {try_round}회 예외:\n{traceback.format_exc()}")
+            return False
+
     def get_latest_round(self, game_type: str) -> Optional[int]:
-        """각 게임의 최신 회차 조회 (공식 사이트 API 실제 확인)"""
+        """각 게임의 최신 회차 조회.
+        공식 API 우선, 실패 시 날짜 추정값으로 fallback하여 역탐색.
+        """
         if "speedlotto" in game_type:
             logger.info(f"{game_type} 최신 기록 조회")
             return 1
@@ -783,44 +836,44 @@ class DHLotteryCrawler:
         logger.info(f"[{game_type}] 날짜 기반 추정 회차: {estimated}회")
         logger.info(f"[{game_type}] 공식 사이트 API로 최신 회차 실제 확인 중...")
 
-        if game_type == "lotto":
-            # 추정값 +5 ~ 추정값 -5 범위에서 API 실제 확인
-            for try_round in range(estimated + 5, max(estimated - 5, 1), -1):
-                try:
+        search_range = range(estimated + 5, max(estimated - 10, 1), -1)
+
+        for try_round in search_range:
+            if self._probe_round(game_type, try_round):
+                logger.info(f"[{game_type}] ✅ 공식 최신 회차 확인: {try_round}회")
+                return try_round
+            time.sleep(random.uniform(0.5, 1.5))
+
+        # ── Fallback: 추정값 기준 역탐색 ──────────────────────────
+        logger.warning(f"[{game_type}] ⚠️  공식 API 전체 실패 → 추정 회차({estimated}) 기반 fallback 탐색")
+        for try_round in range(estimated, max(estimated - 5, 1), -1):
+            logger.info(f"[{game_type}] Fallback 시도: {try_round}회")
+            # fallback은 단순 HTTP 요청으로 시도 (safe_request IP 보호 없이)
+            try:
+                if game_type == "lotto":
                     url = f"{self.base_url}/common.do"
                     params = {"method": "getLottoNumber", "drwNo": try_round}
-                    response = self._safe_request(url, params=params)
-                    if response:
-                        data = response.json()
-                        if data.get("returnValue") == "success":
-                            logger.info(f"[로또] 공식 최신 회차 확인: {try_round}회 (출처: {url}?method=getLottoNumber&drwNo={try_round})")
-                            return try_round
-                    time.sleep(random.uniform(1.0, 2.0))
-                except Exception:
-                    pass
-
-            logger.error(f"[로또] 공식 사이트에서 최신 회차 조회 실패. 크롤링 중단.")
-            return None
-
-        elif game_type == "pension":
-            # 추정값 +5 ~ 추정값 -10 범위에서 API 실제 확인
-            for try_round in range(estimated + 5, max(estimated - 10, 1), -1):
-                try:
+                else:
                     url = "https://www.dhlottery.co.kr/wnprchsplcsrch/selectPtWnShp.do"
                     params = {"srchWnShpRnk": "all", "srchLtEpsd": try_round, "srchShpLctn": ""}
-                    response = self._safe_request(url, params=params)
-                    if response:
-                        data = response.json()
-                        if data.get("data") and data["data"].get("list") and len(data["data"]["list"]) > 0:
-                            logger.info(f"[연금복권] 공식 최신 회차 확인: {try_round}회 (출처: {url}?srchLtEpsd={try_round})")
-                            return try_round
-                    time.sleep(random.uniform(1.0, 2.0))
-                except Exception:
-                    pass
 
-            logger.error(f"[연금복권] 공식 사이트에서 최신 회차 조회 실패. 크롤링 중단.")
-            return None
+                resp = self.session.get(url, params=params, headers=self.headers, timeout=60, verify=False)
+                logger.info(f"[{game_type}] Fallback {try_round}회 HTTP {resp.status_code}")
 
+                if game_type == "lotto":
+                    if resp.json().get("returnValue") == "success":
+                        logger.info(f"[{game_type}] ✅ Fallback 성공: {try_round}회")
+                        return try_round
+                else:
+                    data = resp.json()
+                    if data.get("data") and data["data"].get("list"):
+                        logger.info(f"[{game_type}] ✅ Fallback 성공: {try_round}회")
+                        return try_round
+            except Exception as fe:
+                logger.warning(f"[{game_type}] Fallback {try_round}회 실패: {fe}")
+            time.sleep(1.0)
+
+        logger.error(f"[{game_type}] 공식 API 및 Fallback 모두 실패. 크롤링 중단.")
         return None
 
     def run_latest_by_game(self, game_type: str, count: int = 5):
