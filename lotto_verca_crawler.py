@@ -32,18 +32,31 @@ class DHLotteryCrawler:
 
     def __init__(self):
         self.base_url = "https://www.dhlottery.co.kr"
+        # 기본 헤더 (HTML 페이지 요청용)
         self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            'Accept': 'application/json, text/plain, */*',
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
             'Accept-Encoding': 'gzip, deflate, br',
-            'Accept-Language': 'ko-KR,ko;q=0.9,en;q=0.8',
+            'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
             'Cache-Control': 'no-cache',
             'Pragma': 'no-cache',
+            'Connection': 'keep-alive',
+            'Upgrade-Insecure-Requests': '1',
+        }
+        # AJAX/JSON API 전용 헤더 — 서버가 JSON 반환하도록 강제
+        self.ajax_headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+            'Accept': 'application/json, text/javascript, */*; q=0.01',
+            'Accept-Encoding': 'gzip, deflate, br',
+            'Accept-Language': 'ko-KR,ko;q=0.9,en-US;q=0.8,en;q=0.7',
+            'Cache-Control': 'no-cache',
+            'Pragma': 'no-cache',
+            'Connection': 'keep-alive',
+            'X-Requested-With': 'XMLHttpRequest',   # ← JSON 응답 유도 핵심 헤더
+            'Referer': 'https://www.dhlottery.co.kr/gameResult.do?method=byWin',
             'Sec-Fetch-Dest': 'empty',
             'Sec-Fetch-Mode': 'cors',
             'Sec-Fetch-Site': 'same-origin',
-            'Connection': 'keep-alive',
-            'Referer': 'https://www.dhlottery.co.kr/wnprchsplcsrch/wnprchsplcsrch.do'
         }
 
         # 재시도 로직이 있는 session 설정 (강화된 안정성)
@@ -67,6 +80,9 @@ class DHLotteryCrawler:
 
         # 기존 데이터 로드
         self._load_existing_data()
+
+        # 세션 워밍업: 홈페이지 방문으로 쿠키 획득
+        self._warm_up_session()
 
     def _load_existing_data(self) -> None:
         """기존 게임별 파일에서 데이터 로드 및 병합"""
@@ -116,6 +132,20 @@ class DHLotteryCrawler:
         else:
             logger.info("기존 데이터 없음 (새로 시작)")
 
+    def _warm_up_session(self) -> None:
+        """홈페이지 방문으로 세션 쿠키 획득 (API 호출 전 필수)"""
+        warm_up_urls = [
+            "https://www.dhlottery.co.kr/common.do?method=main",
+            "https://www.dhlottery.co.kr/gameResult.do?method=byWin",
+        ]
+        for url in warm_up_urls:
+            try:
+                resp = self.session.get(url, headers=self.headers, timeout=30, verify=False)
+                logger.info(f"[세션워밍업] {url} → HTTP {resp.status_code} | 쿠키: {dict(self.session.cookies)}")
+                time.sleep(random.uniform(1.0, 2.0))
+            except Exception as e:
+                logger.warning(f"[세션워밍업] {url} 실패 (무시): {e}")
+
     def _get_prize_tier(self, rank: int) -> str:
         """순위를 당첨 등급으로 변환"""
         tier_map = {
@@ -136,8 +166,11 @@ class DHLotteryCrawler:
         parts = address.split()
         return parts[0] if parts else "미상"
 
-    def _safe_request(self, url: str, params: dict = None, timeout: int = 60) -> Optional[requests.Response]:
-        """IP 보호가 적용된 안전한 HTTP 요청"""
+    def _safe_request(self, url: str, params: dict = None, timeout: int = 60,
+                      use_ajax_headers: bool = True) -> Optional[requests.Response]:
+        """IP 보호가 적용된 안전한 HTTP 요청.
+        use_ajax_headers=True(기본): JSON API 호출용 AJAX 헤더 사용
+        """
         self._total_requests += 1
 
         # 매 10번 요청마다 추가 랜덤 대기
@@ -146,8 +179,9 @@ class DHLotteryCrawler:
             logger.debug(f"[IP보호] {self._total_requests}번째 요청, {pause:.1f}초 추가 대기")
             time.sleep(pause)
 
+        req_headers = self.ajax_headers if use_ajax_headers else self.headers
         try:
-            response = self.session.get(url, params=params, headers=self.headers, timeout=timeout, verify=False)
+            response = self.session.get(url, params=params, headers=req_headers, timeout=timeout, verify=False)
 
             # 429 (Too Many Requests) 또는 403 (Forbidden) 감지
             if response.status_code in [429, 403]:
@@ -156,7 +190,7 @@ class DHLotteryCrawler:
                 logger.warning(f"[IP보호] {response.status_code} 응답! {wait_time}초 대기 (연속실패: {self._consecutive_failures})")
                 time.sleep(wait_time)
                 # 한 번 더 시도
-                response = self.session.get(url, params=params, headers=self.headers, timeout=timeout, verify=False)
+                response = self.session.get(url, params=params, headers=req_headers, timeout=timeout, verify=False)
 
             if response.status_code == 200:
                 self._consecutive_failures = 0  # 성공하면 리셋
@@ -780,30 +814,59 @@ class DHLotteryCrawler:
         if game_type == "lotto":
             url = f"{self.base_url}/common.do"
             params = {"method": "getLottoNumber", "drwNo": try_round}
-            full_url = f"{url}?method=getLottoNumber&drwNo={try_round}"
+            referer = "https://www.dhlottery.co.kr/gameResult.do?method=byWin"
         else:
             url = "https://www.dhlottery.co.kr/wnprchsplcsrch/selectPtWnShp.do"
             params = {"srchWnShpRnk": "all", "srchLtEpsd": try_round, "srchShpLctn": ""}
-            full_url = f"{url}?srchLtEpsd={try_round}"
+            referer = "https://www.dhlottery.co.kr/wnprchsplcsrch/wnprchsplcsrch.do"
 
+        # AJAX 헤더 + 회차별 Referer
+        headers = {**self.ajax_headers, "Referer": referer}
+        import urllib.parse
+        full_url = url + "?" + urllib.parse.urlencode(params)
         logger.info(f"[{game_type}] 회차 확인 요청: {full_url}")
+        logger.info(f"[{game_type}] 요청 헤더: {headers}")
+
         try:
-            response = self._safe_request(url, params=params)
-            if not response:
-                logger.warning(f"[{game_type}] {try_round}회 response=None (연결 실패 또는 IP 차단)")
-                return False
+            # allow_redirects=False 로 리다이렉트 먼저 확인
+            resp_nr = self.session.get(url, params=params, headers=headers, timeout=60,
+                                       verify=False, allow_redirects=False)
+            if resp_nr.status_code in (301, 302, 303, 307, 308):
+                location = resp_nr.headers.get("Location", "")
+                logger.warning(f"[{game_type}] {try_round}회 리다이렉트 감지: "
+                               f"HTTP {resp_nr.status_code} → {location}")
+
+            # 실제 최종 응답 (리다이렉트 따라가기)
+            response = self.session.get(url, params=params, headers=headers, timeout=60, verify=False)
 
             ct = response.headers.get("Content-Type", "")
-            logger.info(f"[{game_type}] {try_round}회 HTTP {response.status_code} | {len(response.content)} bytes | Content-Type: {ct}")
-            logger.info(f"[{game_type}] {try_round}회 응답 헤더: {dict(response.headers)}")
+            final_url = response.url
+            body_size = len(response.content)
             preview = response.text[:500].replace("\n", " ").replace("\r", "")
+
+            logger.info(f"[{game_type}] {try_round}회 HTTP {response.status_code} "
+                        f"| {body_size} bytes | Content-Type: {ct}")
+            logger.info(f"[{game_type}] {try_round}회 최종 URL: {final_url}")
             logger.info(f"[{game_type}] {try_round}회 응답 앞 500자: {preview}")
 
-            # 차단/오류 페이지 감지
-            block_keywords = ["로그인", "login", "접근 제한", "Access Denied", "<!DOCTYPE", "<html"]
-            is_blocked = any(kw.lower() in response.text.lower() for kw in block_keywords)
-            if is_blocked:
-                logger.warning(f"[{game_type}] {try_round}회 ⚠️  HTML/차단 페이지 감지 (JSON 아님)")
+            # Cloudflare / WAF / 차단 페이지 감지
+            block_signals = {
+                "cloudflare": "cf-ray" in str(response.headers).lower() and response.status_code in (403, 503),
+                "captcha": any(k in response.text.lower() for k in ["captcha", "challenge"]),
+                "access_denied": any(k in response.text.lower() for k in ["access denied", "접근 제한", "차단"]),
+                "login_page": any(k in response.text.lower() for k in ["로그인", "login required"]),
+                "html_page": "<!doctype" in response.text[:200].lower() or "<html" in response.text[:200].lower(),
+            }
+            triggered = [k for k, v in block_signals.items() if v]
+            if triggered:
+                logger.warning(f"[{game_type}] {try_round}회 ⚠️  차단/HTML 페이지 감지: {triggered}")
+                if "html_page" in triggered and body_size > 50000:
+                    logger.warning(f"[{game_type}] {try_round}회 → JSON 아닌 홈페이지 HTML 반환됨 (AJAX 헤더 미인식 가능성)")
+                return False
+
+            # Content-Type 검사
+            if "json" not in ct.lower() and "javascript" not in ct.lower():
+                logger.warning(f"[{game_type}] {try_round}회 Content-Type이 JSON 아님: {ct}")
                 return False
 
             try:
@@ -820,7 +883,7 @@ class DHLotteryCrawler:
             logger.info(f"[{game_type}] {try_round}회 데이터 존재: {ok}")
             return ok
 
-        except Exception as e:
+        except Exception:
             logger.warning(f"[{game_type}] {try_round}회 예외:\n{traceback.format_exc()}")
             return False
 
@@ -832,7 +895,7 @@ class DHLotteryCrawler:
             if game_type == "lotto":
                 url = f"{self.base_url}/common.do"
                 params = {"method": "getLottoNumber", "drwNo": confirmed}
-                resp = self.session.get(url, params=params, headers=self.headers, timeout=60, verify=False)
+                resp = self.session.get(url, params=params, headers=self.ajax_headers, timeout=60, verify=False)
                 data = resp.json()
                 if data.get("returnValue") != "success":
                     logger.error(f"[{label}] 확정 {confirmed}회 검증 실패: returnValue={data.get('returnValue')}")
