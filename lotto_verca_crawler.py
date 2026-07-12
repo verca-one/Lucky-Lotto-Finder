@@ -414,7 +414,18 @@ class DHLotteryCrawler:
                 logger.error(f"[연금] {round_num}회 HTTP 요청 실패 (response=None) → 저장 실패")
                 return False
 
-            logger.info(f"[연금] {round_num}회 HTTP {response.status_code} | 응답 길이 {len(response.content)} bytes")
+            content_type = response.headers.get("Content-Type", "")
+            final_url = response.url
+            body_preview = response.text[:300].replace("\n", " ").replace("\r", "")
+            logger.info(f"[연금] {round_num}회 HTTP {response.status_code} | {len(response.content)} bytes"
+                        f" | Content-Type: {content_type}")
+            logger.info(f"[연금] {round_num}회 최종 URL: {final_url}")
+            logger.info(f"[연금] {round_num}회 응답 앞 300자: {body_preview}")
+
+            # 로그인/오류 페이지 감지
+            suspicious = any(kw in response.text for kw in ["로그인", "login", "접근 제한", "오류", "error", "<!DOCTYPE"])
+            if suspicious:
+                logger.warning(f"[연금] {round_num}회 ⚠️  HTML/오류 페이지 감지 (차단 가능성)")
 
             try:
                 data = response.json()
@@ -422,8 +433,12 @@ class DHLotteryCrawler:
                 logger.error(f"[연금] {round_num}회 JSON 파싱 실패: {je} → 저장 실패")
                 return False
 
-            if not data.get("data") or not data["data"].get("list"):
-                logger.warning(f"[연금] {round_num}회 파싱 성공 but 데이터 없음 (list 비어있음) → 저장 실패")
+            has_list = bool(data.get("data") and data["data"].get("list"))
+            store_count = len(data["data"]["list"]) if has_list else 0
+            logger.info(f"[연금] {round_num}회 판매점 테이블 존재: {has_list} | 추출 개수: {store_count}")
+
+            if not has_list or store_count == 0:
+                logger.warning(f"[연금] {round_num}회 판매점 목록 비어있음 → stores_status=empty")
                 return False
 
             stores = data["data"]["list"]
@@ -682,16 +697,30 @@ class DHLotteryCrawler:
             return (last_thursday - base_date).days // 7 + 1
         return 1
 
-    def _get_db_latest_round(self, game_type: str) -> Optional[int]:
-        """Supabase DB에서 해당 게임의 가장 최근 1등 당첨 회차 조회"""
-        try:
-            supabase_url = os.environ.get("SUPABASE_URL", "")
-            supabase_key = os.environ.get("SUPABASE_KEY", "")
-            if not supabase_url or not supabase_key:
-                return None
+    def _get_supabase(self):
+        """Supabase 클라이언트 반환 (환경변수 없으면 None)"""
+        supabase_url = os.environ.get("SUPABASE_URL", "")
+        supabase_key = os.environ.get("SUPABASE_KEY", "")
+        if not supabase_url or not supabase_key:
+            return None
+        from supabase import create_client
+        return create_client(supabase_url, supabase_key)
 
-            from supabase import create_client
-            sb = create_client(supabase_url, supabase_key)
+    def _get_db_latest_round(self, game_type: str) -> Optional[int]:
+        """round_crawl_status에서 가장 최근 확인된 회차 조회 (판매점 유무와 무관)"""
+        try:
+            sb = self._get_supabase()
+            if not sb:
+                return None
+            result = sb.table("round_crawl_status") \
+                .select("round") \
+                .eq("lottery_type", game_type) \
+                .order("round", desc=True) \
+                .limit(1) \
+                .execute()
+            if result.data:
+                return result.data[0]["round"]
+            # fallback: round_crawl_status 테이블 없으면 winning_history로 폴백
             result = sb.table("winning_history") \
                 .select("round") \
                 .eq("lottery_type", game_type) \
@@ -699,13 +728,50 @@ class DHLotteryCrawler:
                 .order("round", desc=True) \
                 .limit(1) \
                 .execute()
-
-            if result.data:
-                return result.data[0]["round"]
-            return None
+            return result.data[0]["round"] if result.data else None
         except Exception as e:
             logger.warning(f"DB 최신 회차 조회 실패: {e}")
             return None
+
+    def _upsert_round_status(self, game_type: str, round_num: int, stores_status: str) -> bool:
+        """round_crawl_status 테이블에 회차 상태 upsert"""
+        try:
+            sb = self._get_supabase()
+            if not sb:
+                return False
+            from datetime import timezone
+            now = datetime.now(timezone.utc).isoformat()
+            row = {
+                "lottery_type": game_type,
+                "round": round_num,
+                "stores_status": stores_status,
+                "confirmed_at": now,
+            }
+            if stores_status == "success":
+                row["stores_crawled_at"] = now
+            sb.table("round_crawl_status").upsert(row, on_conflict="lottery_type,round").execute()
+            return True
+        except Exception as e:
+            logger.warning(f"round_crawl_status upsert 실패 ({game_type} {round_num}회): {e}")
+            return False
+
+    def _get_pending_store_rounds(self, game_type: str, max_rounds: int = 10) -> list:
+        """stores_status가 pending/empty/failed인 최근 회차 목록 반환"""
+        try:
+            sb = self._get_supabase()
+            if not sb:
+                return []
+            result = sb.table("round_crawl_status") \
+                .select("round") \
+                .eq("lottery_type", game_type) \
+                .in_("stores_status", ["pending", "empty", "failed"]) \
+                .order("round", desc=True) \
+                .limit(max_rounds) \
+                .execute()
+            return [r["round"] for r in (result.data or [])]
+        except Exception as e:
+            logger.warning(f"pending 회차 조회 실패: {e}")
+            return []
 
     def get_latest_round(self, game_type: str) -> Optional[int]:
         """각 게임의 최신 회차 조회 (공식 사이트 API 실제 확인)"""
@@ -781,25 +847,36 @@ class DHLotteryCrawler:
                 logger.info(f"[로또] DB가 이미 최신 상태 ({official_latest}회). 크롤링 생략.")
             else:
                 rounds_to_crawl = list(range(official_latest, start_round - 1, -1))
-                failed_rounds = []
+                stores_success, stores_pending = [], []
                 for i, round_num in enumerate(rounds_to_crawl, 1):
                     logger.info(f"\n[{i}/{len(rounds_to_crawl)}] 로또 {round_num}회 크롤링 중...")
+                    # ① 회차 확인 즉시 round_crawl_status에 pending 기록
+                    self._upsert_round_status("lotto", round_num, "pending")
                     ok = self.crawl_lotto_stores(round_num)
-                    if not ok:
-                        failed_rounds.append(round_num)
-                        logger.warning(f"[로또] {round_num}회 크롤링 실패 → 다음 회차로 계속")
+                    if ok:
+                        self._upsert_round_status("lotto", round_num, "success")
+                        stores_success.append(round_num)
+                    else:
+                        self._upsert_round_status("lotto", round_num, "empty")
+                        stores_pending.append(round_num)
+                        logger.warning(f"[로또] {round_num}회 판매점 없음(empty) → 다음 회차 계속")
                     if i % 50 == 0:
                         self.save_to_files()
-                        logger.info(f"[중간저장] 로또 {round_num}회 완료")
                     time.sleep(random.uniform(2.0, 4.0))
-                if failed_rounds:
-                    logger.warning(f"[로또] 실패 회차: {failed_rounds}")
-                else:
-                    logger.info(f"[로또] 모든 회차 크롤링 성공")
-                # 최종 DB 검증
+
+                # 최종 요약
                 actual_db = self._get_db_latest_round("lotto")
-                logger.info(f"[로또] Expected latest: {official_latest}회 | Actual DB latest: {actual_db}회"
-                            + (" ✅" if actual_db == official_latest else " ❌ 불일치!"))
+                logger.info(f"\n[로또] 공식 최신 회차: {official_latest}회")
+                logger.info(f"[로또] DB 최신 회차: {actual_db}회")
+                logger.info(f"[로또] 회차 데이터 저장 완료: {sorted(stores_success + stores_pending)}")
+                logger.info(f"[로또] 판매점 저장 완료: {sorted(stores_success) or '없음'}")
+                logger.info(f"[로또] 판매점 재수집 대기: {sorted(stores_pending) or '없음'}")
+                if stores_pending:
+                    logger.info(f"[로또] 결과: 회차 업데이트 성공 / 판매점 부분 미완료")
+                else:
+                    logger.info(f"[로또] 결과: 회차 업데이트 성공 / 판매점 저장 완료")
+                if actual_db != official_latest:
+                    logger.error(f"[로또] ❌ round_crawl_status 불일치: DB={actual_db} 공식={official_latest}")
 
         elif game_type == "pension":
             official_latest = self.get_latest_round("pension")
@@ -810,33 +887,44 @@ class DHLotteryCrawler:
             db_latest = self._get_db_latest_round("pension")
             start_round = (db_latest + 1) if db_latest else max(official_latest - count + 1, 1)
 
-            logger.info(f"[연금복권] 공식 최신 회차: {official_latest}회")
-            logger.info(f"[연금복권] DB 마지막 회차: {db_latest}회" if db_latest else "[연금복권] DB 마지막 회차: 없음")
-            logger.info(f"[연금복권] 수집 예정 회차: {start_round}~{official_latest}회")
+            logger.info(f"[연금] 공식 최신 회차: {official_latest}회")
+            logger.info(f"[연금] DB 마지막 회차: {db_latest}회" if db_latest else "[연금] DB 마지막 회차: 없음")
+            logger.info(f"[연금] 수집 예정 회차: {start_round}~{official_latest}회")
 
             if start_round > official_latest:
-                logger.info(f"[연금복권] DB가 이미 최신 상태 ({official_latest}회). 크롤링 생략.")
+                logger.info(f"[연금] DB가 이미 최신 상태 ({official_latest}회). 크롤링 생략.")
             else:
                 rounds_to_crawl = list(range(official_latest, start_round - 1, -1))
-                failed_rounds = []
+                stores_success, stores_pending = [], []
                 for i, round_num in enumerate(rounds_to_crawl, 1):
                     logger.info(f"\n[{i}/{len(rounds_to_crawl)}] 연금복권 {round_num}회 크롤링 중...")
+                    # ① 회차 확인 즉시 round_crawl_status에 pending 기록
+                    self._upsert_round_status("pension", round_num, "pending")
                     ok = self.crawl_pension_stores(round_num)
-                    if not ok:
-                        failed_rounds.append(round_num)
-                        logger.warning(f"[연금] {round_num}회 크롤링 실패 → 다음 회차로 계속")
+                    if ok:
+                        self._upsert_round_status("pension", round_num, "success")
+                        stores_success.append(round_num)
+                    else:
+                        self._upsert_round_status("pension", round_num, "empty")
+                        stores_pending.append(round_num)
+                        logger.warning(f"[연금] {round_num}회 판매점 없음(empty) → 다음 회차 계속")
                     if i % 50 == 0:
                         self.save_to_files()
-                        logger.info(f"[중간저장] 연금복권 {round_num}회 완료")
                     time.sleep(random.uniform(2.0, 4.0))
-                if failed_rounds:
-                    logger.warning(f"[연금] 실패 회차: {failed_rounds}")
-                else:
-                    logger.info(f"[연금] 모든 회차 크롤링 성공")
-                # 최종 DB 검증
+
+                # 최종 요약
                 actual_db = self._get_db_latest_round("pension")
-                logger.info(f"[연금] Expected latest: {official_latest}회 | Actual DB latest: {actual_db}회"
-                            + (" ✅" if actual_db == official_latest else " ❌ 불일치!"))
+                logger.info(f"\n[연금] 공식 최신 회차: {official_latest}회")
+                logger.info(f"[연금] DB 최신 회차: {actual_db}회")
+                logger.info(f"[연금] 회차 데이터 저장 완료: {sorted(stores_success + stores_pending)}")
+                logger.info(f"[연금] 판매점 저장 완료: {sorted(stores_success) or '없음'}")
+                logger.info(f"[연금] 판매점 재수집 대기: {sorted(stores_pending) or '없음'}")
+                if stores_pending:
+                    logger.info(f"[연금] 결과: 회차 업데이트 성공 / 판매점 부분 미완료")
+                else:
+                    logger.info(f"[연금] 결과: 회차 업데이트 성공 / 판매점 저장 완료")
+                if actual_db != official_latest:
+                    logger.error(f"[연금] ❌ round_crawl_status 불일치: DB={actual_db} 공식={official_latest}")
 
         elif game_type == "speed":
             speed_max = {
@@ -872,6 +960,40 @@ class DHLotteryCrawler:
         logger.info(f"총 누적 지점: {len(self.stores_data)}")
         logger.info(f"총 HTTP 요청: {self._total_requests}건")
         logger.info("=" * 70)
+
+    def retry_pending_stores(self, game_type: str, rounds: list = None):
+        """판매점 정보가 없는(pending/empty/failed) 회차 재수집
+        rounds: 명시적 회차 리스트, None이면 DB에서 자동 조회
+        """
+        import sys
+        logger.info("=" * 70)
+        logger.info(f"[{game_type}] 판매점 재수집 시작")
+        logger.info("=" * 70)
+
+        if rounds is None:
+            rounds = self._get_pending_store_rounds(game_type, max_rounds=10)
+            if not rounds:
+                logger.info(f"[{game_type}] 재수집 대기 회차 없음")
+                return
+
+        logger.info(f"[{game_type}] 재수집 대상: {sorted(rounds)}")
+
+        crawl_fn = self.crawl_lotto_stores if game_type == "lotto" else self.crawl_pension_stores
+        success, still_pending = [], []
+        for i, round_num in enumerate(sorted(rounds, reverse=True), 1):
+            logger.info(f"\n[{i}/{len(rounds)}] {game_type} {round_num}회 판매점 재수집...")
+            ok = crawl_fn(round_num)
+            if ok:
+                self._upsert_round_status(game_type, round_num, "success")
+                success.append(round_num)
+                logger.info(f"[{game_type}] {round_num}회 판매점 재수집 성공 ✅")
+            else:
+                still_pending.append(round_num)
+                logger.warning(f"[{game_type}] {round_num}회 판매점 여전히 없음")
+            time.sleep(random.uniform(2.0, 4.0))
+
+        self.save_to_files()
+        logger.info(f"\n[{game_type}] 재수집 완료: 성공 {sorted(success)}, 미완료 {sorted(still_pending)}")
 
     def run_latest_rounds(self, count: int = 5):
         """전체 게임 최신 N개 회차 크롤링 (하위 호환)"""
@@ -979,24 +1101,37 @@ if __name__ == "__main__":
     #   python lotto_verca_crawler.py lotto latest        → 로또만 최신 5회차
     #   python lotto_verca_crawler.py pension latest      → 연금복권만 최신 5회차
     #   python lotto_verca_crawler.py speed latest        → 스피또만 최신 5회차
-    args = [a.lower() for a in sys.argv[1:]]
+    raw_args = sys.argv[1:]
+    args = [a.lower() for a in raw_args]
 
     if len(args) == 0:
-        # 전체 크롤링
         crawler.run_all_rounds_by_round()
     elif len(args) == 1 and args[0] == "latest":
-        # 모든 게임 최신 5회차
         crawler.run_latest_rounds(count=5)
     elif len(args) >= 2 and args[1] == "latest":
-        # 게임별 최신 크롤링
         game_type = args[0]
         count = int(args[2]) if len(args) >= 3 else 5
         crawler.run_latest_by_game(game_type, count=count)
+    elif args[0] in ("lotto-stores", "pension-stores"):
+        # 판매점 재수집
+        # 사용법:
+        #   python lotto_verca_crawler.py pension-stores            → pending 자동 조회
+        #   python lotto_verca_crawler.py pension-stores --rounds 321,322,323
+        game_type = "pension" if args[0] == "pension-stores" else "lotto"
+        rounds = None
+        if "--rounds" in args:
+            idx = args.index("--rounds")
+            if idx + 1 < len(args):
+                rounds = [int(r.strip()) for r in raw_args[idx + 1].split(",")]
+        crawler.retry_pending_stores(game_type, rounds=rounds)
+        crawler.save_to_files()
     else:
         print("사용법:")
-        print("  python lotto_verca_crawler.py                    → 전체 크롤링")
-        print("  python lotto_verca_crawler.py latest              → 모든 게임 최신 5회차")
-        print("  python lotto_verca_crawler.py lotto latest        → 로또만 최신 5회차")
-        print("  python lotto_verca_crawler.py pension latest      → 연금복권만 최신 5회차")
-        print("  python lotto_verca_crawler.py speed latest        → 스피또만 최신 5회차")
-        print("  python lotto_verca_crawler.py lotto latest 3      → 로또만 최신 3회차")
+        print("  python lotto_verca_crawler.py                           → 전체 크롤링")
+        print("  python lotto_verca_crawler.py latest                    → 모든 게임 최신 5회차")
+        print("  python lotto_verca_crawler.py lotto latest              → 로또만 최신 5회차")
+        print("  python lotto_verca_crawler.py pension latest            → 연금복권만 최신 5회차")
+        print("  python lotto_verca_crawler.py speed latest              → 스피또만 최신 5회차")
+        print("  python lotto_verca_crawler.py lotto latest 3            → 로또만 최신 3회차")
+        print("  python lotto_verca_crawler.py pension-stores            → 연금 판매점 pending 자동 재수집")
+        print("  python lotto_verca_crawler.py pension-stores --rounds 321,322,323  → 지정 회차 재수집")

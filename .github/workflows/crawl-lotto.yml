@@ -52,6 +52,13 @@ jobs:
       run: |
         python lotto_verca_uploader.py
 
+    - name: Retry pending store rounds (로또)
+      env:
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      run: |
+        python lotto_verca_crawler.py lotto-stores
+
     - name: Recalculate store counts from winning_history (로또)
       env:
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
