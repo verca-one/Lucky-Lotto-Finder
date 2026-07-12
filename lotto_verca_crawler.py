@@ -824,57 +824,84 @@ class DHLotteryCrawler:
             logger.warning(f"[{game_type}] {try_round}회 예외:\n{traceback.format_exc()}")
             return False
 
+    def _validate_confirmed_round(self, game_type: str, confirmed: int) -> bool:
+        """확정 회차 최종 검증: 당첨번호 존재, draw_date 존재, DB 최신보다 크거나 같음"""
+        import traceback
+        label = "로또" if game_type == "lotto" else "연금"
+        try:
+            if game_type == "lotto":
+                url = f"{self.base_url}/common.do"
+                params = {"method": "getLottoNumber", "drwNo": confirmed}
+                resp = self.session.get(url, params=params, headers=self.headers, timeout=60, verify=False)
+                data = resp.json()
+                if data.get("returnValue") != "success":
+                    logger.error(f"[{label}] 확정 {confirmed}회 검증 실패: returnValue={data.get('returnValue')}")
+                    return False
+                if not data.get("drwNoDate"):
+                    logger.error(f"[{label}] 확정 {confirmed}회 검증 실패: drwNoDate 없음")
+                    return False
+                logger.info(f"[{label}] 확정 {confirmed}회 검증: returnValue=success, 추첨일={data['drwNoDate']} ✅")
+            else:
+                # 연금은 판매점 API 자체가 "존재 여부" 확인이므로 probe로 대체
+                if not self._probe_round(game_type, confirmed):
+                    logger.error(f"[{label}] 확정 {confirmed}회 재검증 실패")
+                    return False
+                logger.info(f"[{label}] 확정 {confirmed}회 검증 완료 ✅")
+
+            # DB 최신 회차 비교
+            db_latest = self._get_db_latest_round(game_type)
+            if db_latest and confirmed < db_latest:
+                logger.error(
+                    f"[{label}] ❌ 확정 회차({confirmed}) < DB 최신({db_latest})"
+                    f" → 과거 회차로 업데이트 불가, 크롤링 중단"
+                )
+                return False
+            if db_latest:
+                logger.info(f"[{label}] DB 최신 회차: {db_latest}회 | 확정 회차: {confirmed}회 ✅")
+
+            return True
+        except Exception:
+            logger.error(f"[{label}] 확정 회차 검증 중 예외:\n{traceback.format_exc()}")
+            return False
+
     def get_latest_round(self, game_type: str) -> Optional[int]:
         """각 게임의 최신 회차 조회.
-        공식 API 우선, 실패 시 날짜 추정값으로 fallback하여 역탐색.
+        추정 회차부터 최대 MAX_SEARCH 회까지만 역탐색.
+        모두 실패하면 None 반환.
         """
         if "speedlotto" in game_type:
             logger.info(f"{game_type} 최신 기록 조회")
             return 1
 
+        MAX_SEARCH = 10  # 추정값 기준 최대 역탐색 범위
+
         estimated = self._estimate_round_from_date(game_type)
-        logger.info(f"[{game_type}] 날짜 기반 추정 회차: {estimated}회")
-        logger.info(f"[{game_type}] 공식 사이트 API로 최신 회차 실제 확인 중...")
+        label = "로또" if game_type == "lotto" else "연금"
 
-        search_range = range(estimated + 5, max(estimated - 10, 1), -1)
+        logger.info(f"[{label}] 날짜 기반 추정 회차: {estimated}회")
+        logger.info(f"[{label}] 공식 API 첫 요청 회차: {estimated}회")
+        logger.info(f"[{label}] 탐색 범위: {estimated} ~ {estimated - MAX_SEARCH + 1}회 (최대 {MAX_SEARCH}회)")
 
-        for try_round in search_range:
+        confirmed = None
+        for try_round in range(estimated, max(estimated - MAX_SEARCH, 0), -1):
+            logger.info(f"[{label}] 탐색 중: {try_round}회")
             if self._probe_round(game_type, try_round):
-                logger.info(f"[{game_type}] ✅ 공식 최신 회차 확인: {try_round}회")
-                return try_round
+                confirmed = try_round
+                break
             time.sleep(random.uniform(0.5, 1.5))
 
-        # ── Fallback: 추정값 기준 역탐색 ──────────────────────────
-        logger.warning(f"[{game_type}] ⚠️  공식 API 전체 실패 → 추정 회차({estimated}) 기반 fallback 탐색")
-        for try_round in range(estimated, max(estimated - 5, 1), -1):
-            logger.info(f"[{game_type}] Fallback 시도: {try_round}회")
-            # fallback은 단순 HTTP 요청으로 시도 (safe_request IP 보호 없이)
-            try:
-                if game_type == "lotto":
-                    url = f"{self.base_url}/common.do"
-                    params = {"method": "getLottoNumber", "drwNo": try_round}
-                else:
-                    url = "https://www.dhlottery.co.kr/wnprchsplcsrch/selectPtWnShp.do"
-                    params = {"srchWnShpRnk": "all", "srchLtEpsd": try_round, "srchShpLctn": ""}
+        if confirmed is None:
+            logger.error(
+                f"[{label}] 추정 회차 {estimated}부터 {MAX_SEARCH}회 역탐색 실패 → 크롤링 중단"
+            )
+            return None
 
-                resp = self.session.get(url, params=params, headers=self.headers, timeout=60, verify=False)
-                logger.info(f"[{game_type}] Fallback {try_round}회 HTTP {resp.status_code}")
+        logger.info(f"[{label}] 최종 확정 회차: {confirmed}회 (검증 시작)")
+        if not self._validate_confirmed_round(game_type, confirmed):
+            return None
 
-                if game_type == "lotto":
-                    if resp.json().get("returnValue") == "success":
-                        logger.info(f"[{game_type}] ✅ Fallback 성공: {try_round}회")
-                        return try_round
-                else:
-                    data = resp.json()
-                    if data.get("data") and data["data"].get("list"):
-                        logger.info(f"[{game_type}] ✅ Fallback 성공: {try_round}회")
-                        return try_round
-            except Exception as fe:
-                logger.warning(f"[{game_type}] Fallback {try_round}회 실패: {fe}")
-            time.sleep(1.0)
-
-        logger.error(f"[{game_type}] 공식 API 및 Fallback 모두 실패. 크롤링 중단.")
-        return None
+        logger.info(f"[{label}] ✅ 최신 회차 최종 확정: {confirmed}회")
+        return confirmed
 
     def run_latest_by_game(self, game_type: str, count: int = 5):
         """게임 타입별 최신 회차 크롤링 (공식 최신 회차 ~ DB 마지막 회차+1)"""
