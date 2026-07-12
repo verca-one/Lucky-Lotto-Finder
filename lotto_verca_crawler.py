@@ -342,7 +342,7 @@ class DHLotteryCrawler:
 
     def crawl_lotto_stores(self, round_num: int) -> bool:
         """로또 당첨지점 크롤링"""
-        logger.info(f"로또 {round_num}회 당첨지점 크롤링 시작...")
+        logger.info(f"[로또] Fetching round {round_num}")
 
         try:
             url = f"https://www.dhlottery.co.kr/wnprchsplcsrch/selectLtWnShp.do"
@@ -354,16 +354,25 @@ class DHLotteryCrawler:
 
             response = self._safe_request(url, params=params)
             if not response:
+                logger.error(f"[로또] {round_num}회 HTTP 요청 실패 (response=None) → 저장 실패")
                 return False
-            data = response.json()
+
+            logger.info(f"[로또] {round_num}회 HTTP {response.status_code} | 응답 길이 {len(response.content)} bytes")
+
+            try:
+                data = response.json()
+            except Exception as je:
+                logger.error(f"[로또] {round_num}회 JSON 파싱 실패: {je} → 저장 실패")
+                return False
 
             if not data.get("data") or not data["data"].get("list"):
-                logger.debug(f"로또 {round_num}회: 데이터 없음")
+                logger.warning(f"[로또] {round_num}회 파싱 성공 but 데이터 없음 (list 비어있음) → 저장 실패")
                 return False
 
             stores = data["data"]["list"]
-            logger.info(f"로또 {round_num}회: {len(stores)}개 당첨지점 발견")
+            logger.info(f"[로또] {round_num}회 파싱 성공: {len(stores)}개 당첨지점 발견")
 
+            saved = 0
             for store in stores:
                 rank = store.get("wnShpRnk", 0)
                 if rank not in [1, 2]:
@@ -379,15 +388,17 @@ class DHLotteryCrawler:
 
                 self._ensure_store_entry(dhlottery_code, store_name, address, purchase_method)
                 self._add_winning_record(dhlottery_code, "lotto", round_num, prize_tier, purchase_method)
+                saved += 1
 
+            logger.info(f"[로또] {round_num}회 저장 성공: {saved}개 기록 (1등/2등 합산)")
             return True
         except Exception as e:
-            logger.error(f"로또 {round_num}회 크롤링 실패: {e}")
+            logger.error(f"[로또] {round_num}회 크롤링 예외 → 저장 실패: {e}")
             return False
 
     def crawl_pension_stores(self, round_num: int) -> bool:
         """연금복권 당첨지점 크롤링 (신규 API: selectPtWnShp.do)"""
-        logger.info(f"연금복권 {round_num}회 당첨지점 크롤링 시작...")
+        logger.info(f"[연금] Fetching round {round_num}")
 
         try:
             # 연금복권 전용 엔드포인트 (로또와 별도)
@@ -400,16 +411,25 @@ class DHLotteryCrawler:
 
             response = self._safe_request(url, params=params)
             if not response:
+                logger.error(f"[연금] {round_num}회 HTTP 요청 실패 (response=None) → 저장 실패")
                 return False
-            data = response.json()
+
+            logger.info(f"[연금] {round_num}회 HTTP {response.status_code} | 응답 길이 {len(response.content)} bytes")
+
+            try:
+                data = response.json()
+            except Exception as je:
+                logger.error(f"[연금] {round_num}회 JSON 파싱 실패: {je} → 저장 실패")
+                return False
 
             if not data.get("data") or not data["data"].get("list"):
-                logger.debug(f"연금복권 {round_num}회: 데이터 없음")
+                logger.warning(f"[연금] {round_num}회 파싱 성공 but 데이터 없음 (list 비어있음) → 저장 실패")
                 return False
 
             stores = data["data"]["list"]
-            logger.info(f"연금복권 {round_num}회: {len(stores)}개 당첨지점 발견")
+            logger.info(f"[연금] {round_num}회 파싱 성공: {len(stores)}개 당첨지점 발견")
 
+            saved = 0
             for store in stores:
                 # wnShpRnk: "1"=1등, "2"=2등, "21"=보너스 (문자열)
                 rank_str = str(store.get("wnShpRnk", ""))
@@ -427,10 +447,12 @@ class DHLotteryCrawler:
 
                 self._ensure_store_entry(dhlottery_code, store_name, address, purchase_method)
                 self._add_winning_record(dhlottery_code, "pension", round_num, prize_tier, purchase_method)
+                saved += 1
 
+            logger.info(f"[연금] {round_num}회 저장 성공: {saved}개 기록 (1등/2등 합산)")
             return True
         except Exception as e:
-            logger.error(f"연금복권 {round_num}회 크롤링 실패: {e}")
+            logger.error(f"[연금] {round_num}회 크롤링 예외 → 저장 실패: {e}")
             return False
 
     def crawl_speedlotto_stores(self, game_type: str, round_num: int) -> bool:
@@ -759,13 +781,25 @@ class DHLotteryCrawler:
                 logger.info(f"[로또] DB가 이미 최신 상태 ({official_latest}회). 크롤링 생략.")
             else:
                 rounds_to_crawl = list(range(official_latest, start_round - 1, -1))
+                failed_rounds = []
                 for i, round_num in enumerate(rounds_to_crawl, 1):
                     logger.info(f"\n[{i}/{len(rounds_to_crawl)}] 로또 {round_num}회 크롤링 중...")
-                    self.crawl_lotto_stores(round_num)
+                    ok = self.crawl_lotto_stores(round_num)
+                    if not ok:
+                        failed_rounds.append(round_num)
+                        logger.warning(f"[로또] {round_num}회 크롤링 실패 → 다음 회차로 계속")
                     if i % 50 == 0:
                         self.save_to_files()
                         logger.info(f"[중간저장] 로또 {round_num}회 완료")
                     time.sleep(random.uniform(2.0, 4.0))
+                if failed_rounds:
+                    logger.warning(f"[로또] 실패 회차: {failed_rounds}")
+                else:
+                    logger.info(f"[로또] 모든 회차 크롤링 성공")
+                # 최종 DB 검증
+                actual_db = self._get_db_latest_round("lotto")
+                logger.info(f"[로또] Expected latest: {official_latest}회 | Actual DB latest: {actual_db}회"
+                            + (" ✅" if actual_db == official_latest else " ❌ 불일치!"))
 
         elif game_type == "pension":
             official_latest = self.get_latest_round("pension")
@@ -784,13 +818,25 @@ class DHLotteryCrawler:
                 logger.info(f"[연금복권] DB가 이미 최신 상태 ({official_latest}회). 크롤링 생략.")
             else:
                 rounds_to_crawl = list(range(official_latest, start_round - 1, -1))
+                failed_rounds = []
                 for i, round_num in enumerate(rounds_to_crawl, 1):
                     logger.info(f"\n[{i}/{len(rounds_to_crawl)}] 연금복권 {round_num}회 크롤링 중...")
-                    self.crawl_pension_stores(round_num)
+                    ok = self.crawl_pension_stores(round_num)
+                    if not ok:
+                        failed_rounds.append(round_num)
+                        logger.warning(f"[연금] {round_num}회 크롤링 실패 → 다음 회차로 계속")
                     if i % 50 == 0:
                         self.save_to_files()
                         logger.info(f"[중간저장] 연금복권 {round_num}회 완료")
                     time.sleep(random.uniform(2.0, 4.0))
+                if failed_rounds:
+                    logger.warning(f"[연금] 실패 회차: {failed_rounds}")
+                else:
+                    logger.info(f"[연금] 모든 회차 크롤링 성공")
+                # 최종 DB 검증
+                actual_db = self._get_db_latest_round("pension")
+                logger.info(f"[연금] Expected latest: {official_latest}회 | Actual DB latest: {actual_db}회"
+                            + (" ✅" if actual_db == official_latest else " ❌ 불일치!"))
 
         elif game_type == "speed":
             speed_max = {
