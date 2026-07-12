@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:google_mobile_ads/google_mobile_ads.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -44,7 +45,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (!mounted) return;
     setState(() {
       _isBannerLoaded = loaded;
-      _bannerAd = AdService.getBannerAd();
+      _bannerAd = AdService.bannerAd;
     });
   }
 
@@ -226,6 +227,7 @@ class _HomeScreenState extends State<HomeScreen> {
     ];
 
     return Scaffold(
+      backgroundColor: Colors.transparent,
       appBar: AppBar(
         title: Row(
           children: [
@@ -327,7 +329,26 @@ class _HomeScreenState extends State<HomeScreen> {
           const SizedBox(width: 4),
         ],
       ),
-      body: IndexedStack(index: _selectedBottomTab, children: pages),
+      body: Stack(
+        children: [
+          // 1. dra.png 배경 (전체 opacity)
+          Positioned.fill(
+            child: Image.asset(
+              'assets/dra.png',
+              fit: BoxFit.cover,
+              alignment: Alignment.centerRight,
+            ),
+          ),
+          // 2. 흰색 반투명 오버레이 (0.75 → 이미지 25% 노출, 테스트용)
+          Positioned.fill(
+            child: Container(
+              color: Colors.white.withValues(alpha: 0.75),
+            ),
+          ),
+          // 3. 기존 콘텐츠
+          IndexedStack(index: _selectedBottomTab, children: pages),
+        ],
+      ),
       bottomNavigationBar: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -352,7 +373,14 @@ class _HomeScreenState extends State<HomeScreen> {
                 if (index == 3 && _selectedBottomTab == 3) {
                   _recommendKey.currentState?.resetToMain();
                 }
-                setState(() => _selectedBottomTab = index);
+                // 같은 탭 재탭은 카운트 제외
+                if (index != _selectedBottomTab) {
+                  AdService.onMenuUsed(context, onAfter: () {
+                    if (mounted) setState(() => _selectedBottomTab = index);
+                  });
+                } else {
+                  setState(() => _selectedBottomTab = index);
+                }
               },
               items: const [
                 BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: '홈'),
@@ -393,7 +421,7 @@ class _HomeRankingContent extends StatefulWidget {
   State<_HomeRankingContent> createState() => _HomeRankingContentState();
 }
 
-class _HomeRankingContentState extends State<_HomeRankingContent> with SingleTickerProviderStateMixin {
+class _HomeRankingContentState extends State<_HomeRankingContent> with TickerProviderStateMixin {
   List<Map<String, dynamic>> _rankedStores = [];
   List<Map<String, dynamic>> _internetStores = []; // 인터넷구매 지점 (별도 표시)
   Map<String, Map<String, dynamic>> _pensionInfo = {};
@@ -416,6 +444,8 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with SingleTic
 
   // 1~3위 카드 빛나기 애니메이션
   late AnimationController _glowController;
+  // 스켈레톤 shimmer 애니메이션
+  late AnimationController _shimmerController;
 
   @override
   void initState() {
@@ -423,6 +453,10 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with SingleTic
     _glowController = AnimationController(
       vsync: this,
       duration: const Duration(milliseconds: 3000),
+    )..repeat();
+    _shimmerController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
     )..repeat();
     _loadFavorites();
     _loadRanking();
@@ -432,6 +466,7 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with SingleTic
   @override
   void dispose() {
     _glowController.dispose();
+    _shimmerController.dispose();
     favoritesNotifier.removeListener(_loadFavorites);
     super.dispose();
   }
@@ -457,16 +492,32 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with SingleTic
   }
 
   Future<void> _loadRanking() async {
-    setState(() {
-      _isLoading = true;
-      _error = null;
-    });
+    // 캐시 데이터가 있으면 먼저 표시 (로딩 스켈레톤 없이 즉시 보임)
+    if (_rankedStores.isEmpty) {
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
+    }
 
     try {
-      // 1. 최신 회차 + 로또 1등 기준 TOP 30 조회
-      final latestRound = await SupabaseService.getLatestRound('lotto');
-      final latestPension = await SupabaseService.getLatestRound('pension');
-      final allStores = await SupabaseService.getTopRankedStores(limit: 40);
+      // 1. home_stats(1건) + TOP 20 + prefs — 병렬 실행 (getLatestRound 2번 → home_stats 1번으로 대체)
+      final results = await Future.wait([
+        SupabaseService.getHomeStats(),
+        SupabaseService.getTopRankedStores(limit: 20),
+        SharedPreferences.getInstance(),
+      ]);
+
+      final homeStats = results[0] as Map<String, dynamic>?;
+      // home_stats 없으면 winning_history에서 직접 조회 (fallback)
+      final int? latestRound = homeStats != null
+          ? (homeStats['lotto_latest_round'] as num?)?.toInt()
+          : await SupabaseService.getLatestRound('lotto');
+      final int? latestPension = homeStats != null
+          ? (homeStats['pension_latest_round'] as num?)?.toInt()
+          : await SupabaseService.getLatestRound('pension');
+      final allStores = results[1] as List<Map<String, dynamic>>;
+      final prefs = results[2] as SharedPreferences;
 
       if (allStores.isEmpty) {
         setState(() {
@@ -477,7 +528,7 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with SingleTic
         return;
       }
 
-      // 인터넷구매 지점 분리 (store_name이 '인터넷'으로 시작하는 지점)
+      // 인터넷구매 지점 분리
       final internetStores = allStores.where((s) {
         final name = (s['store_name'] ?? '') as String;
         return name.startsWith('인터넷');
@@ -485,49 +536,60 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with SingleTic
       final stores = allStores.where((s) {
         final name = (s['store_name'] ?? '') as String;
         return !name.startsWith('인터넷');
-      }).take(30).toList();
+      }).take(20).toList();
 
       // 2. 순위 변동 계산
-      final prefs = await SharedPreferences.getInstance();
-      final prevRankList = prefs.getStringList('prev_ranking') ?? [];
-      // 이전 순위 맵: dhlotteryCode -> 이전순위(1부터)
-      final Map<String, int> prevRankMap = {};
-      for (int i = 0; i < prevRankList.length; i++) {
-        prevRankMap[prevRankList[i]] = i + 1;
-      }
+      final prevRound    = prefs.getInt('prev_ranking_round') ?? 0;
+      final currentRound = latestRound ?? 0;
 
-      // 현재 순위 리스트
-      final codes = stores.map((s) => s['dhlottery_code'] as String).toList();
-      // 인터넷구매 지점 코드도 배지/연금 로드에 포함
+      final codes    = stores.map((s) => s['dhlottery_code'] as String).toList();
       final allCodes = [...codes, ...internetStores.map((s) => s['dhlottery_code'] as String)];
 
-      // 변동 계산
-      final Map<String, int> changes = {};
-      for (int i = 0; i < codes.length; i++) {
-        final code = codes[i];
-        final currentRank = i + 1;
-        if (prevRankMap.containsKey(code)) {
-          changes[code] = prevRankMap[code]! - currentRank; // 양수=상승
-        } else if (prevRankList.isNotEmpty) {
-          changes[code] = 99; // 신규 진입
+      Map<String, int> changes = {};
+
+      if (currentRound != prevRound) {
+        final prevRankList = prefs.getStringList('prev_ranking') ?? [];
+        final Map<String, int> prevRankMap = {};
+        for (int i = 0; i < prevRankList.length; i++) {
+          prevRankMap[prevRankList[i]] = i + 1;
+        }
+        for (int i = 0; i < codes.length; i++) {
+          final code = codes[i];
+          final curRank = i + 1;
+          if (prevRankMap.containsKey(code)) {
+            changes[code] = prevRankMap[code]! - curRank;
+          } else if (prevRankList.isNotEmpty) {
+            changes[code] = 99;
+          }
+        }
+        await prefs.setStringList('prev_ranking', codes);
+        await prefs.setInt('prev_ranking_round', currentRound);
+        final changesStr = changes.entries.map((e) => '${e.key}:${e.value}').join(',');
+        await prefs.setString('prev_ranking_changes', changesStr);
+      } else {
+        final saved = prefs.getString('prev_ranking_changes') ?? '';
+        if (saved.isNotEmpty) {
+          for (final part in saved.split(',')) {
+            final idx = part.lastIndexOf(':');
+            if (idx > 0) {
+              final code = part.substring(0, idx);
+              final delta = int.tryParse(part.substring(idx + 1));
+              if (delta != null) changes[code] = delta;
+            }
+          }
         }
       }
 
-      // 현재 순위 저장 (다음 비교용)
-      await prefs.setStringList('prev_ranking', codes);
-      await prefs.setInt('prev_ranking_round', latestRound ?? 0);
-
-      // 3. 배지 로드 (인터넷구매 포함)
-      await BadgeService.loadBadges(allCodes);
-
-      // 4. 연금복권 당첨 정보 조회 (배지 표시용)
-      final pensionData = await SupabaseService.getPensionInfoForStores(allCodes);
-
-      // 5. 최근 24시간 크롤링 성공 로그 조회
+      // 3. 배지 + 연금 + 크롤링 로그 — 병렬 실행
       List<Map<String, dynamic>> crawlLogs = [];
-      try {
-        crawlLogs = await SupabaseService.getRecentSuccessLogs(hours: 24);
-      } catch (_) {}
+      final secondResults = await Future.wait([
+        BadgeService.loadBadges(allCodes),
+        SupabaseService.getPensionInfoForStores(allCodes),
+        SupabaseService.getRecentSuccessLogs(hours: 168).catchError((_) => <Map<String, dynamic>>[]),
+      ]);
+
+      final pensionData = secondResults[1] as Map<String, Map<String, dynamic>>;
+      crawlLogs = secondResults[2] as List<Map<String, dynamic>>;
 
       if (!mounted) return;
       setState(() {
@@ -541,6 +603,8 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with SingleTic
         _recentCrawlLogs = crawlLogs;
         _isLoading = false;
       });
+      // 초기 로딩 완료 → 이후 전면광고 허용
+      AdService.markInitialLoadComplete();
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -564,91 +628,228 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with SingleTic
 
   @override
   Widget build(BuildContext context) {
+    if (_error != null) {
+      return Center(child: Text('오류: $_error'));
+    }
+
     return RefreshIndicator(
       onRefresh: _loadRanking,
-      child: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _error != null
-              ? Center(child: Text('오류: $_error'))
-              : Container(
-                  color: const Color(0xFFF2F4F8),
-                  child: CustomScrollView(
-                  slivers: [
-                    // 헤더 (파란 배경 영역)
-                    SliverToBoxAdapter(child: _buildHeader()),
-                    // 업데이트 안내 배너
-                    if (_isUpdateTime)
-                      SliverToBoxAdapter(child: _buildUpdateBanner()),
-                    // 배지 로딩 실패 안내
-                    if (_badgeLoadFailed)
-                      SliverToBoxAdapter(child: _buildBadgeFailBanner()),
-                    // 랭킹 섹션 타이틀
-                    SliverToBoxAdapter(
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
-                        child: Row(
-                          children: [
-                            const Text(
-                              '랭킹',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.w800,
-                                color: Color(0xFF1A1A2E),
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFF1565C0),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Text(
-                                'TOP ${_rankedStores.length}',
-                                style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white),
-                              ),
-                            ),
-                          ],
-                        ),
+      child: CustomScrollView(
+        slivers: [
+          // 헤더 (파란 배경) — 로딩 중에도 먼저 표시
+          SliverToBoxAdapter(child: _buildHeader()),
+
+          if (_isLoading) ...[
+            // ── 스켈레톤 로딩 UI ──────────────────────────────
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
+                child: Row(
+                  children: [
+                    const Text(
+                      '랭킹',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF1A1A2E),
                       ),
                     ),
-                    // 랭킹 리스트
-                    _rankedStores.isEmpty
-                        ? const SliverFillRemaining(
-                            child: Center(child: Text('당첨지점 데이터가 없습니다')),
-                          )
-                        : SliverPadding(
-                            padding: const EdgeInsets.symmetric(horizontal: 16),
-                            sliver: SliverList(
-                              delegate: SliverChildBuilderDelegate(
-                                (context, index) {
-                                  if (index >= _rankedStores.length) return null;
-                                  return _buildRankCard(index, _rankedStores[index]);
-                                },
-                                childCount: _rankedStores.length,
-                              ),
-                            ),
-                          ),
-                    // 인터넷구매 지점 (별도 섹션)
-                    if (_internetStores.isNotEmpty) ...[
-                      SliverToBoxAdapter(child: _buildInternetSection()),
-                      SliverPadding(
-                        padding: const EdgeInsets.symmetric(horizontal: 16),
-                        sliver: SliverList(
-                          delegate: SliverChildBuilderDelegate(
-                            (context, index) {
-                              if (index >= _internetStores.length) return null;
-                              return _buildInternetCard(_internetStores[index]);
-                            },
-                            childCount: _internetStores.length,
-                          ),
-                        ),
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.grey.shade300,
+                        borderRadius: BorderRadius.circular(10),
                       ),
-                    ],
-                    const SliverToBoxAdapter(child: SizedBox(height: 20)),
+                      child: const Text(
+                        'TOP 30',
+                        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white),
+                      ),
+                    ),
                   ],
                 ),
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 2, 20, 14),
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 12,
+                      height: 12,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 1.5,
+                        color: Colors.grey.shade400,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      '전국 당첨지점 정보를 불러오는 중입니다...',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
+                    ),
+                  ],
                 ),
+              ),
+            ),
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (ctx, i) => i < 5 ? _buildSkeletonCard() : null,
+                  childCount: 5,
+                ),
+              ),
+            ),
+          ] else ...[
+            // ── 실제 데이터 ───────────────────────────────────
+            if (_isUpdateTime)
+              SliverToBoxAdapter(child: _buildUpdateBanner()),
+            if (_badgeLoadFailed)
+              SliverToBoxAdapter(child: _buildBadgeFailBanner()),
+            SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+                child: Row(
+                  children: [
+                    const Text(
+                      '랭킹',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.w800,
+                        color: Color(0xFF1A1A2E),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1565C0),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Text(
+                        'TOP ${_rankedStores.length}',
+                        style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.white),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            _rankedStores.isEmpty
+                ? const SliverFillRemaining(
+                    child: Center(child: Text('당첨지점 데이터가 없습니다')),
+                  )
+                : SliverPadding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    sliver: SliverList(
+                      delegate: SliverChildBuilderDelegate(
+                        (context, index) {
+                          if (index >= _rankedStores.length) return null;
+                          return _buildRankCard(index, _rankedStores[index]);
+                        },
+                        childCount: _rankedStores.length,
+                      ),
+                    ),
+                  ),
+            if (_internetStores.isNotEmpty) ...[
+              SliverToBoxAdapter(child: _buildInternetSection()),
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                sliver: SliverList(
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      if (index >= _internetStores.length) return null;
+                      return _buildInternetCard(_internetStores[index]);
+                    },
+                    childCount: _internetStores.length,
+                  ),
+                ),
+              ),
+            ],
+            const SliverToBoxAdapter(child: SizedBox(height: 20)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  // ── 스켈레톤 카드 ────────────────────────────────────────────
+  Widget _buildSkeletonCard() {
+    return AnimatedBuilder(
+      animation: _shimmerController,
+      builder: (context, _) {
+        final sweep = _shimmerController.value * 3.0 - 1.5;
+        return Container(
+          margin: const EdgeInsets.only(bottom: 10),
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(color: Colors.grey.shade200),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.04),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _shimmerBox(36, 36, sweep, isCircle: true),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _shimmerBox(null, 15, sweep),
+                    const SizedBox(height: 6),
+                    _shimmerBox(160, 12, sweep),
+                    const SizedBox(height: 4),
+                    _shimmerBox(120, 12, sweep),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        _shimmerBox(62, 22, sweep),
+                        const SizedBox(width: 6),
+                        _shimmerBox(78, 22, sweep),
+                        const SizedBox(width: 6),
+                        _shimmerBox(62, 22, sweep),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 10),
+              Column(
+                children: [
+                  _shimmerBox(28, 28, sweep, isCircle: true),
+                  const SizedBox(height: 6),
+                  _shimmerBox(28, 14, sweep),
+                ],
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _shimmerBox(double? width, double height, double sweep,
+      {bool isCircle = false}) {
+    return Container(
+      width: width,
+      height: height,
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment(sweep - 1, 0),
+          end: Alignment(sweep + 1, 0),
+          colors: const [Color(0xFFE0E0E0), Color(0xFFF5F5F5), Color(0xFFE0E0E0)],
+        ),
+        borderRadius: BorderRadius.circular(isCircle ? height / 2 : 4),
+      ),
     );
   }
 
@@ -726,7 +927,7 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with SingleTic
       width: double.infinity,
       decoration: const BoxDecoration(
         gradient: LinearGradient(
-          colors: [Color(0xFF1565C0), Color(0xFF1E88E5)],
+          colors: [Color(0x881565C0), Color(0x881E88E5)],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -817,111 +1018,88 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with SingleTic
 
   /// 크롤링 안내문 목록 생성
   List<Widget> _buildCrawlNotices() {
-    final notices = <Widget>[];
+    if (_recentCrawlLogs.isEmpty) return [];
+
+    // 타입별 최신 로그 1건씩 추출
+    final latestByType = <String, Map<String, dynamic>>{};
+    for (final log in _recentCrawlLogs) {
+      final type = log['lottery_type'] as String? ?? '';
+      if (type.isEmpty) continue;
+      if (!latestByType.containsKey(type)) latestByType[type] = log;
+    }
+    if (latestByType.isEmpty) return [];
+
+    // 표시 순서: 로또 → 연금 → 스피또
+    const order = ['lotto', 'pension', 'speeto'];
+    final lines = <String>[];
     final now = DateTime.now();
-    final todayStr = '${now.year}-${now.month.toString().padLeft(2, '0')}-${now.day.toString().padLeft(2, '0')}';
 
-    // 오늘 완료된 크롤링 로그 확인
-    final todayLogs = _recentCrawlLogs.where((log) {
-      final completedAt = log['completed_at'] as String?;
-      if (completedAt == null) return false;
-      return completedAt.startsWith(todayStr);
-    }).toList();
+    for (final type in order) {
+      final log = latestByType[type];
+      if (log == null) continue;
+      final completedAtRaw = log['completed_at'] as String?;
+      if (completedAtRaw == null) continue;
 
-    // 완료된 로그가 있으면 표시
-    if (todayLogs.isNotEmpty) {
-      final typeLabels = <String>[];
-      for (var log in todayLogs) {
-        final type = log['lottery_type'] as String? ?? '';
-        final rounds = log['rounds_processed'] as String? ?? '';
-        String label;
-        switch (type) {
-          case 'lotto':
-            label = '로또';
-            break;
-          case 'pension':
-            label = '연금';
-            break;
-          case 'speeto':
-            label = '스피또';
-            break;
-          default:
-            label = type;
-        }
-        if (rounds.isNotEmpty && rounds != 'latest') {
-          label += ' $rounds회차';
-        }
-        typeLabels.add(label);
+      // UTC → KST (+9시간)
+      final utc = DateTime.tryParse(completedAtRaw);
+      if (utc == null) continue;
+      final kst = utc.toLocal(); // 기기 타임존 = KST 가정
+      final hh = kst.hour.toString().padLeft(2, '0');
+      final mm = kst.minute.toString().padLeft(2, '0');
+
+      // 오늘이 아니면 날짜도 표시
+      final isToday = kst.year == now.year && kst.month == now.month && kst.day == now.day;
+      final timeStr = isToday ? '$hh:$mm' : '${kst.month}/${kst.day} $hh:$mm';
+
+      String label;
+      switch (type) {
+        case 'lotto':
+          label = _latestLottoRound > 0 ? '로또(${_latestLottoRound}회)' : '로또';
+          break;
+        case 'pension':
+          label = _latestPensionRound > 0 ? '연금(${_latestPensionRound}회)' : '연금';
+          break;
+        case 'speeto':
+          label = '스피또';
+          break;
+        default:
+          label = type;
       }
+      lines.add('$label가 ${timeStr}에 업데이트 되었습니다.');
+    }
 
-      notices.add(const SizedBox(height: 10));
-      notices.add(
-        Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(10),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.check_circle_outline, color: Colors.lightGreenAccent, size: 16),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '${typeLabels.join(', ')} 업데이트 완료',
-                  style: const TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.w500),
-                ),
-              ),
-            ],
-          ),
+    if (lines.isEmpty) return [];
+
+    return [
+      const SizedBox(height: 10),
+      Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.15),
+          borderRadius: BorderRadius.circular(10),
         ),
-      );
-    } else {
-      // 완료 로그가 없으면 오늘 예약 정보 표시
-      // 스케줄: 목요일 19:30 연금, 토요일 06:00 스피또, 토요일 21:30 로또
-      String? scheduleMsg;
-      if (now.weekday == DateTime.thursday) {
-        scheduleMsg = '오늘 19:30 연금복권 업데이트 예정';
-      } else if (now.weekday == DateTime.saturday) {
-        if (now.hour < 10) {
-          scheduleMsg = '오늘 06:00 스피또 / 21:30 로또 업데이트 예정';
-        } else if (now.hour < 22) {
-          scheduleMsg = '오늘 21:30 로또 업데이트 예정';
-        }
-      } else if (now.weekday == DateTime.friday) {
-        // 금요일 UTC 21:00 = 토요일 KST 06:00이므로 금요일에도 안내
-        scheduleMsg = '내일 06:00 스피또 업데이트 예정';
-      }
-
-      if (scheduleMsg != null) {
-        notices.add(const SizedBox(height: 10));
-        notices.add(
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(10),
-            ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: lines.map((line) => Padding(
+            padding: EdgeInsets.only(bottom: line == lines.last ? 0 : 4),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.schedule, color: Colors.amberAccent, size: 16),
-                const SizedBox(width: 8),
+                const Icon(Icons.check_circle_outline, color: Colors.lightGreenAccent, size: 14),
+                const SizedBox(width: 6),
                 Expanded(
                   child: Text(
-                    scheduleMsg,
+                    line,
                     style: const TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.w500),
                   ),
                 ),
               ],
             ),
-          ),
-        );
-      }
-    }
-
-    return notices;
+          )).toList(),
+        ),
+      ),
+    ];
   }
 
   void _toggleCard(String code) async {
@@ -1998,11 +2176,25 @@ class _SettingsDialogState extends State<_SettingsDialog> {
   bool _isDonating = false;
   String? _donationMessage;
   bool? _donationSuccess;
+  bool _settingsBannerLoaded = false;
 
   @override
   void initState() {
     super.initState();
     _adsRemoved = widget.adsRemoved;
+    _loadSettingsBanner();
+  }
+
+  @override
+  void dispose() {
+    AdService.disposeSettingsBanner();
+    super.dispose();
+  }
+
+  void _loadSettingsBanner() {
+    AdService.loadSettingsBannerAd(() {
+      if (mounted) setState(() => _settingsBannerLoaded = true);
+    });
   }
 
   Future<void> _handleRedeem() async {
@@ -2342,6 +2534,21 @@ class _SettingsDialogState extends State<_SettingsDialog> {
                     ),
                   ),
                 ),
+              ],
+
+              // 설정 배너 광고 (로드 성공 시에만 표시)
+              if (!_adsRemoved &&
+                  _settingsBannerLoaded &&
+                  AdService.settingsBannerAd != null) ...[
+                const SizedBox(height: 16),
+                const Divider(),
+                const SizedBox(height: 8),
+                SizedBox(
+                  width: double.infinity,
+                  height: AdService.settingsBannerAd!.size.height.toDouble(),
+                  child: AdWidget(ad: AdService.settingsBannerAd!),
+                ),
+                const SizedBox(height: 4),
               ],
             ],
           ),

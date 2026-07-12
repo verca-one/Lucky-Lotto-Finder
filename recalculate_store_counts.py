@@ -108,6 +108,30 @@ def recalculate_counts(lottery_type: str):
         done = min(i + batch_size, len(updates))
         print(f"  ✅ {done}/{len(updates)} 완료")
 
+    # ── 검증: winning_history 집계 vs lottery_stores 저장값 비교 ──
+    verify_codes = ["11100773", "12600054"]  # 스파, 부일카서비스
+    print(f"\n🔍 핵심 판매점 검증...")
+    verify_resp = supabase.table("lottery_stores") \
+        .select("dhlottery_code, store_name, first_count, second_count, total_count") \
+        .eq("lottery_type", lottery_type) \
+        .in_("dhlottery_code", verify_codes) \
+        .execute()
+    for row in (verify_resp.data or []):
+        code = row["dhlottery_code"]
+        expected = counts.get(code, {"first": [], "second": []})
+        exp_first = len(expected["first"])
+        exp_second = len(expected["second"])
+        ok_first = row["first_count"] == exp_first
+        ok_second = row["second_count"] == exp_second
+        status = "✅" if (ok_first and ok_second) else "❌"
+        print(f"  {status} {row['store_name']}({code}): 1등={row['first_count']}(예상:{exp_first}) 2등={row['second_count']}(예상:{exp_second})")
+
+    # 전체 통계 출력
+    total_first = sum(len(v["first"]) for v in counts.values())
+    total_second = sum(len(v["second"]) for v in counts.values())
+    print(f"\n📊 [{lottery_type}] 전체 통계:")
+    print(f"   업데이트 대상: {len(updates)}개 판매점")
+    print(f"   winning_history 집계: 1등 {total_first}건, 2등 {total_second}건")
     print(f"✅ [{lottery_type}] 카운트 재집계 완료!")
 
 

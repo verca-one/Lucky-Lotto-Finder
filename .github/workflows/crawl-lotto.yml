@@ -66,6 +66,13 @@ jobs:
       run: |
         python recalculate_badges.py lotto --force
 
+    - name: Update home stats
+      env:
+        SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+        SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+      run: |
+        python update_stats_home.py
+
     - name: Verify crawl result (DB vs 공식 최신 회차)
       id: verify
       env:

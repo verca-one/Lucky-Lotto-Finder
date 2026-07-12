@@ -279,6 +279,73 @@ class SupabaseService {
     }
   }
 
+  // 특정 회차에 당첨된 판매점 코드+등급 조회 (즐겨찾기 필터)
+  static Future<Map<String, String>> getWinnersInRound(int round, List<String> codes) async {
+    if (codes.isEmpty) return {};
+    try {
+      final response = await _supabase
+          .from('winning_history')
+          .select('dhlottery_code, prize_tier')
+          .eq('round', round)
+          .eq('lottery_type', 'lotto')
+          .inFilter('dhlottery_code', codes);
+      final Map<String, String> result = {};
+      for (final row in response) {
+        final code = row['dhlottery_code'] as String;
+        final tier = row['prize_tier'] as String;
+        // first 우선, 이미 first면 덮어쓰지 않음
+        if (!result.containsKey(code) || tier == 'first') {
+          result[code] = tier;
+        }
+      }
+      return result;
+    } catch (e) {
+      return {};
+    }
+  }
+
+  // winning_history 페이지네이션 배치 조회 (추천 판매점 계산용)
+  static Future<List<Map<String, dynamic>>> getWinningHistoryBatch({
+    required String lotteryType,
+    required String prizeTier,
+    required int offset,
+    int limit = 1000,
+  }) async {
+    try {
+      final resp = await _supabase
+          .from('winning_history')
+          .select('dhlottery_code, round')
+          .eq('lottery_type', lotteryType)
+          .eq('prize_tier', prizeTier)
+          .range(offset, offset + limit - 1);
+      return (resp as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      return [];
+    }
+  }
+
+  // 코드 목록으로 판매점 기본 정보 조회 (추천 판매점 계산용)
+  static Future<List<Map<String, dynamic>>> getStoreInfoByCodes(
+    List<String> codes,
+    String lotteryType,
+  ) async {
+    if (codes.isEmpty) return [];
+    final result = <Map<String, dynamic>>[];
+    const chunkSize = 500;
+    for (int i = 0; i < codes.length; i += chunkSize) {
+      final chunk = codes.sublist(i, (i + chunkSize).clamp(0, codes.length));
+      try {
+        final resp = await _supabase
+            .from('lottery_stores')
+            .select('dhlottery_code, store_name, address')
+            .eq('lottery_type', lotteryType)
+            .inFilter('dhlottery_code', chunk);
+        result.addAll((resp as List).cast<Map<String, dynamic>>());
+      } catch (_) {}
+    }
+    return result;
+  }
+
   // 최신 회차 조회 (Supabase에서 직접)
   static Future<int?> getLatestRound(String lotteryType) async {
     try {
@@ -637,20 +704,58 @@ class SupabaseService {
   }
 
   /// 홈 랭킹: 로또 1등 당첨 횟수 기준 TOP N 지점 조회
-  /// first_count 내림차순 + latest_first_win 내림차순 (최근 가중치)
+  /// winning_history 직접 집계 기반 TOP 랭킹
   static Future<List<Map<String, dynamic>>> getTopRankedStores({
-    int limit = 30,
+    int limit = 40,
   }) async {
     try {
-      final response = await _supabase
+      // ① lottery_stores에 집계된 first_count 기준 TOP N 직접 조회 (단일 쿼리)
+      //    recalculate_store_counts.py가 크롤링 후 항상 갱신하므로 정확함
+      final storeResp = await _supabase
           .from('lottery_stores')
-          .select('dhlottery_code, store_name, address, region, lottery_type, first_count, second_count, total_count, purchase_method, latest_first_win, latest_second_win')
+          .select('dhlottery_code, store_name, address, region, lottery_type, purchase_method, first_count, second_count, total_count')
           .eq('lottery_type', 'lotto')
           .gt('first_count', 0)
           .order('first_count', ascending: false)
-          .order('latest_first_win', ascending: false)
+          .order('total_count', ascending: false)
           .limit(limit);
-      return (response as List).cast<Map<String, dynamic>>();
+
+      if ((storeResp as List).isEmpty) return [];
+
+      final topCodes = storeResp.map((s) => s['dhlottery_code'] as String).toList();
+
+      // ② top N 판매점의 최신 1등 회차만 조회 (판매점당 1건, 상한 500)
+      final histResp = await _supabase
+          .from('winning_history')
+          .select('dhlottery_code, round')
+          .eq('lottery_type', 'lotto')
+          .eq('prize_tier', 'first')
+          .inFilter('dhlottery_code', topCodes)
+          .order('round', ascending: false)
+          .limit(500);
+
+      final Map<String, int> latestRoundMap = {};
+      for (final row in (histResp as List)) {
+        final code = row['dhlottery_code'] as String;
+        if (!latestRoundMap.containsKey(code)) {
+          latestRoundMap[code] = (row['round'] as num).toInt();
+        }
+      }
+
+      // ③ latest_first_win 병합 후 원래 정렬 기준 적용 (1등횟수 DESC, 최신당첨회차 DESC)
+      final result = <Map<String, dynamic>>[];
+      for (final s in storeResp) {
+        if ((s['store_name'] ?? '').toString().isEmpty) continue;
+        final merged = Map<String, dynamic>.from(s as Map<String, dynamic>);
+        merged['latest_first_win'] = latestRoundMap[s['dhlottery_code'] as String] ?? 0;
+        result.add(merged);
+      }
+      result.sort((a, b) {
+        final cmp = (b['first_count'] as int).compareTo(a['first_count'] as int);
+        if (cmp != 0) return cmp;
+        return (b['latest_first_win'] as int).compareTo(a['latest_first_win'] as int);
+      });
+      return result;
     } catch (e) {
       print('TOP 랭킹 조회 오류: $e');
       return [];
@@ -733,6 +838,76 @@ class SupabaseService {
       print('store_badges 조회 오류: $e');
       return [];
     }
+  }
+
+  // 배지 계산 상태 조회 (lottery_type별 최신회차 + calculated_at 비교)
+  static Future<List<Map<String, dynamic>>> getBadgeCalculationStatus() async {
+    final types = ['lotto', 'pension', 'speedlotto_2000', 'speedlotto_1000', 'speedlotto_500'];
+    final results = <Map<String, dynamic>>[];
+
+    for (final lt in types) {
+      try {
+        // 최신 회차 + 해당 회차 당첨지점 등록시각
+        final latestHistory = await _supabase
+            .from('winning_history')
+            .select('round, created_at')
+            .eq('lottery_type', lt)
+            .order('round', ascending: false)
+            .limit(1)
+            .maybeSingle();
+
+        final latestRound = latestHistory?['round'] as int? ?? 0;
+        final roundCreatedAt = latestHistory?['created_at'] as String?;
+
+        // 배지 계산 최신 시각 + 개수
+        final badgeStats = await _supabase
+            .from('store_badges')
+            .select('calculated_at')
+            .eq('lottery_type', lt)
+            .order('calculated_at', ascending: false)
+            .limit(1)
+            .maybeSingle();
+
+        final calculatedAt = badgeStats?['calculated_at'] as String?;
+
+        // 배지 총 개수
+        final countResp = await _supabase
+            .from('store_badges')
+            .select('dhlottery_code')
+            .eq('lottery_type', lt);
+        final badgeCount = (countResp as List).length;
+
+        // 판정: calculated_at이 roundCreatedAt보다 나중이면 적용완료
+        bool isApplied = false;
+        if (calculatedAt != null && roundCreatedAt != null) {
+          final calcDt = DateTime.tryParse(calculatedAt);
+          final roundDt = DateTime.tryParse(roundCreatedAt);
+          if (calcDt != null && roundDt != null) {
+            isApplied = calcDt.isAfter(roundDt);
+          }
+        } else if (calculatedAt != null && badgeCount > 0) {
+          isApplied = true;
+        }
+
+        results.add({
+          'lottery_type': lt,
+          'latest_round': latestRound,
+          'badge_count': badgeCount,
+          'calculated_at': calculatedAt,
+          'is_applied': isApplied,
+        });
+      } catch (e) {
+        results.add({
+          'lottery_type': lt,
+          'latest_round': 0,
+          'badge_count': 0,
+          'calculated_at': null,
+          'is_applied': false,
+          'error': e.toString(),
+        });
+      }
+    }
+    return results;
   }
 
   // 특정 회차 페이지 조회
@@ -923,8 +1098,8 @@ class SupabaseService {
     }
   }
 
-  /// 최근 성공한 크롤링 로그 조회 (앱 안내문용)
-  static Future<List<Map<String, dynamic>>> getRecentSuccessLogs({int hours = 24}) async {
+  /// 최근 성공한 크롤링 로그 조회 (앱 안내문용) — 기본 7일 이내 타입별 최신
+  static Future<List<Map<String, dynamic>>> getRecentSuccessLogs({int hours = 168}) async {
     try {
       final since = DateTime.now().subtract(Duration(hours: hours)).toUtc().toIso8601String();
       final response = await _supabase
@@ -937,6 +1112,21 @@ class SupabaseService {
     } catch (e) {
       print('최근 크롤링 로그 조회 오류: $e');
       return [];
+    }
+  }
+
+  /// 홈 요약 통계 조회 (home_stats 테이블)
+  static Future<Map<String, dynamic>?> getHomeStats() async {
+    try {
+      final resp = await _supabase
+          .from('home_stats')
+          .select()
+          .eq('id', 'home')
+          .maybeSingle();
+      return resp as Map<String, dynamic>?;
+    } catch (e) {
+      print('home_stats 조회 오류: $e');
+      return null;
     }
   }
 
@@ -964,6 +1154,40 @@ class SupabaseService {
       return true;
     } catch (e) {
       print('쿠폰 상태 변경 오류: $e');
+      return false;
+    }
+  }
+
+  /// 관리자: 쿠폰 삭제 (단건)
+  static Future<bool> deleteCoupon(String code) async {
+    try {
+      await _supabase.from('coupon_redemptions').delete().eq('coupon_code', code);
+      await _supabase.from('coupons').delete().eq('code', code);
+      return true;
+    } catch (e) {
+      print('쿠폰 삭제 오류: $e');
+      return false;
+    }
+  }
+
+  /// 관리자: 만료된 쿠폰 일괄 삭제
+  static Future<bool> deleteExpiredCoupons() async {
+    try {
+      final now = DateTime.now().toIso8601String();
+      // 만료된 쿠폰 코드 목록 조회
+      final expired = await _supabase
+          .from('coupons')
+          .select('code')
+          .lt('expires_at', now);
+      final codes = (expired as List).map((e) => e['code'] as String).toList();
+      if (codes.isEmpty) return true;
+      for (final code in codes) {
+        await _supabase.from('coupon_redemptions').delete().eq('coupon_code', code);
+      }
+      await _supabase.from('coupons').delete().lt('expires_at', now);
+      return true;
+    } catch (e) {
+      print('만료 쿠폰 일괄 삭제 오류: $e');
       return false;
     }
   }

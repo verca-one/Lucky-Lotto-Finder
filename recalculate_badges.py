@@ -60,7 +60,7 @@ def get_latest_round(lottery_type):
 
 
 def get_winning_rounds_for_codes(codes, lottery_type):
-    """판매점별 당첨 회차 목록 (winning_history) — prize_tier 구분 없이 전체"""
+    """판매점별 당첨 회차 목록 (winning_history) — prize_tier 구분 없이 전체, 페이지네이션"""
     if not codes:
         return {}
 
@@ -68,20 +68,27 @@ def get_winning_rounds_for_codes(codes, lottery_type):
     chunk_size = 500
     for i in range(0, len(codes), chunk_size):
         chunk = codes[i:i+chunk_size]
-        resp = (supabase.table("winning_history")
-                .select("dhlottery_code, round")
-                .eq("lottery_type", lottery_type)
-                .in_("dhlottery_code", chunk)
-                .order("round")
-                .limit(10000)
-                .execute())
-        for row in (resp.data or []):
-            result[row["dhlottery_code"]].append(row["round"])
+        offset = 0
+        page_size = 1000
+        while True:
+            resp = (supabase.table("winning_history")
+                    .select("dhlottery_code, round")
+                    .eq("lottery_type", lottery_type)
+                    .in_("dhlottery_code", chunk)
+                    .order("round")
+                    .range(offset, offset + page_size - 1)
+                    .execute())
+            rows = resp.data or []
+            for row in rows:
+                result[row["dhlottery_code"]].append(row["round"])
+            if len(rows) < page_size:
+                break
+            offset += page_size
     return dict(result)
 
 
 def get_winning_rounds_by_tier(codes, lottery_type):
-    """판매점별 등수별 당첨 회차 목록 (winning_history)
+    """판매점별 등수별 당첨 회차 목록 (winning_history), 페이지네이션
     반환: {dhlottery_code: {"first": [rounds], "second": [rounds]}}
     """
     if not codes:
@@ -91,17 +98,24 @@ def get_winning_rounds_by_tier(codes, lottery_type):
     chunk_size = 500
     for i in range(0, len(codes), chunk_size):
         chunk = codes[i:i+chunk_size]
-        resp = (supabase.table("winning_history")
-                .select("dhlottery_code, round, prize_tier")
-                .eq("lottery_type", lottery_type)
-                .in_("dhlottery_code", chunk)
-                .order("round")
-                .limit(10000)
-                .execute())
-        for row in (resp.data or []):
-            code = row["dhlottery_code"]
-            tier = row.get("prize_tier", "first")
-            result[code][tier].append(row["round"])
+        offset = 0
+        page_size = 1000
+        while True:
+            resp = (supabase.table("winning_history")
+                    .select("dhlottery_code, round, prize_tier")
+                    .eq("lottery_type", lottery_type)
+                    .in_("dhlottery_code", chunk)
+                    .order("round")
+                    .range(offset, offset + page_size - 1)
+                    .execute())
+            rows = resp.data or []
+            for row in rows:
+                code = row["dhlottery_code"]
+                tier = row.get("prize_tier", "first")
+                result[code][tier].append(row["round"])
+            if len(rows) < page_size:
+                break
+            offset += page_size
     return dict(result)
 
 
@@ -495,7 +509,22 @@ def calculate_badges(stores, lottery_type):
     return badges
 
 
-def recalculate(lottery_type=None):
+BADGE_STABILITY_THRESHOLD = 0.20  # 20% 이상 감소 시 스킵
+
+
+def count_existing_badges(lt):
+    resp = (supabase.table("store_badges")
+            .select("dhlottery_code", count="exact")
+            .eq("lottery_type", lt)
+            .execute())
+    return resp.count or 0
+
+
+def recalculate(lottery_type=None, force=False):
+    """
+    force=True: 안정성 체크 없이 강제 재계산
+    force=False: 기존 대비 20% 초과 감소 시 스킵 (데이터 보호)
+    """
     types_to_process = [lottery_type] if lottery_type else ["lotto", "pension", "speedlotto_2000", "speedlotto_1000", "speedlotto_500"]
 
     for lt in types_to_process:
@@ -503,26 +532,73 @@ def recalculate(lottery_type=None):
         print(f"📊 {lottery_label(lt)} 배지 재계산 시작...")
         print(f"{'='*50}")
 
-        # 1. 기존 배지 삭제
-        print(f"🗑️  기존 {lt} 배지 삭제...")
-        supabase.table("store_badges").delete().eq("lottery_type", lt).execute()
+        # 0. 기존 배지 수 확인 (안정성 체크용)
+        prev_count = count_existing_badges(lt)
+        print(f"   기존 배지 수: {prev_count}개")
 
-        # 2. 판매점 데이터 로드
+        # 1. 판매점 기본 정보 로드
         print(f"📥 판매점 데이터 로드 중...")
-        stores = fetch_all_paginated(
+        stores_raw = fetch_all_paginated(
             "lottery_stores",
-            select="dhlottery_code, store_name, address, region, first_count, second_count, total_count",
+            select="dhlottery_code, store_name, address, region",
             filters={"lottery_type": lt},
             order_col="dhlottery_code",
         )
-        print(f"   → {len(stores)}개 판매점 로드")
+        print(f"   → {len(stores_raw)}개 판매점 로드")
 
-        # 3. 배지 계산
+        # 1-1. winning_history에서 first/second/total count 직접 집계 (stale 방지)
+        print(f"📊 winning_history에서 당첨 횟수 집계 중...")
+        wh_counts = defaultdict(lambda: {"first": 0, "second": 0})
+        wh_data = fetch_all_paginated(
+            "winning_history",
+            select="dhlottery_code, prize_tier",
+            filters={"lottery_type": lt},
+        )
+        for row in wh_data:
+            code = row["dhlottery_code"]
+            tier = row.get("prize_tier", "first")
+            if tier == "first":
+                wh_counts[code]["first"] += 1
+            else:
+                wh_counts[code]["second"] += 1
+        print(f"   → {len(wh_counts)}개 판매점 집계완료")
+
+        # 1-2. stores에 집계된 count 병합
+        stores = []
+        for s in stores_raw:
+            code = s["dhlottery_code"]
+            c = wh_counts.get(code, {"first": 0, "second": 0})
+            stores.append({
+                **s,
+                "first_count": c["first"],
+                "second_count": c["second"],
+                "total_count": c["first"] + c["second"],
+            })
+        print(f"   → count 병합완료")
+
+        # 2. 배지 계산
         print(f"🔄 배지 계산 중...")
         badges = calculate_badges(stores, lt)
-        print(f"   → {len(badges)}개 배지 생성")
+        new_count = len(badges)
+        print(f"   → {new_count}개 배지 생성")
 
-        # 4. 배지 저장 (100개씩 배치)
+        # 3. 안정성 체크 (기존 배지가 있을 때)
+        if not force and prev_count > 0:
+            if new_count < 10:
+                print(f"⚠️  새 배지 수 너무 적음 ({new_count}개) — 기존 배지 보존 (스킵)")
+                print(f"   강제 재계산: python recalculate_badges.py {lt} --force")
+                continue
+            change_ratio = (prev_count - new_count) / prev_count
+            if change_ratio > BADGE_STABILITY_THRESHOLD:
+                print(f"⚠️  배지 {change_ratio*100:.1f}% 감소 ({prev_count}→{new_count}) — 기존 배지 보존 (스킵)")
+                print(f"   강제 재계산: python recalculate_badges.py {lt} --force")
+                continue
+
+        # 4. 기존 배지 삭제
+        print(f"🗑️  기존 {lt} 배지 삭제...")
+        supabase.table("store_badges").delete().eq("lottery_type", lt).execute()
+
+        # 5. 배지 저장 (100개씩 배치)
         if badges:
             print(f"💾 배지 저장 중...")
             now = datetime.utcnow().isoformat()
@@ -535,7 +611,7 @@ def recalculate(lottery_type=None):
                 supabase.table("store_badges").upsert(batch).execute()
                 print(f"   → {min(i+batch_size, len(badges))}/{len(badges)} 저장완료")
 
-        # 5. 통계 출력
+        # 6. 통계 출력
         by_type = defaultdict(int)
         for b in badges:
             by_type[b["badge_type"]] += 1
@@ -587,9 +663,11 @@ def recalculate(lottery_type=None):
 
 
 if __name__ == "__main__":
-    lt = sys.argv[1] if len(sys.argv) > 1 else None
+    args = [a for a in sys.argv[1:] if a != "--force"]
+    force = "--force" in sys.argv
+    lt = args[0] if args else None
     if lt and lt not in ("lotto", "pension", "speedlotto_2000", "speedlotto_1000", "speedlotto_500"):
         print(f"❌ 알 수 없는 복권 타입: {lt}")
-        print("사용 가능: lotto, pension")
+        print("사용 가능: lotto, pension, speedlotto_2000, speedlotto_1000, speedlotto_500")
         sys.exit(1)
-    recalculate(lt)
+    recalculate(lt, force=force)
