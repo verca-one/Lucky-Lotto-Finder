@@ -42,6 +42,7 @@ jobs:
         python lotto_verca_crawler.py lotto latest
 
     - name: Collect winning numbers (최신 회차)
+      continue-on-error: true
       run: |
         python lotto_verca_winning_numbers.py 5
 
