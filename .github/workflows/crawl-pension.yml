@@ -152,4 +152,5 @@ jobs:
         git config user.email "lottery-bot@github.com"
         git add -A
         git commit -m "Auto: Update pension lottery data (${{ steps.verify.outputs.crawl_round }}회) - $(date '+%Y-%m-%d %H:%M:%S')" || true
+        git pull --rebase origin main || true
         git push
