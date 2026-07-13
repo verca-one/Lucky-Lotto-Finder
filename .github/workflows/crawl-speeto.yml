@@ -43,6 +43,7 @@ jobs:
         python lotto_verca_crawler.py speed latest
 
     - name: Collect winning numbers (최신 회차)
+      continue-on-error: true
       run: |
         python lotto_verca_winning_numbers.py 5
 
@@ -127,4 +128,5 @@ jobs:
         git config user.email "lottery-bot@github.com"
         git add -A
         git commit -m "Auto: Update speeto data - $(date '+%Y-%m-%d %H:%M:%S')" || true
+        git pull --rebase origin main || true
         git push
