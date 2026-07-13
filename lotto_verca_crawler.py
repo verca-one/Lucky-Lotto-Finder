@@ -906,34 +906,52 @@ class DHLotteryCrawler:
 
     def get_latest_round(self, game_type: str) -> Optional[int]:
         """각 게임의 최신 회차 조회.
-        추정 회차부터 최대 MAX_SEARCH 회까지만 역탐색.
-        모두 실패하면 None 반환.
+        1단계: 추정 회차에서 역방향 탐색
+        2단계: DB 최신 이후 순방향 보완 탐색 (누락 회차 검출용)
+        두 결과 중 큰 값을 최신 회차로 확정.
         """
         if "speedlotto" in game_type:
             logger.info(f"{game_type} 최신 기록 조회")
             return 1
 
-        MAX_SEARCH = 10  # 추정값 기준 최대 역탐색 범위
-
-        estimated = self._estimate_round_from_date(game_type)
+        MAX_SEARCH = 10
         label = "로또" if game_type == "lotto" else "연금"
+        estimated = self._estimate_round_from_date(game_type)
 
         logger.info(f"[{label}] 날짜 기반 추정 회차: {estimated}회")
-        logger.info(f"[{label}] 공식 API 첫 요청 회차: {estimated}회")
-        logger.info(f"[{label}] 탐색 범위: {estimated} ~ {estimated - MAX_SEARCH + 1}회 (최대 {MAX_SEARCH}회)")
 
+        # ── 1단계: 추정 회차에서 역탐색 ──
         confirmed = None
         for try_round in range(estimated, max(estimated - MAX_SEARCH, 0), -1):
-            logger.info(f"[{label}] 탐색 중: {try_round}회")
+            logger.info(f"[{label}] 역탐색: {try_round}회")
             if self._probe_round(game_type, try_round):
                 confirmed = try_round
                 break
             time.sleep(random.uniform(0.5, 1.5))
 
+        # ── 2단계: DB 최신 이후 순방향 보완 탐색 (누락 회차 검출) ──
+        db_latest = self._get_db_latest_round(game_type)
+        if db_latest:
+            forward_start = db_latest + 1
+            logger.info(f"[{label}] 순방향 보완 탐색: {forward_start}~{db_latest + MAX_SEARCH}회")
+            last_found = None
+            consecutive_miss = 0
+            for try_round in range(forward_start, db_latest + MAX_SEARCH + 1):
+                logger.info(f"[{label}] 순탐색: {try_round}회")
+                if self._probe_round(game_type, try_round):
+                    last_found = try_round
+                    consecutive_miss = 0
+                else:
+                    consecutive_miss += 1
+                    if consecutive_miss >= 2:
+                        break
+                time.sleep(random.uniform(0.3, 0.8))
+            if last_found and (confirmed is None or last_found > confirmed):
+                logger.info(f"[{label}] 순방향 탐색 결과 {last_found}회로 갱신")
+                confirmed = last_found
+
         if confirmed is None:
-            logger.error(
-                f"[{label}] 추정 회차 {estimated}부터 {MAX_SEARCH}회 역탐색 실패 → 크롤링 중단"
-            )
+            logger.error(f"[{label}] 탐색 실패 → None 반환")
             return None
 
         logger.info(f"[{label}] 최종 확정 회차: {confirmed}회 (검증 시작)")
