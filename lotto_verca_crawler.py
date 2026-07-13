@@ -136,7 +136,7 @@ class DHLotteryCrawler:
         """홈페이지 방문으로 세션 쿠키 획득 (API 호출 전 필수)"""
         warm_up_urls = [
             "https://www.dhlottery.co.kr/common.do?method=main",
-            "https://www.dhlottery.co.kr/gameResult.do?method=byWin",
+            "https://www.dhlottery.co.kr/wnprchsplcsrch/selectWnPrchsPlcList.do",
         ]
         for url in warm_up_urls:
             try:
@@ -808,64 +808,30 @@ class DHLotteryCrawler:
             return []
 
     def _probe_round(self, game_type: str, try_round: int) -> bool:
-        """단일 회차가 공식 사이트에 존재하는지 확인."""
-        import traceback
+        """단일 회차가 공식 사이트에 존재하는지 확인 (당첨 판매점 API 기반)."""
         if game_type == "lotto":
-            return self._probe_lotto_html(try_round)
+            return self._probe_lotto_stores_api(try_round)
         else:
             return self._probe_pension_api(try_round)
 
-    def _probe_lotto_html(self, try_round: int) -> bool:
-        """로또 회차 존재 확인: gameResult.do HTML 파싱 (common.do는 GitHub Actions에서 302 차단됨)"""
-        import traceback
-        from bs4 import BeautifulSoup
-
-        url = "https://dhlottery.co.kr/gameResult.do"
-        params = {"method": "byWin", "drwNo": try_round}
-        headers = {
-            **self.headers,
-            "Referer": "https://dhlottery.co.kr/gameResult.do?method=byWin",
-            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-        }
-        import urllib.parse
-        full_url = url + "?" + urllib.parse.urlencode(params)
-        logger.info(f"[로또] {try_round}회 HTML 탐색: {full_url}")
-
+    def _probe_lotto_stores_api(self, try_round: int) -> bool:
+        """로또 회차 존재 확인: selectLtWnShp.do 판매점 API (GitHub Actions에서도 정상 접근 가능)"""
+        url = "https://www.dhlottery.co.kr/wnprchsplcsrch/selectLtWnShp.do"
+        params = {"srchWnShpRnk": "all", "srchLtEpsd": try_round, "srchShpLctn": ""}
+        logger.info(f"[로또] {try_round}회 판매점 API 탐색: {url}?srchLtEpsd={try_round}")
         try:
-            resp_nr = self.session.get(url, params=params, headers=headers, timeout=60,
-                                       verify=False, allow_redirects=False)
-            if resp_nr.status_code in (301, 302, 303, 307, 308):
-                location = resp_nr.headers.get("Location", "")
-                logger.warning(f"[로또] {try_round}회 리다이렉트: HTTP {resp_nr.status_code} → {location}")
-
-            response = self.session.get(url, params=params, headers=headers, timeout=60, verify=False)
+            response = self._safe_request(url, params=params)
+            if not response:
+                logger.warning(f"[로또] {try_round}회 응답 없음")
+                return False
             ct = response.headers.get("Content-Type", "")
-            logger.info(f"[로또] {try_round}회 HTTP {response.status_code} | {len(response.content)} bytes"
-                        f" | Content-Type: {ct} | 최종 URL: {response.url}")
-
-            soup = BeautifulSoup(response.text, "html.parser")
-
-            # 방법 1: ball_645 숫자 개수로 판단 (7개 이상 = 유효 회차)
-            balls = soup.select(".win_result .ball_645")
-            numbers = [t.get_text(strip=True) for t in balls if t.get_text(strip=True).isdigit()]
-            logger.info(f"[로또] {try_round}회 ball_645 파싱: {len(numbers)}개 숫자 → {numbers}")
-            if len(numbers) >= 7:
-                logger.info(f"[로또] {try_round}회 데이터 존재: True (ball_645 {len(numbers)}개)")
-                return True
-
-            # 방법 2: 페이지 내 "제{round}회" 텍스트 존재 여부
-            if f"제{try_round}회" in response.text or f"{try_round}회" in response.text[:3000]:
-                logger.info(f"[로또] {try_round}회 데이터 존재: True (회차 텍스트 발견)")
-                return True
-
-            # 방법 3: .win_result 섹션 자체가 없으면 결과 없음
-            win_result = soup.select_one(".win_result")
-            logger.info(f"[로또] {try_round}회 .win_result 존재: {win_result is not None}")
-            logger.info(f"[로또] {try_round}회 데이터 존재: False")
-            return False
-
-        except Exception:
-            logger.warning(f"[로또] {try_round}회 HTML 탐색 예외:\n{traceback.format_exc()}")
+            logger.info(f"[로또] {try_round}회 HTTP {response.status_code} | {len(response.content)} bytes | {ct}")
+            data = response.json()
+            lst = (data.get("data") or {}).get("list") or []
+            logger.info(f"[로또] {try_round}회 데이터 존재: {bool(lst)} (판매점 {len(lst)}개)")
+            return bool(lst)
+        except Exception as e:
+            logger.warning(f"[로또] {try_round}회 판매점 API 탐색 실패: {e}")
             return False
 
     def _probe_pension_api(self, try_round: int) -> bool:
@@ -907,16 +873,15 @@ class DHLotteryCrawler:
             return False
 
     def _validate_confirmed_round(self, game_type: str, confirmed: int) -> bool:
-        """확정 회차 최종 검증: 당첨번호 존재, draw_date 존재, DB 최신보다 크거나 같음"""
+        """확정 회차 최종 검증: 판매점 API 응답 존재 + DB 최신보다 크거나 같음"""
         import traceback
         label = "로또" if game_type == "lotto" else "연금"
         try:
             if game_type == "lotto":
-                # HTML 파싱으로 재검증 (common.do는 GitHub Actions에서 차단됨)
-                if not self._probe_lotto_html(confirmed):
-                    logger.error(f"[{label}] 확정 {confirmed}회 HTML 재검증 실패")
+                if not self._probe_lotto_stores_api(confirmed):
+                    logger.error(f"[{label}] 확정 {confirmed}회 판매점 API 재검증 실패")
                     return False
-                logger.info(f"[{label}] 확정 {confirmed}회 검증: HTML ball_645 파싱 성공 ✅")
+                logger.info(f"[{label}] 확정 {confirmed}회 검증 완료 ✅")
             else:
                 if not self._probe_pension_api(confirmed):
                     logger.error(f"[{label}] 확정 {confirmed}회 재검증 실패")
@@ -980,7 +945,6 @@ class DHLotteryCrawler:
 
     def run_latest_by_game(self, game_type: str, count: int = 5):
         """게임 타입별 최신 회차 크롤링 (공식 최신 회차 ~ DB 마지막 회차+1)"""
-        import sys
         logger.info("=" * 70)
         logger.info(f"[{game_type}] 최신 회차 크롤링 시작")
         logger.info("=" * 70)
@@ -988,8 +952,9 @@ class DHLotteryCrawler:
         if game_type == "lotto":
             official_latest = self.get_latest_round("lotto")
             if not official_latest:
-                logger.error("[로또] 공식 최신 회차 조회 실패 → 크롤링 중단")
-                sys.exit(1)
+                # 판매점 API 탐색 실패 시 날짜 기반 추정으로 폴백
+                official_latest = self._estimate_round_from_date("lotto")
+                logger.warning(f"[로또] 판매점 API 탐색 실패 → 날짜 기반 추정 회차 사용: {official_latest}회")
 
             db_latest = self._get_db_latest_round("lotto")
             start_round = (db_latest + 1) if db_latest else max(official_latest - count + 1, 1)
@@ -1036,8 +1001,8 @@ class DHLotteryCrawler:
         elif game_type == "pension":
             official_latest = self.get_latest_round("pension")
             if not official_latest:
-                logger.error("[연금복권] 공식 최신 회차 조회 실패 → 크롤링 중단")
-                sys.exit(1)
+                official_latest = self._estimate_round_from_date("pension")
+                logger.warning(f"[연금] 판매점 API 탐색 실패 → 날짜 기반 추정 회차 사용: {official_latest}회")
 
             db_latest = self._get_db_latest_round("pension")
             start_round = (db_latest + 1) if db_latest else max(official_latest - count + 1, 1)
@@ -1120,7 +1085,6 @@ class DHLotteryCrawler:
         """판매점 정보가 없는(pending/empty/failed) 회차 재수집
         rounds: 명시적 회차 리스트, None이면 DB에서 자동 조회
         """
-        import sys
         logger.info("=" * 70)
         logger.info(f"[{game_type}] 판매점 재수집 시작")
         logger.info("=" * 70)
