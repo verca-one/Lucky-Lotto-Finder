@@ -70,6 +70,7 @@ def get_store_status_summary(game_type: str, latest_round: int, lookback: int = 
 
 
 def get_official_latest_lotto() -> int:
+    """selectLtWnShp.do 판매점 API로 최신 회차 탐색 (common.do는 GitHub Actions에서 차단됨)"""
     import requests
     from datetime import date, timedelta
     import urllib3
@@ -82,13 +83,21 @@ def get_official_latest_lotto() -> int:
     estimated = (last_saturday - base_date).days // 7 + 1
 
     session = requests.Session()
-    headers = {'User-Agent': 'Mozilla/5.0', 'Cache-Control': 'no-cache'}
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Accept': 'application/json, text/javascript, */*; q=0.01',
+        'X-Requested-With': 'XMLHttpRequest',
+        'Referer': 'https://www.dhlottery.co.kr/wnprchsplcsrch/selectWnPrchsPlcList.do',
+        'Cache-Control': 'no-cache',
+    }
 
-    for try_round in range(estimated + 5, max(estimated - 5, 1), -1):
+    for try_round in range(estimated + 5, max(estimated - 10, 1), -1):
         try:
-            url = f"https://www.dhlottery.co.kr/common.do?method=getLottoNumber&drwNo={try_round}"
-            resp = session.get(url, headers=headers, timeout=30, verify=False)
-            if resp.json().get("returnValue") == "success":
+            url = "https://www.dhlottery.co.kr/wnprchsplcsrch/selectLtWnShp.do"
+            params = {"srchWnShpRnk": "all", "srchLtEpsd": try_round, "srchShpLctn": ""}
+            resp = session.get(url, params=params, headers=headers, timeout=30, verify=False)
+            data = resp.json()
+            if data.get("data") and data["data"].get("list") and len(data["data"]["list"]) > 0:
                 return try_round
         except Exception:
             pass
