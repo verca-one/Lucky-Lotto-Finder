@@ -5,12 +5,10 @@ import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'dart:math' as math;
 import '../models/lottery_store.dart';
 import '../services/supabase_service.dart';
 import '../services/badge_service.dart';
-import '../services/ad_service.dart';
 import '../widgets/store_detail_popup.dart';
 import '../services/favorites_notifier.dart';
 
@@ -26,8 +24,6 @@ class _NearbyScreenState extends State<NearbyScreen> {
   List<LotteryStore>? _nearbyStores;
   bool _isLoading = false;
   bool _isSearching = false; // 이 지역 검색 로딩
-  bool _rewardedAdEnabled = false;
-  bool _isLoadingRewardedAd = false;
   String? _error;
   final String _selectedGame = 'lotto';
   double _searchRadiusKm = 1.3;
@@ -44,7 +40,6 @@ class _NearbyScreenState extends State<NearbyScreen> {
     _loadTop30Ranks();
     _loadUserId();
     _getCurrentLocation();
-    _loadRewardedAdConfig();
     favoritesNotifier.addListener(_onFavoritesChanged);
   }
 
@@ -55,37 +50,6 @@ class _NearbyScreenState extends State<NearbyScreen> {
   Future<void> _loadUserId() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() => _userId = prefs.getString('userId') ?? '');
-  }
-
-  Future<void> _loadRewardedAdConfig() async {
-    try {
-      final res = await Supabase.instance.client
-          .from('app_config')
-          .select('value')
-          .eq('key', 'rewarded_ad_enabled')
-          .single();
-      if (mounted) {
-        setState(() => _rewardedAdEnabled = res['value'] == 'true');
-      }
-    } catch (_) {}
-  }
-
-  Future<void> _showRewardedAdAndSearch() async {
-    setState(() => _isLoadingRewardedAd = true);
-    final loaded = await AdService.loadRewardedAd();
-    if (!loaded) {
-      if (mounted) {
-        setState(() => _isLoadingRewardedAd = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('광고를 불러올 수 없습니다. 잠시 후 다시 시도해주세요.')),
-        );
-      }
-      return;
-    }
-    setState(() => _isLoadingRewardedAd = false);
-    await AdService.showRewardedAd(onRewarded: () {
-      if (mounted) _searchAtMapCenterExtended();
-    });
   }
 
   Future<void> _searchAtMapCenterExtended() async {
@@ -148,7 +112,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
   void dispose() {
     favoritesNotifier.removeListener(_onFavoritesChanged);
     _mapController?.dispose();
-    _listScrollController.dispose();
+    _sheetController.dispose();
     super.dispose();
   }
 
@@ -240,6 +204,18 @@ class _NearbyScreenState extends State<NearbyScreen> {
         _nearbyStores = stores;
         _isLoading = false;
       });
+      // 판매점이 있을 때만 시트 절반으로 올리기
+      if (stores.isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_sheetController.isAttached) {
+            _sheetController.animateTo(
+              0.5,
+              duration: const Duration(milliseconds: 400),
+              curve: Curves.easeOut,
+            );
+          }
+        });
+      }
     } catch (e) {
       setState(() {
         _error = e.toString();
@@ -344,240 +320,303 @@ class _NearbyScreenState extends State<NearbyScreen> {
 
     // 지도는 항상 표시
     final storeCount = _nearbyStores?.length ?? 0;
+    final screenHeight = MediaQuery.of(context).size.height;
 
-    return Container(
-      color: const Color(0xFFF2F4F8),
-      child: Column(
+    return Stack(
       children: [
-        // 지도 영역
-        SizedBox(
-          height: MediaQuery.of(context).size.height * 0.5,
-          child: Stack(
-            children: [
-              FlutterMap(
-                      mapController: _mapController,
-                      options: MapOptions(
-                        initialCenter: LatLng(
-                          _currentPosition!.latitude,
-                          _currentPosition!.longitude,
-                        ),
-                        initialZoom: 14.0,
-                        onTap: (_, __) => setState(() => _selectedMarkerIndex = null),
-                      ),
-                      children: [
-                        TileLayer(
-                          urlTemplate:
-                              'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                          userAgentPackageName: 'com.luckylotto.finder',
-                        ),
-                        MarkerLayer(markers: _buildMapMarkers()),
-                      ],
-                    ),
-                // 이 주변 검색 버튼 (상단 중앙)
-                Positioned(
-                  top: 12,
-                  left: 0,
-                  right: 0,
-                  child: Center(
-                    child: GestureDetector(
-                      onTap: _isSearching ? null : _searchAtMapCenter,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(24),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.15),
-                              blurRadius: 8,
-                              offset: const Offset(0, 2),
-                            ),
-                          ],
-                        ),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            _isSearching
-                                ? const SizedBox(
-                                    width: 16, height: 16,
-                                    child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF1565C0)),
-                                  )
-                                : const Icon(Icons.refresh_rounded, size: 16, color: Color(0xFF1565C0)),
-                            const SizedBox(width: 6),
-                            const Text(
-                              '이 주변 검색',
-                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF1565C0)),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                // 보상형 광고 버튼 (상단 중앙, 이 주변 검색 아래)
-                if (_rewardedAdEnabled)
-                  Positioned(
-                    top: 58,
-                    left: 0,
-                    right: 0,
-                    child: Center(
-                      child: GestureDetector(
-                        onTap: (_isLoadingRewardedAd || _isSearching) ? null : _showRewardedAdAndSearch,
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFFF8E1),
-                            borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: const Color(0xFFFFCC02), width: 1),
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.08),
-                                blurRadius: 8,
-                                offset: const Offset(0, 2),
-                              ),
-                            ],
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              _isLoadingRewardedAd
-                                  ? const SizedBox(
-                                      width: 14, height: 14,
-                                      child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFFFF8F00)),
-                                    )
-                                  : const Icon(Icons.play_circle_outline, size: 15, color: Color(0xFFFF8F00)),
-                              const SizedBox(width: 5),
-                              const Text(
-                                '광고 보고 5km 검색',
-                                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFFFF8F00)),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                // 내 위치 버튼 (우측 하단)
-                Positioned(
-                  right: 12,
-                  bottom: 12,
-                  child: GestureDetector(
-                    onTap: _moveToCurrentLocation,
-                    child: Container(
-                      width: 42, height: 42,
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.15),
-                            blurRadius: 8,
-                            offset: const Offset(0, 2),
-                          ),
-                        ],
-                      ),
-                      child: const Center(
-                        child: Icon(Icons.my_location_rounded, size: 20, color: Color(0xFF1565C0)),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+        // 전체 화면 지도
+        Positioned.fill(
+          child: FlutterMap(
+            mapController: _mapController,
+            options: MapOptions(
+              initialCenter: LatLng(
+                _currentPosition!.latitude,
+                _currentPosition!.longitude,
+              ),
+              initialZoom: 14.0,
+              onTap: (_, __) => setState(() => _selectedMarkerIndex = null),
             ),
-          ),
-        // 근처 당첨지점 헤더
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-          child: Row(
             children: [
-              const Icon(Icons.store_rounded, size: 18, color: Color(0xFF1565C0)),
-              const SizedBox(width: 6),
-              Text(
-                '근처 당첨지점',
-                style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: Color(0xFF1A1A1A)),
+              TileLayer(
+                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
+                userAgentPackageName: 'com.luckylotto.finder',
               ),
-              const SizedBox(width: 8),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE3F2FD),
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                child: Text(
-                  '$storeCount개',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF1565C0)),
-                ),
-              ),
+              MarkerLayer(markers: _buildMapMarkers()),
             ],
           ),
         ),
-        Expanded(
-          child: storeCount == 0
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF5F5F5),
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(Icons.search_off_rounded, size: 40, color: Colors.grey.shade400),
-                      ),
-                      const SizedBox(height: 14),
-                      Text(
-                        '이 주변에 당첨지점이 없습니다',
-                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Colors.grey.shade600),
-                      ),
-                      const SizedBox(height: 6),
-                      Text(
-                        '지도를 이동한 뒤 "이 주변 검색"을 눌러보세요',
-                        style: TextStyle(fontSize: 12, color: Colors.grey.shade400),
-                      ),
-                    ],
-                  ),
-                )
-              : ListView.builder(
-                  controller: _listScrollController,
-                  padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                  itemCount: storeCount,
-                  itemBuilder: (context, index) {
-                    return _buildStoreCard(_nearbyStores![index], index);
-                  },
+
+        // 이 주변 검색 버튼 (상단 중앙)
+        Positioned(
+          top: 12,
+          left: 0,
+          right: 0,
+          child: Center(
+            child: GestureDetector(
+              onTap: _isSearching ? null : _searchAtMapCenter,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.15),
+                      blurRadius: 8,
+                      offset: const Offset(0, 2),
+                    ),
+                  ],
                 ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _isSearching
+                        ? const SizedBox(
+                            width: 16, height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF1565C0)),
+                          )
+                        : const Icon(Icons.refresh_rounded, size: 16, color: Color(0xFF1565C0)),
+                    const SizedBox(width: 6),
+                    const Text(
+                      '이 주변 검색',
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF1565C0)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+
+
+        // 내 위치 버튼 (지도 오른쪽, 시트 위)
+        Positioned(
+          right: 12,
+          bottom: screenHeight * 0.5 + 12,
+          child: GestureDetector(
+            onTap: _moveToCurrentLocation,
+            child: Container(
+              width: 42, height: 42,
+              decoration: BoxDecoration(
+                color: Colors.white,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.15),
+                    blurRadius: 8,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: const Center(
+                child: Icon(Icons.my_location_rounded, size: 20, color: Color(0xFF1565C0)),
+              ),
+            ),
+          ),
+        ),
+
+        // 드래그 가능한 근처 당첨지점 시트
+        DraggableScrollableSheet(
+          controller: _sheetController,
+          initialChildSize: 0.09,
+          minChildSize: 0.09,
+          maxChildSize: 0.92,
+          snap: true,
+          snapSizes: const [0.09, 0.5, 0.92],
+          builder: (context, scrollController) {
+            _listScrollController = scrollController;
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Color(0x22000000),
+                    blurRadius: 12,
+                    offset: Offset(0, -3),
+                  ),
+                ],
+              ),
+              child: Column(
+                children: [
+                  // 손잡이 바 (드래그 + 탭)
+                  GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {
+                      if (!_sheetController.isAttached) return;
+                      final current = _sheetController.size;
+                      double target;
+                      if (current < 0.3) {
+                        target = 0.5;
+                      } else if (current < 0.7) {
+                        target = 0.92;
+                      } else {
+                        target = 0.09;
+                      }
+                      _sheetController.animateTo(
+                        target,
+                        duration: const Duration(milliseconds: 300),
+                        curve: Curves.easeOut,
+                      );
+                    },
+                    onVerticalDragUpdate: (details) {
+                      if (!_sheetController.isAttached) return;
+                      final screenH = MediaQuery.of(context).size.height;
+                      final delta = -details.delta.dy / screenH;
+                      final next = (_sheetController.size + delta).clamp(0.09, 0.92);
+                      _sheetController.jumpTo(next);
+                    },
+                    onVerticalDragEnd: (details) {
+                      if (!_sheetController.isAttached) return;
+                      final current = _sheetController.size;
+                      // 속도 기반으로 목표 결정
+                      final velocity = details.primaryVelocity ?? 0;
+                      double target;
+                      if (velocity < -300) {
+                        // 빠르게 위로 → 최대
+                        target = current < 0.7 ? 0.5 : 0.92;
+                      } else if (velocity > 300) {
+                        // 빠르게 아래로 → 최소
+                        target = current > 0.3 ? 0.5 : 0.09;
+                      } else {
+                        // 느린 드래그 → 가장 가까운 스냅 포인트
+                        if (current < 0.3) target = 0.09;
+                        else if (current < 0.7) target = 0.5;
+                        else target = 0.92;
+                      }
+                      _sheetController.animateTo(
+                        target,
+                        duration: const Duration(milliseconds: 250),
+                        curve: Curves.easeOut,
+                      );
+                    },
+                    child: SizedBox(
+                      width: double.infinity,
+                      height: 36,
+                      child: Center(
+                        child: Container(
+                          width: 40,
+                          height: 4,
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade300,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  // 헤더
+                  Padding(
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.store_rounded, size: 18, color: Color(0xFF1565C0)),
+                        const SizedBox(width: 6),
+                        const Text(
+                          '근처 당첨지점',
+                          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16, color: Color(0xFF1A1A1A)),
+                        ),
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE3F2FD),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: Text(
+                            '$storeCount개',
+                            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF1565C0)),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // 리스트
+                  Expanded(
+                    child: storeCount == 0
+                        ? Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Container(
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: const BoxDecoration(
+                                    color: Color(0xFFF5F5F5),
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Icon(Icons.search_off_rounded, size: 40, color: Colors.grey.shade400),
+                                ),
+                                const SizedBox(height: 14),
+                                Text(
+                                  '이 주변에 당첨지점이 없습니다',
+                                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Colors.grey.shade600),
+                                ),
+                                const SizedBox(height: 6),
+                                Text(
+                                  '지도를 이동한 뒤 "이 주변 검색"을 눌러보세요',
+                                  style: TextStyle(fontSize: 12, color: Colors.grey.shade400),
+                                ),
+                              ],
+                            ),
+                          )
+                        : ListView.builder(
+                            controller: scrollController,
+                            padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+                            itemCount: storeCount,
+                            itemBuilder: (context, index) {
+                              return _buildStoreCard(_nearbyStores![index], index);
+                            },
+                          ),
+                  ),
+                ],
+              ),
+            );
+          },
         ),
       ],
-      ),
     );
   }
 
   final Set<int> _expandedStoreIndices = {};
-  final ScrollController _listScrollController = ScrollController();
+  final DraggableScrollableController _sheetController = DraggableScrollableController();
+  ScrollController? _listScrollController;
 
   // 선택된 마커 인덱스 (말풍선 표시용)
   int? _selectedMarkerIndex;
 
-  /// 지도 마커 탭 → 말풍선 + 카드 확장 + 리스트 스크롤
+  /// 지도 마커 탭 → 말풍선 + 시트 절반으로 열기 + 리스트 스크롤 + 상세 팝업
   void _onMarkerTap(LotteryStore store, int index) {
     setState(() {
       _selectedMarkerIndex = index;
       _expandedStoreIndices.clear();
       _expandedStoreIndices.add(index);
     });
-
-    // 리스트를 해당 지점으로 스크롤
+    // 시트가 너무 접혀 있으면 절반으로 펼치기
+    if (_sheetController.isAttached && _sheetController.size < 0.35) {
+      _sheetController.animateTo(
+        0.5,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
+    // 리스트를 해당 아이템으로 스크롤
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (_listScrollController.hasClients) {
-        final itemHeight = 160.0;
-        final offset = index * itemHeight;
-        _listScrollController.animateTo(
-          offset.clamp(0, _listScrollController.position.maxScrollExtent),
-          duration: const Duration(milliseconds: 300),
-          curve: Curves.easeInOut,
-        );
-      }
+      _scrollListToIndex(index);
     });
+    // 상세 팝업 열기
+    _showStoreDetailSheet(store, index);
+  }
+
+  void _scrollListToIndex(int index) {
+    if (_listScrollController == null || !_listScrollController!.hasClients) return;
+    const estimatedItemHeight = 140.0;
+    final maxExtent = _listScrollController!.position.maxScrollExtent;
+    final offset = (index * estimatedItemHeight).clamp(0.0, maxExtent);
+    _listScrollController!.animateTo(
+      offset,
+      duration: const Duration(milliseconds: 350),
+      curve: Curves.easeOut,
+    );
   }
 
   /// 리스트 카드 탭 → 상세 팝업 (아래서 올라오는 작은 시트)
@@ -657,35 +696,32 @@ class _NearbyScreenState extends State<NearbyScreen> {
       store.latitude ?? 0,
       store.longitude ?? 0,
     );
-    final isExpanded = _expandedStoreIndices.contains(index);
     final isFav = _favorites.contains(store.dhlotteryCode);
 
     return GestureDetector(
       onTap: () {
-        setState(() {
-          if (isExpanded) {
-            _expandedStoreIndices.remove(index);
-            _selectedMarkerIndex = null;
-          } else {
-            _expandedStoreIndices.clear();
-            _expandedStoreIndices.add(index);
-            _selectedMarkerIndex = index;
-          }
-        });
-        if (!isExpanded && store.latitude != null && store.longitude != null && _mapController != null) {
+        // 지도를 해당 판매점으로 이동
+        if (store.latitude != null && store.longitude != null && _mapController != null) {
           _mapController!.move(LatLng(store.latitude!, store.longitude!), 15);
         }
+        setState(() {
+          _selectedMarkerIndex = index;
+          _expandedStoreIndices.clear();
+          _expandedStoreIndices.add(index);
+        });
+        // 상세 팝업 열기
+        _showStoreDetailSheet(store, index);
       },
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: isExpanded ? const Color(0xFFF0F7FF) : Colors.white,
+          color: _selectedMarkerIndex == index ? const Color(0xFFF0F7FF) : Colors.white,
           borderRadius: BorderRadius.circular(14),
           border: Border.all(
-            color: isExpanded ? const Color(0xFF90CAF9) : const Color(0xFFEEEEEE),
-            width: isExpanded ? 1.5 : 1,
+            color: _selectedMarkerIndex == index ? const Color(0xFF90CAF9) : const Color(0xFFEEEEEE),
+            width: _selectedMarkerIndex == index ? 1.5 : 1,
           ),
         ),
         child: Column(
@@ -762,57 +798,13 @@ class _NearbyScreenState extends State<NearbyScreen> {
                 }),
               ],
             ),
-            // ── 확장 영역 ──
-            if (isExpanded) ...[
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFFE0E0E0)),
-                ),
-                child: Column(
-                  children: [
-                    // 지도 버튼
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildMapButton('네이버지도', Icons.map_outlined, () => _openExternalMap('naver', store)),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _buildMapButton('카카오지도', Icons.place_outlined, () => _openExternalMap('kakao', store)),
-                        ),
-                      ],
-                    ),
-                    if ((store.firstCount ?? 0) > 0 || (store.secondCount ?? 0) > 0) ...[
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          if ((store.firstCount ?? 0) > 0)
-                            _buildInfoChip('1등 ${store.firstCount}회', const Color(0xFFD32F2F), const Color(0xFFFFEBEE)),
-                          if ((store.firstCount ?? 0) > 0) const SizedBox(width: 6),
-                          if ((store.secondCount ?? 0) > 0)
-                            _buildInfoChip('2등 ${store.secondCount}회', const Color(0xFFE65100), const Color(0xFFFFF3E0)),
-                        ],
-                      ),
-                    ],
-                  ],
-                ),
+            // 탭 안내 아이콘
+            Padding(
+              padding: const EdgeInsets.only(top: 4),
+              child: Center(
+                child: Icon(Icons.keyboard_arrow_right_rounded, color: Colors.grey.shade300, size: 20),
               ),
-              const SizedBox(height: 10),
-              // 판매점 평가
-              _InlineReviewSection(dhlotteryCode: store.dhlotteryCode),
-            ],
-            // 확장 아이콘
-            if (!isExpanded)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Center(
-                  child: Icon(Icons.keyboard_arrow_down_rounded, color: Colors.grey.shade300, size: 20),
-                ),
-              ),
+            ),
           ],
         ),
       ),
@@ -956,7 +948,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
       ),
     );
 
-    // 근처 판매점 마커
+    // 근처 판매점 마커 (빨간 핀)
     if (_nearbyStores != null) {
       for (int i = 0; i < _nearbyStores!.length; i++) {
         final store = _nearbyStores![i];
@@ -967,26 +959,22 @@ class _NearbyScreenState extends State<NearbyScreen> {
           markers.add(
             Marker(
               point: LatLng(store.latitude!, store.longitude!),
-              width: 42,
-              height: 42,
+              width: isSelected ? 44 : 36,
+              height: isSelected ? 44 : 36,
+              alignment: Alignment.bottomCenter,
               child: GestureDetector(
                 onTap: () => _onMarkerTap(store, index),
-                child: Container(
-                  decoration: BoxDecoration(
-                    color: isSelected ? const Color(0xFFFF6D00) : const Color(0xFF1565C0),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: Colors.white, width: 2.5),
-                    boxShadow: [
-                      BoxShadow(
-                        color: (isSelected ? const Color(0xFFFF6D00) : const Color(0xFF1565C0)).withValues(alpha: 0.4),
-                        blurRadius: 6,
-                        spreadRadius: 1,
-                      ),
-                    ],
-                  ),
-                  child: const Center(
-                    child: Icon(Icons.store_rounded, color: Colors.white, size: 18),
-                  ),
+                child: Icon(
+                  Icons.place,
+                  color: isSelected ? const Color(0xFFFFD600) : const Color(0xFFE53935),
+                  size: isSelected ? 44 : 36,
+                  shadows: const [
+                    Shadow(
+                      color: Color(0x55000000),
+                      blurRadius: 4,
+                      offset: Offset(0, 2),
+                    ),
+                  ],
                 ),
               ),
             ),
@@ -1106,6 +1094,17 @@ class _NearbyScreenState extends State<NearbyScreen> {
         _nearbyStores = stores;
         _isSearching = false;
       });
+      if (stores.isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (_sheetController.isAttached && _sheetController.size < 0.35) {
+            _sheetController.animateTo(
+              0.5,
+              duration: const Duration(milliseconds: 400),
+              curve: Curves.easeOut,
+            );
+          }
+        });
+      }
     } catch (e) {
       setState(() => _isSearching = false);
       if (mounted) {
