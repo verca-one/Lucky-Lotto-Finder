@@ -54,8 +54,8 @@ class WinningNumbersCrawler:
         # 재시도 로직이 있는 session 설정
         self.session = requests.Session()
         retry_strategy = Retry(
-            total=5,
-            backoff_factor=2,
+            total=1,
+            backoff_factor=1,
             status_forcelist=[429, 500, 502, 503, 504],
             allowed_methods=["GET"]
         )
@@ -78,7 +78,7 @@ class WinningNumbersCrawler:
                 "Referer": "https://dhlottery.co.kr/gameResult.do?method=byWin"
             })
 
-            response = self.session.get(html_url, params=html_params, headers=html_headers, timeout=60, verify=False)
+            response = self.session.get(html_url, params=html_params, headers=html_headers, timeout=10, verify=False)
             response.encoding = "utf-8"
             soup = BeautifulSoup(response.text, "html.parser")
 
@@ -131,7 +131,7 @@ class WinningNumbersCrawler:
                 "X-Requested-With": "XMLHttpRequest"
             })
 
-            response = self.session.get(api_url, params=params, headers=headers, timeout=60, verify=False)
+            response = self.session.get(api_url, params=params, headers=headers, timeout=10, verify=False)
             text = response.text.strip()
 
             if text.startswith("{"):
@@ -179,7 +179,7 @@ class WinningNumbersCrawler:
                 "Referer": "https://dhlottery.co.kr/gameResult.do?method=byWin&gubun=039"
             })
 
-            response = self.session.get(html_url, params=html_params, headers=html_headers, timeout=60, verify=False)
+            response = self.session.get(html_url, params=html_params, headers=html_headers, timeout=10, verify=False)
             response.encoding = "utf-8"
             soup = BeautifulSoup(response.text, "html.parser")
 
@@ -220,7 +220,7 @@ class WinningNumbersCrawler:
             headers = self.headers.copy()
             headers["Referer"] = "https://www.dhlottery.co.kr/lottoResult.do?method=byWin"
 
-            response = self.session.get(url, params=params, headers=headers, timeout=60, verify=False)
+            response = self.session.get(url, params=params, headers=headers, timeout=10, verify=False)
             response.raise_for_status()
 
             # JSON 응답 확인
@@ -269,7 +269,7 @@ class WinningNumbersCrawler:
                 "Referer": f"https://dhlottery.co.kr/gameResult.do?method=byWin&gubun={game_code}"
             })
 
-            response = self.session.get(html_url, params=html_params, headers=html_headers, timeout=60, verify=False)
+            response = self.session.get(html_url, params=html_params, headers=html_headers, timeout=10, verify=False)
             response.encoding = "utf-8"
             soup = BeautifulSoup(response.text, "html.parser")
 
@@ -303,7 +303,7 @@ class WinningNumbersCrawler:
         # 2차: JSON API Fallback
         try:
             url = f"{self.base_url}/st/drwNoInfo.do?drwNo={round_no}"
-            response = self.session.get(url, headers=self.headers, timeout=60, verify=False)
+            response = self.session.get(url, headers=self.headers, timeout=10, verify=False)
             response.raise_for_status()
             data = response.json()
 
