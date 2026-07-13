@@ -969,26 +969,30 @@ class DHLotteryCrawler:
 
         if game_type == "lotto":
             official_latest = self.get_latest_round("lotto")
+            date_estimate = self._estimate_round_from_date("lotto")
             if not official_latest:
-                # 판매점 API 탐색 실패 시 날짜 기반 추정으로 폴백
-                official_latest = self._estimate_round_from_date("lotto")
+                official_latest = date_estimate
                 logger.warning(f"[로또] 판매점 API 탐색 실패 → 날짜 기반 추정 회차 사용: {official_latest}회")
 
+            # 공식 탐색 결과와 날짜 추정 중 큰 값까지 시도 (데이터 공개 지연 대응)
+            upper_bound = max(official_latest, date_estimate)
+            if upper_bound > official_latest:
+                logger.info(f"[로또] 날짜 추정({date_estimate}회)이 공식({official_latest}회)보다 높음 → {upper_bound}회까지 시도")
+
             db_latest = self._get_db_latest_round("lotto")
-            start_round = (db_latest + 1) if db_latest else max(official_latest - count + 1, 1)
+            start_round = (db_latest + 1) if db_latest else max(upper_bound - count + 1, 1)
 
-            logger.info(f"[로또] 공식 최신 회차: {official_latest}회")
+            logger.info(f"[로또] 공식 최신 회차: {official_latest}회 | 탐색 상한: {upper_bound}회")
             logger.info(f"[로또] DB 마지막 회차: {db_latest}회" if db_latest else "[로또] DB 마지막 회차: 없음")
-            logger.info(f"[로또] 수집 예정 회차: {start_round}~{official_latest}회")
+            logger.info(f"[로또] 수집 예정 회차: {start_round}~{upper_bound}회")
 
-            if start_round > official_latest:
-                logger.info(f"[로또] DB가 이미 최신 상태 ({official_latest}회). 크롤링 생략.")
+            if start_round > upper_bound:
+                logger.info(f"[로또] DB가 이미 최신 상태 ({upper_bound}회). 크롤링 생략.")
             else:
-                rounds_to_crawl = list(range(official_latest, start_round - 1, -1))
+                rounds_to_crawl = list(range(upper_bound, start_round - 1, -1))
                 stores_success, stores_pending = [], []
                 for i, round_num in enumerate(rounds_to_crawl, 1):
                     logger.info(f"\n[{i}/{len(rounds_to_crawl)}] 로또 {round_num}회 크롤링 중...")
-                    # ① 회차 확인 즉시 round_crawl_status에 pending 기록
                     self._upsert_round_status("lotto", round_num, "pending")
                     ok = self.crawl_lotto_stores(round_num)
                     if ok:
@@ -1004,7 +1008,7 @@ class DHLotteryCrawler:
 
                 # 최종 요약
                 actual_db = self._get_db_latest_round("lotto")
-                logger.info(f"\n[로또] 공식 최신 회차: {official_latest}회")
+                logger.info(f"\n[로또] 공식 최신 회차: {official_latest}회 | 탐색 상한: {upper_bound}회")
                 logger.info(f"[로또] DB 최신 회차: {actual_db}회")
                 logger.info(f"[로또] 회차 데이터 저장 완료: {sorted(stores_success + stores_pending)}")
                 logger.info(f"[로또] 판매점 저장 완료: {sorted(stores_success) or '없음'}")
@@ -1018,25 +1022,30 @@ class DHLotteryCrawler:
 
         elif game_type == "pension":
             official_latest = self.get_latest_round("pension")
+            date_estimate = self._estimate_round_from_date("pension")
             if not official_latest:
-                official_latest = self._estimate_round_from_date("pension")
+                official_latest = date_estimate
                 logger.warning(f"[연금] 판매점 API 탐색 실패 → 날짜 기반 추정 회차 사용: {official_latest}회")
 
+            # 공식 탐색 결과와 날짜 추정 중 큰 값까지 시도 (데이터 공개 지연 대응)
+            upper_bound = max(official_latest, date_estimate)
+            if upper_bound > official_latest:
+                logger.info(f"[연금] 날짜 추정({date_estimate}회)이 공식({official_latest}회)보다 높음 → {upper_bound}회까지 시도")
+
             db_latest = self._get_db_latest_round("pension")
-            start_round = (db_latest + 1) if db_latest else max(official_latest - count + 1, 1)
+            start_round = (db_latest + 1) if db_latest else max(upper_bound - count + 1, 1)
 
-            logger.info(f"[연금] 공식 최신 회차: {official_latest}회")
+            logger.info(f"[연금] 공식 최신 회차: {official_latest}회 | 탐색 상한: {upper_bound}회")
             logger.info(f"[연금] DB 마지막 회차: {db_latest}회" if db_latest else "[연금] DB 마지막 회차: 없음")
-            logger.info(f"[연금] 수집 예정 회차: {start_round}~{official_latest}회")
+            logger.info(f"[연금] 수집 예정 회차: {start_round}~{upper_bound}회")
 
-            if start_round > official_latest:
-                logger.info(f"[연금] DB가 이미 최신 상태 ({official_latest}회). 크롤링 생략.")
+            if start_round > upper_bound:
+                logger.info(f"[연금] DB가 이미 최신 상태 ({upper_bound}회). 크롤링 생략.")
             else:
-                rounds_to_crawl = list(range(official_latest, start_round - 1, -1))
+                rounds_to_crawl = list(range(upper_bound, start_round - 1, -1))
                 stores_success, stores_pending = [], []
                 for i, round_num in enumerate(rounds_to_crawl, 1):
                     logger.info(f"\n[{i}/{len(rounds_to_crawl)}] 연금복권 {round_num}회 크롤링 중...")
-                    # ① 회차 확인 즉시 round_crawl_status에 pending 기록
                     self._upsert_round_status("pension", round_num, "pending")
                     ok = self.crawl_pension_stores(round_num)
                     if ok:
@@ -1052,7 +1061,7 @@ class DHLotteryCrawler:
 
                 # 최종 요약
                 actual_db = self._get_db_latest_round("pension")
-                logger.info(f"\n[연금] 공식 최신 회차: {official_latest}회")
+                logger.info(f"\n[연금] 공식 최신 회차: {official_latest}회 | 탐색 상한: {upper_bound}회")
                 logger.info(f"[연금] DB 최신 회차: {actual_db}회")
                 logger.info(f"[연금] 회차 데이터 저장 완료: {sorted(stores_success + stores_pending)}")
                 logger.info(f"[연금] 판매점 저장 완료: {sorted(stores_success) or '없음'}")
@@ -1061,8 +1070,8 @@ class DHLotteryCrawler:
                     logger.info(f"[연금] 결과: 회차 업데이트 성공 / 판매점 부분 미완료")
                 else:
                     logger.info(f"[연금] 결과: 회차 업데이트 성공 / 판매점 저장 완료")
-                if actual_db != official_latest:
-                    logger.error(f"[연금] ❌ round_crawl_status 불일치: DB={actual_db} 공식={official_latest}")
+                if actual_db != upper_bound:
+                    logger.warning(f"[연금] DB({actual_db}회) ≠ 탐색 상한({upper_bound}회) — 일부 미래 회차 미공개 가능")
 
         elif game_type == "speed":
             speed_max = {
