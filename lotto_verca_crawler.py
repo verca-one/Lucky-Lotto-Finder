@@ -53,7 +53,7 @@ class DHLotteryCrawler:
             'Pragma': 'no-cache',
             'Connection': 'keep-alive',
             'X-Requested-With': 'XMLHttpRequest',   # ← JSON 응답 유도 핵심 헤더
-            'Referer': 'https://www.dhlottery.co.kr/gameResult.do?method=byWin',
+            'Referer': 'https://www.dhlottery.co.kr/wnprchsplcsrch/selectWnPrchsPlcList.do',
             'Sec-Fetch-Dest': 'empty',
             'Sec-Fetch-Mode': 'cors',
             'Sec-Fetch-Site': 'same-origin',
