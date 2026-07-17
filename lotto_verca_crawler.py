@@ -768,6 +768,24 @@ class DHLotteryCrawler:
             logger.warning(f"DB 최신 회차 조회 실패: {e}")
             return None
 
+    def _get_db_latest_success_round(self, game_type: str) -> Optional[int]:
+        """round_crawl_status에서 status='success'인 가장 최근 회차 조회"""
+        try:
+            sb = self._get_supabase()
+            if not sb:
+                return None
+            result = sb.table("round_crawl_status") \
+                .select("round") \
+                .eq("lottery_type", game_type) \
+                .eq("stores_status", "success") \
+                .order("round", desc=True) \
+                .limit(1) \
+                .execute()
+            return result.data[0]["round"] if result.data else None
+        except Exception as e:
+            logger.warning(f"DB 최신 성공 회차 조회 실패: {e}")
+            return None
+
     def _upsert_round_status(self, game_type: str, round_num: int, stores_status: str) -> bool:
         """round_crawl_status 테이블에 회차 상태 upsert"""
         try:
@@ -890,10 +908,14 @@ class DHLotteryCrawler:
                 logger.info(f"[{label}] 확정 {confirmed}회 검증 완료 ✅")
 
             # DB 최신 회차 비교
-            db_latest = self._get_db_latest_round(game_type)
+            # 연금은 미공개 회차가 empty 상태로 먼저 저장될 수 있으므로 success 기준으로 비교
+            if game_type == "pension":
+                db_latest = self._get_db_latest_success_round(game_type)
+            else:
+                db_latest = self._get_db_latest_round(game_type)
             if db_latest and confirmed < db_latest:
                 logger.error(
-                    f"[{label}] ❌ 확정 회차({confirmed}) < DB 최신({db_latest})"
+                    f"[{label}] ❌ 확정 회차({confirmed}) < DB 성공 최신({db_latest})"
                     f" → 과거 회차로 업데이트 불가, 크롤링 중단"
                 )
                 return False
@@ -1031,9 +1053,10 @@ class DHLotteryCrawler:
                 logger.error(f"[연금] ❌ 공식 최신 회차를 확인할 수 없어 작업을 중단합니다.")
                 sys.exit(1)
 
-            db_latest = self._get_db_latest_round("pension")
+            # 연금은 미공개 회차가 empty 상태로 먼저 저장되므로 success 기준으로 DB 최신 판단
+            db_latest = self._get_db_latest_success_round("pension")
 
-            logger.info(f"[연금] DB 기존 최신 회차: {db_latest}회" if db_latest else "[연금] DB 기존 최신 회차: 없음")
+            logger.info(f"[연금] DB 기존 최신 회차 (success): {db_latest}회" if db_latest else "[연금] DB 기존 최신 회차 (success): 없음")
             logger.info(f"[연금] 공식 사이트 최신 회차: {official_latest}회")
             logger.info(f"[연금] 날짜 기반 추정 회차: {date_estimate}회")
 
