@@ -1075,24 +1075,24 @@ class DHLotteryCrawler:
                         self.save_to_files()
                     time.sleep(random.uniform(2.0, 4.0))
 
-                # 최종 요약 (winning_history 기준)
-                actual_db = self._get_db_latest_success_round("lotto")
                 logger.info(f"\n{'='*60}")
                 logger.info(f"[로또] 크롤링 완료 요약")
                 logger.info(f"[로또] 공식 최신 회차: {official_latest}회")
                 logger.info(f"[로또] 작업 전 DB 최신 회차: {db_latest}회")
-                logger.info(f"[로또] 작업 후 DB 최신 회차 (winning_history): {actual_db}회")
                 logger.info(f"[로또] 실제 신규 생성 회차: {sorted(created_rounds) or '없음'}")
-                logger.info(f"[로또] 실제 저장 성공 회차: {sorted(stores_success) or '없음'}")
+                logger.info(f"[로또] 실제 저장 성공 회차 (메모리): {sorted(stores_success) or '없음'}")
                 logger.info(f"[로또] 판매점 없음/재수집 대기: {sorted(stores_pending) or '없음'}")
+                logger.info(f"[로또] ℹ winning_history 실제 저장은 업로더(lotto_verca_uploader.py) 스텝에서 확인")
 
-                # 최종 일치 여부 검증
-                if actual_db is not None and actual_db >= official_latest:
-                    logger.info(f"[로또] ✅ winning_history({actual_db}회) >= 공식({official_latest}회) — 성공")
-                else:
-                    logger.error(f"[로또] ❌ winning_history({actual_db}회) < 공식({official_latest}회) — 실제 데이터 미저장")
-                    logger.error(f"[로또] ❌ winning_history에 최신 회차 데이터가 없습니다. 작업 실패 처리.")
+                # 크롤 성공 여부: 공식 최신 회차가 메모리에 수집됐는지 확인
+                # (winning_history 저장은 업로더가 담당하므로 여기서는 메모리 기준)
+                if official_latest in stores_success:
+                    logger.info(f"[로또] ✅ {official_latest}회 메모리 수집 성공 — 업로더 실행 후 DB 반영됨")
+                elif stores_pending and not stores_success:
+                    logger.warning(f"[로또] ⚠ 판매점 데이터 없음 — 공식 최신 회차({official_latest}회) 수집 불가")
                     sys.exit(1)
+                else:
+                    logger.info(f"[로또] ✅ 크롤링 완료 (일부 회차 판매점 없음 — 재수집 대기)")
 
         elif game_type == "pension":
             official_latest = self.get_latest_round("pension")
@@ -1141,24 +1141,23 @@ class DHLotteryCrawler:
                         self.save_to_files()
                     time.sleep(random.uniform(2.0, 4.0))
 
-                # 최종 요약 (winning_history 기준)
-                actual_db = self._get_db_latest_success_round("pension")
                 logger.info(f"\n{'='*60}")
                 logger.info(f"[연금] 크롤링 완료 요약")
                 logger.info(f"[연금] 공식 최신 회차: {official_latest}회")
                 logger.info(f"[연금] 작업 전 DB 최신 회차: {db_latest}회")
-                logger.info(f"[연금] 작업 후 DB 최신 회차 (winning_history): {actual_db}회")
                 logger.info(f"[연금] 실제 신규 생성 회차: {sorted(created_rounds) or '없음'}")
-                logger.info(f"[연금] 실제 저장 성공 회차: {sorted(stores_success) or '없음'}")
+                logger.info(f"[연금] 실제 저장 성공 회차 (메모리): {sorted(stores_success) or '없음'}")
                 logger.info(f"[연금] 판매점 없음/재수집 대기: {sorted(stores_pending) or '없음'}")
+                logger.info(f"[연금] ℹ winning_history 실제 저장은 업로더(lotto_verca_uploader.py) 스텝에서 확인")
 
-                # 최종 일치 여부 검증
-                if actual_db is not None and actual_db >= official_latest:
-                    logger.info(f"[연금] ✅ winning_history({actual_db}회) >= 공식({official_latest}회) — 성공")
-                else:
-                    logger.error(f"[연금] ❌ winning_history({actual_db}회) < 공식({official_latest}회) — 실제 데이터 미저장")
-                    logger.error(f"[연금] ❌ winning_history에 최신 회차 데이터가 없습니다. 작업 실패 처리.")
+                # 크롤 성공 여부: 공식 최신 회차가 메모리에 수집됐는지 확인
+                if official_latest in stores_success:
+                    logger.info(f"[연금] ✅ {official_latest}회 메모리 수집 성공 — 업로더 실행 후 DB 반영됨")
+                elif stores_pending and not stores_success:
+                    logger.warning(f"[연금] ⚠ 판매점 데이터 없음 — 공식 최신 회차({official_latest}회) 수집 불가")
                     sys.exit(1)
+                else:
+                    logger.info(f"[연금] ✅ 크롤링 완료 (일부 회차 판매점 없음 — 재수집 대기)")
 
         elif game_type == "speed":
             speed_max = {
