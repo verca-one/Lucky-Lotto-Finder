@@ -769,22 +769,64 @@ class DHLotteryCrawler:
             return None
 
     def _get_db_latest_success_round(self, game_type: str) -> Optional[int]:
-        """round_crawl_status에서 status='success'인 가장 최근 회차 조회"""
+        """실제 winning_history에 저장된 가장 최근 회차 조회 (실제 저장 완료 기준)"""
         try:
             sb = self._get_supabase()
             if not sb:
                 return None
-            result = sb.table("round_crawl_status") \
+            result = sb.table("winning_history") \
                 .select("round") \
                 .eq("lottery_type", game_type) \
-                .eq("stores_status", "success") \
                 .order("round", desc=True) \
                 .limit(1) \
                 .execute()
             return result.data[0]["round"] if result.data else None
         except Exception as e:
-            logger.warning(f"DB 최신 성공 회차 조회 실패: {e}")
+            logger.warning(f"DB 최신 저장 회차 조회 실패 (winning_history): {e}")
             return None
+
+    def _cleanup_future_pension_rounds(self, official_latest: int) -> list:
+        """공식 최신 회차보다 큰 연금 미래 placeholder 행 삭제 (round_crawl_status)
+        winning_history에 실제 데이터가 없는 경우에만 삭제.
+        """
+        deleted = []
+        try:
+            sb = self._get_supabase()
+            if not sb:
+                return deleted
+
+            # round_crawl_status에서 official_latest 초과 연금 회차 조회
+            result = sb.table("round_crawl_status") \
+                .select("round,stores_status") \
+                .eq("lottery_type", "pension") \
+                .gt("round", official_latest) \
+                .order("round") \
+                .execute()
+            future_rows = result.data or []
+
+            for row in future_rows:
+                r = row["round"]
+                # winning_history에 실제 데이터가 있으면 삭제 안 함
+                wh = sb.table("winning_history") \
+                    .select("round") \
+                    .eq("lottery_type", "pension") \
+                    .eq("round", r) \
+                    .limit(1) \
+                    .execute()
+                if wh.data:
+                    logger.info(f"[연금] {r}회 winning_history 데이터 존재 → 삭제 생략")
+                    continue
+                sb.table("round_crawl_status") \
+                    .delete() \
+                    .eq("lottery_type", "pension") \
+                    .eq("round", r) \
+                    .execute()
+                deleted.append(r)
+                logger.info(f"[연금] 미래 placeholder {r}회 삭제 (stores_status={row['stores_status']})")
+
+        except Exception as e:
+            logger.warning(f"미래 placeholder 정리 실패: {e}")
+        return deleted
 
     def _upsert_round_status(self, game_type: str, round_num: int, stores_status: str) -> bool:
         """round_crawl_status 테이블에 회차 상태 upsert"""
@@ -1045,44 +1087,44 @@ class DHLotteryCrawler:
 
         elif game_type == "pension":
             official_latest = self.get_latest_round("pension")
-            date_estimate = self._estimate_round_from_date("pension")
 
-            # 공식 최신 회차 조회 실패 시 즉시 실패 (날짜 추정으로 대체 금지)
+            # 공식 최신 회차 조회 실패 시 즉시 실패 (날짜 추정 대체 금지)
             if not official_latest:
-                logger.error(f"[연금] ❌ 공식 사이트 최신 회차 조회 실패 — 날짜 추정({date_estimate}회)으로 대체하지 않음")
-                logger.error(f"[연금] ❌ 공식 최신 회차를 확인할 수 없어 작업을 중단합니다.")
+                logger.error(f"[연금] ❌ 공식 사이트 최신 회차 조회 실패 — 작업 중단")
                 sys.exit(1)
 
-            # 연금은 미공개 회차가 empty 상태로 먼저 저장되므로 success 기준으로 DB 최신 판단
+            # winning_history 기준 DB 최신 성공 회차
             db_latest = self._get_db_latest_success_round("pension")
 
-            logger.info(f"[연금] DB 기존 최신 회차 (success): {db_latest}회" if db_latest else "[연금] DB 기존 최신 회차 (success): 없음")
-            logger.info(f"[연금] 공식 사이트 최신 회차: {official_latest}회")
-            logger.info(f"[연금] 날짜 기반 추정 회차: {date_estimate}회")
+            # 공식 최신 회차보다 큰 미래 placeholder 정리
+            deleted_future = self._cleanup_future_pension_rounds(official_latest)
 
-            # 날짜 추정이 공식보다 높으면 날짜 추정까지 시도 (공개 지연 대응)
-            upper_bound = max(official_latest, date_estimate)
-            if upper_bound > official_latest:
-                logger.info(f"[연금] 날짜 추정({date_estimate}회) > 공식({official_latest}회) → {upper_bound}회까지 탐색")
+            logger.info(f"[연금] 공식 최신 회차: {official_latest}회")
+            logger.info(f"[연금] DB 최신 성공 회차 (winning_history): {db_latest}회" if db_latest else "[연금] DB 최신 성공 회차 (winning_history): 없음")
+            logger.info(f"[연금] 삭제한 미래 placeholder: {sorted(deleted_future) or '없음'}")
 
-            start_round = (db_latest + 1) if db_latest else max(upper_bound - count + 1, 1)
-            missing_rounds = list(range(start_round, upper_bound + 1))
+            # 누락 회차 = 공식 사이트 존재 회차 - DB 저장 완료 회차 (미래 추정 없음)
+            start_round = (db_latest + 1) if db_latest else max(official_latest - count + 1, 1)
+            missing_rounds = list(range(start_round, official_latest + 1))
 
-            logger.info(f"[연금] 누락 회차 목록: {missing_rounds if missing_rounds else '없음 (이미 최신)'}")
+            logger.info(f"[연금] 누락 회차: {missing_rounds if missing_rounds else '없음 (이미 최신)'}")
 
             if not missing_rounds:
                 logger.info(f"[연금] DB가 이미 최신 상태 ({official_latest}회). 크롤링 생략.")
             else:
-                rounds_to_crawl = list(range(upper_bound, start_round - 1, -1))  # 최신→오래된 순
-                stores_success, stores_pending = [], []
+                rounds_to_crawl = list(range(official_latest, start_round - 1, -1))  # 최신→오래된 순
+                stores_success, stores_pending, created_rounds = [], [], []
                 for i, round_num in enumerate(rounds_to_crawl, 1):
                     logger.info(f"\n[{i}/{len(rounds_to_crawl)}] 연금복권 {round_num}회 크롤링 중...")
+                    # pending 삽입: 실제 수집 시작 직전에만
                     self._upsert_round_status("pension", round_num, "pending")
+                    created_rounds.append(round_num)
                     ok = self.crawl_pension_stores(round_num)
                     if ok:
                         self._upsert_round_status("pension", round_num, "success")
                         stores_success.append(round_num)
                     else:
+                        # 공식 범위 내 회차이므로 empty 유지 (데이터 공개 대기)
                         self._upsert_round_status("pension", round_num, "empty")
                         stores_pending.append(round_num)
                         logger.warning(f"[연금] {round_num}회 판매점 없음(empty) → 다음 회차 계속")
@@ -1090,23 +1132,23 @@ class DHLotteryCrawler:
                         self.save_to_files()
                     time.sleep(random.uniform(2.0, 4.0))
 
-                # 최종 요약
-                actual_db = self._get_db_latest_round("pension")
+                # 최종 요약 (winning_history 기준)
+                actual_db = self._get_db_latest_success_round("pension")
                 logger.info(f"\n{'='*60}")
                 logger.info(f"[연금] 크롤링 완료 요약")
                 logger.info(f"[연금] 공식 최신 회차: {official_latest}회")
-                logger.info(f"[연금] 작업 후 DB 최신 회차: {actual_db}회")
-                logger.info(f"[연금] 저장 성공 (판매점 있음): {sorted(stores_success) or '없음'}")
-                logger.info(f"[연금] 저장 완료 (판매점 없음/재수집 대기): {sorted(stores_pending) or '없음'}")
+                logger.info(f"[연금] 작업 전 DB 최신 회차: {db_latest}회")
+                logger.info(f"[연금] 작업 후 DB 최신 회차 (winning_history): {actual_db}회")
+                logger.info(f"[연금] 실제 신규 생성 회차: {sorted(created_rounds) or '없음'}")
+                logger.info(f"[연금] 실제 저장 성공 회차: {sorted(stores_success) or '없음'}")
+                logger.info(f"[연금] 판매점 없음/재수집 대기: {sorted(stores_pending) or '없음'}")
 
                 # 최종 일치 여부 검증
-                if actual_db == official_latest:
-                    logger.info(f"[연금] ✅ DB({actual_db}회) == 공식({official_latest}회) 일치 — 성공")
-                elif actual_db is not None and actual_db > official_latest:
-                    logger.info(f"[연금] ✅ DB({actual_db}회) >= 공식({official_latest}회) — 성공")
+                if actual_db is not None and actual_db >= official_latest:
+                    logger.info(f"[연금] ✅ winning_history({actual_db}회) >= 공식({official_latest}회) — 성공")
                 else:
-                    logger.error(f"[연금] ❌ DB({actual_db}회) ≠ 공식({official_latest}회) — 누락 회차 존재")
-                    logger.error(f"[연금] ❌ 크롤링 후에도 DB가 공식 최신 회차에 미달합니다. 작업 실패 처리.")
+                    logger.error(f"[연금] ❌ winning_history({actual_db}회) < 공식({official_latest}회) — 실제 데이터 미저장")
+                    logger.error(f"[연금] ❌ winning_history에 최신 회차 데이터가 없습니다. 작업 실패 처리.")
                     sys.exit(1)
 
         elif game_type == "speed":
@@ -1157,6 +1199,22 @@ class DHLotteryCrawler:
             if not rounds:
                 logger.info(f"[{game_type}] 재수집 대기 회차 없음")
                 return
+
+        # 연금: 공식 최신 회차 초과 미래 placeholder 제외
+        if game_type == "pension":
+            official_latest = self.get_latest_round("pension")
+            if official_latest:
+                future = [r for r in rounds if r > official_latest]
+                if future:
+                    logger.info(f"[연금] 재수집 제외 (공식 미공개 미래 회차): {sorted(future)}")
+                    # 미래 placeholder 삭제
+                    self._cleanup_future_pension_rounds(official_latest)
+                rounds = [r for r in rounds if r <= official_latest]
+                if not rounds:
+                    logger.info(f"[연금] 재수집 대기 회차 없음 (미래 회차 제외 후)")
+                    return
+            else:
+                logger.warning(f"[연금] 공식 최신 회차 조회 실패 — 재수집 목록 그대로 사용")
 
         logger.info(f"[{game_type}] 재수집 대상: {sorted(rounds)}")
 
