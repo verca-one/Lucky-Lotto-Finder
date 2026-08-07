@@ -481,16 +481,18 @@ class DHLotteryCrawler:
 
             saved = 0
             for store in stores:
-                # wnShpRnk: "1"=1등, "2"=2등, "21"=보너스 (문자열)
+                # wnShpRnk: "1"=1등(월700만원x20년), "21"=보너스(월100만원x10년, 연금복권720+ 2대 등급)
+                # 연금복권720+는 로또와 달리 "2등"이 없고 1등/보너스가 사실상 1·2위 등급이므로
+                # 보너스(21)도 반드시 당첨판매점으로 저장해야 함 (제외 시 보너스 당첨점 전부 누락됨)
                 rank_str = str(store.get("wnShpRnk", ""))
-                if rank_str not in ["1", "2"]:
+                if rank_str not in ["1", "21"]:
                     continue
 
-                rank = int(rank_str)
+                # prize_tier 매핑: 1등=first, 보너스(21)=second (연금복권 2대 등급으로 취급)
+                prize_tier = "first" if rank_str == "1" else "second"
                 dhlottery_code = store.get("ltShpId")
                 store_name = store.get("shpNm", "")
                 address = store.get("shpAddr", "").strip()
-                prize_tier = self._get_prize_tier(rank)
 
                 # 연금복권 API에는 atmtPsvYnTxt가 없음
                 purchase_method = ""
@@ -499,7 +501,7 @@ class DHLotteryCrawler:
                 self._add_winning_record(dhlottery_code, "pension", round_num, prize_tier, purchase_method)
                 saved += 1
 
-            logger.info(f"[연금] {round_num}회 저장 성공: {saved}개 기록 (1등/2등 합산)")
+            logger.info(f"[연금] {round_num}회 저장 성공: {saved}개 기록 (1등/보너스 합산)")
             return True
         except Exception as e:
             logger.error(f"[연금] {round_num}회 크롤링 예외 → 저장 실패: {e}")
@@ -1024,8 +1026,13 @@ class DHLotteryCrawler:
         logger.info(f"[{label}] ✅ 최신 회차 최종 확정: {confirmed}회")
         return confirmed
 
-    def run_latest_by_game(self, game_type: str, count: int = 5):
-        """게임 타입별 최신 회차 크롤링 (공식 최신 회차 ~ DB 마지막 회차+1)"""
+    def run_latest_by_game(self, game_type: str, count: int = 1):
+        """게임 타입별 최신 회차 크롤링 (공식 최신 회차만 = 동적 탐색 + DB 비교)
+
+        Args:
+            game_type: 'lotto', 'pension', 'speed' 등
+            count: 크롤링할 최대 회차 수 (기본 1 = 최신 1회차만 / 누락 감지 시 자동 보충)
+        """
         logger.info("=" * 70)
         logger.info(f"[{game_type}] 최신 회차 크롤링 시작")
         logger.info("=" * 70)
@@ -1243,8 +1250,8 @@ class DHLotteryCrawler:
         self.save_to_files()
         logger.info(f"\n[{game_type}] 재수집 완료: 성공 {sorted(success)}, 미완료 {sorted(still_pending)}")
 
-    def run_latest_rounds(self, count: int = 5):
-        """전체 게임 최신 N개 회차 크롤링 (하위 호환)"""
+    def run_latest_rounds(self, count: int = 1):
+        """전체 게임 최신 회차 크롤링 (각 게임별 최신 1회차씩, 누락 시 자동 보충)"""
         self.run_latest_by_game("lotto", count)
         self.run_latest_by_game("pension", count)
         self.run_latest_by_game("speed", count)
