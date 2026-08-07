@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/lotto_winning_number.dart';
 import '../services/supabase_service.dart';
+import '../services/lotto_winning_service.dart';
 
 // ── 분석 결과 모델 ──────────────────────────────────────────────
 class PatternResult {
@@ -227,6 +228,18 @@ class _AdminPatternAnalysisScreenState
   String? _error;
   PatternAnalysisEngine? _engine;
 
+  // ── 당첨번호 입력 폼 ──────────────────────────────────────────
+  final _formKey = GlobalKey<FormState>();
+  final _roundController = TextEditingController();
+  final _yearController = TextEditingController();
+  final _monthController = TextEditingController();
+  final _dayController = TextEditingController();
+  final _bonusController = TextEditingController();
+  final List<TextEditingController> _numControllers =
+      List.generate(6, (_) => TextEditingController());
+  bool _isSaving = false;
+  bool _inputExpanded = true;
+
   // 설정
   final Set<int> _triggerNumbers = {};
   bool _includeBonus = false;
@@ -253,6 +266,14 @@ class _AdminPatternAnalysisScreenState
   @override
   void dispose() {
     _tabController.dispose();
+    _roundController.dispose();
+    _yearController.dispose();
+    _monthController.dispose();
+    _dayController.dispose();
+    _bonusController.dispose();
+    for (final c in _numControllers) {
+      c.dispose();
+    }
     super.dispose();
   }
 
@@ -359,6 +380,8 @@ class _AdminPatternAnalysisScreenState
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          _buildWinningNumberInputCard(),
+          const SizedBox(height: 16),
           _buildWeeklyRecommendCard(),
           const SizedBox(height: 16),
           _buildSettingsCard(),
@@ -371,6 +394,325 @@ class _AdminPatternAnalysisScreenState
           const SizedBox(height: 32),
         ],
       ),
+    );
+  }
+
+  // ── 당첨번호 저장 ────────────────────────────────────────────
+  int? _parseNum(String? v) {
+    final n = int.tryParse((v ?? '').trim());
+    if (n == null || n < 1 || n > 45) return null;
+    return n;
+  }
+
+  Future<void> _saveWinningNumber() async {
+    if (!_formKey.currentState!.validate()) return;
+
+    final round = int.tryParse(_roundController.text.trim());
+    final year = int.tryParse(_yearController.text.trim());
+    final month = int.tryParse(_monthController.text.trim());
+    final day = int.tryParse(_dayController.text.trim());
+    final numbers = _numControllers.map((c) => _parseNum(c.text)).whereType<int>().toList();
+    final bonus = _parseNum(_bonusController.text);
+
+    if (round == null || year == null || month == null || day == null ||
+        bonus == null || numbers.length != 6) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('입력값을 다시 확인해주세요')));
+      return;
+    }
+    if (numbers.toSet().length != 6) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('당첨번호 6개는 중복 없이 입력해주세요')));
+      return;
+    }
+    if (numbers.contains(bonus)) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('보너스 번호는 당첨번호와 달라야 합니다')));
+      return;
+    }
+
+    final drawDate =
+        '${year.toString().padLeft(4, '0')}-${month.toString().padLeft(2, '0')}-${day.toString().padLeft(2, '0')}';
+
+    setState(() => _isSaving = true);
+    try {
+      final item = LottoWinningNumber(
+        drawDate: drawDate,
+        round: round,
+        numbers: numbers,
+        bonusNumber: bonus,
+      );
+      await LottoWinningService().saveRound(item);
+      await SupabaseService.saveWinningNumbers(item);
+
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('$round회 당첨번호가 저장되었습니다. 분석 데이터 갱신 중...')));
+
+      // 폼 초기화
+      _roundController.clear();
+      _yearController.clear();
+      _monthController.clear();
+      _dayController.clear();
+      _bonusController.clear();
+      for (final c in _numControllers) {
+        c.clear();
+      }
+      setState(() {
+        _inputExpanded = false;
+        _isSaving = false;
+      });
+
+      // 분석 엔진 새로 로드
+      await _loadData();
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('저장 실패: $e')));
+      setState(() => _isSaving = false);
+    }
+  }
+
+  // ── 당첨번호 입력 카드 ────────────────────────────────────────
+  Widget _buildWinningNumberInputCard() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: const Color(0xFFE0E0E0)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // 헤더 (펼치기/접기)
+          InkWell(
+            borderRadius: BorderRadius.circular(16),
+            onTap: () => setState(() => _inputExpanded = !_inputExpanded),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
+              child: Row(
+                children: [
+                  Container(
+                    width: 36, height: 36,
+                    decoration: BoxDecoration(
+                      color: Colors.purple.withValues(alpha: 0.1),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(Icons.edit_note_rounded, color: Colors.purple, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('당첨번호 입력',
+                            style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF1A1A1A))),
+                        Text('회차 · 날짜 · 번호 입력 후 저장',
+                            style: TextStyle(fontSize: 12, color: Colors.grey)),
+                      ],
+                    ),
+                  ),
+                  Icon(
+                    _inputExpanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    color: Colors.grey,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // 폼 (접기 가능)
+          if (_inputExpanded) ...[
+            const Divider(height: 1, color: Color(0xFFF0F0F0)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+              child: Form(
+                key: _formKey,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 회차
+                    TextFormField(
+                      controller: _roundController,
+                      keyboardType: TextInputType.number,
+                      decoration: InputDecoration(
+                        labelText: '회차',
+                        hintText: '예: 1160',
+                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                        prefixIcon: const Icon(Icons.tag_rounded, size: 20),
+                        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      ),
+                      validator: (v) {
+                        final n = int.tryParse((v ?? '').trim());
+                        if (n == null || n <= 0) return '회차를 입력해주세요';
+                        return null;
+                      },
+                    ),
+                    const SizedBox(height: 10),
+                    // 날짜
+                    Row(
+                      children: [
+                        Expanded(
+                          flex: 3,
+                          child: TextFormField(
+                            controller: _yearController,
+                            keyboardType: TextInputType.number,
+                            decoration: InputDecoration(
+                              labelText: '년',
+                              hintText: '2026',
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                            ),
+                            validator: (v) {
+                              final n = int.tryParse((v ?? '').trim());
+                              if (n == null || n < 2002 || n > 2100) return '년';
+                              return null;
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 2,
+                          child: TextFormField(
+                            controller: _monthController,
+                            keyboardType: TextInputType.number,
+                            decoration: InputDecoration(
+                              labelText: '월',
+                              hintText: '08',
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                            ),
+                            validator: (v) {
+                              final n = int.tryParse((v ?? '').trim());
+                              if (n == null || n < 1 || n > 12) return '월';
+                              return null;
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          flex: 2,
+                          child: TextFormField(
+                            controller: _dayController,
+                            keyboardType: TextInputType.number,
+                            decoration: InputDecoration(
+                              labelText: '일',
+                              hintText: '09',
+                              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                            ),
+                            validator: (v) {
+                              final n = int.tryParse((v ?? '').trim());
+                              if (n == null || n < 1 || n > 31) return '일';
+                              return null;
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    const Text('당첨번호 6개',
+                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF333333))),
+                    const SizedBox(height: 8),
+                    // 번호 6개 — 2행 3열
+                    Column(
+                      children: [
+                        Row(
+                          children: List.generate(3, (i) => Expanded(
+                            child: Padding(
+                              padding: EdgeInsets.only(right: i < 2 ? 8 : 0),
+                              child: _buildNumField(_numControllers[i], i + 1),
+                            ),
+                          )),
+                        ),
+                        const SizedBox(height: 8),
+                        Row(
+                          children: List.generate(3, (i) => Expanded(
+                            child: Padding(
+                              padding: EdgeInsets.only(right: i < 2 ? 8 : 0),
+                              child: _buildNumField(_numControllers[i + 3], i + 4),
+                            ),
+                          )),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    // 보너스
+                    SizedBox(
+                      width: 120,
+                      child: TextFormField(
+                        controller: _bonusController,
+                        keyboardType: TextInputType.number,
+                        decoration: InputDecoration(
+                          labelText: '보너스',
+                          hintText: '1~45',
+                          border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                          prefixIcon: const Icon(Icons.add_circle_outline, size: 18, color: Colors.orange),
+                          contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                        ),
+                        validator: (v) {
+                          if (_parseNum(v) == null) return '1~45';
+                          return null;
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        onPressed: _isSaving ? null : _saveWinningNumber,
+                        icon: _isSaving
+                            ? const SizedBox(
+                                width: 16, height: 16,
+                                child: CircularProgressIndicator(
+                                    strokeWidth: 2, color: Colors.white))
+                            : const Icon(Icons.save_rounded, size: 18),
+                        label: Text(_isSaving ? '저장 중...' : '저장하기'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.purple,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 13),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10)),
+                          textStyle: const TextStyle(
+                              fontSize: 15, fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNumField(TextEditingController controller, int index) {
+    return TextFormField(
+      controller: controller,
+      keyboardType: TextInputType.number,
+      textAlign: TextAlign.center,
+      decoration: InputDecoration(
+        labelText: '$index번',
+        border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+        contentPadding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
+      ),
+      validator: (v) {
+        if (_parseNum(v) == null) return '!';
+        return null;
+      },
     );
   }
 
