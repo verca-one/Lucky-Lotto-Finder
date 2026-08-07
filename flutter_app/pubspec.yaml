@@ -16,7 +16,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.1.19+20
+version: 1.2.7+40
 
 environment:
   sdk: ^3.11.1
@@ -40,8 +40,13 @@ dependencies:
   flutter_map: ^6.0.0
   latlong2: ^0.9.1
   url_launcher: ^6.3.2
-  in_app_purchase: ^3.2.0
+  in_app_purchase: ^3.2.4
   flutter_native_splash: ^2.4.3
+  firebase_core: ^3.6.0
+  cloud_firestore: ^5.4.0
+
+dependency_overrides:
+  in_app_purchase_android: 0.5.0
 
 dev_dependencies:
   flutter_test:
@@ -77,8 +82,14 @@ flutter:
     - assets/app_icon_1024.png
     - assets/pig.png
     - assets/splash.png
+    - assets/sss.png
     - assets/mynum.png
     - assets/gi.png
+    - assets/vito.png
+    - assets/mamain.png
+    - assets/mamain_splash.png
+    - assets/app_icon3_512.png
+    - assets/dra.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
@@ -107,9 +118,9 @@ flutter:
   # see https://flutter.dev/to/font-from-package
 
 flutter_native_splash:
-  background_image: assets/splash.png
-  image: assets/app_icon_512.png
+  background_image: assets/sss.png
+  image: assets/app_icon3_512.png
   fullscreen: true
   android_12:
-    background_image: assets/splash.png
-    image: assets/app_icon_512.png
+    color: "#2C1800"
+    image: assets/app_icon3_512.png

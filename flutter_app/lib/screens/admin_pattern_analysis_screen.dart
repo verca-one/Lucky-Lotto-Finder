@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import '../models/lotto_winning_number.dart';
-import '../services/supabase_service.dart';
-import '../services/lotto_winning_service.dart';
+import '../services/firestore_service.dart';
 
 // ── 분석 결과 모델 ──────────────────────────────────────────────
 class PatternResult {
@@ -283,7 +282,8 @@ class _AdminPatternAnalysisScreenState
       _error = null;
     });
     try {
-      final rounds = await SupabaseService.getAllWinningNumbers();
+      // Firestore lotto_draws 컬렉션 → 단일 진실 공급원
+      final rounds = await FirestoreService.getAllLottoDraws();
       final engine = PatternAnalysisEngine(rounds);
       final weekly = engine.weeklyRecommendation();
       if (!mounted) return;
@@ -442,12 +442,12 @@ class _AdminPatternAnalysisScreenState
         numbers: numbers,
         bonusNumber: bonus,
       );
-      await LottoWinningService().saveRound(item);
-      await SupabaseService.saveWinningNumbers(item);
+      // Firestore lotto_draws에 저장 (단일 진실 공급원)
+      await FirestoreService.saveLottoDraw(item);
 
       if (!mounted) return;
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('$round회 당첨번호가 저장되었습니다. 분석 데이터 갱신 중...')));
+          .showSnackBar(SnackBar(content: Text('$round회 당첨번호가 Firestore에 저장됐습니다. 분석 데이터 갱신 중...')));
 
       // 폼 초기화
       _roundController.clear();

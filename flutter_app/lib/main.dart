@@ -1,32 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_native_splash/flutter_native_splash.dart';
 import 'package:provider/provider.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:google_mobile_ads/google_mobile_ads.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
 import 'screens/splash_screen.dart';
 import 'services/local_data_service.dart';
-import 'services/donation_service.dart';
 
 void main() async {
   final binding = WidgetsFlutterBinding.ensureInitialized();
   FlutterNativeSplash.preserve(widgetsBinding: binding);
-
-  // Supabase 초기화
-  await Supabase.initialize(
-    url: 'https://unmkjwdfthanhatyudwg.supabase.co',
-    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InVubWtqd2RmdGhhbmhhdHl1ZHdnIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzcxNDc0MTMsImV4cCI6MjA5MjcyMzQxM30.gxHFHqS98fcUemZ5NshLjEy-WTkAeN_PNwVIwGvub-I',
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
   );
-
-  // Google Mobile Ads 초기화
-  await MobileAds.instance.initialize();
-  // 테스트 기기 설정 (기기 ID는 로그에서 확인 후 추가)
-  MobileAds.instance.updateRequestConfiguration(
-    RequestConfiguration(testDeviceIds: []),
-  );
-
-  // 인앱결제(커피 후원) 초기화
-  DonationService().initialize();
-
+  // 무거운 초기화(Supabase, Ads)는 SplashScreen에서 처리 → runApp 즉시 호출
   runApp(const LuckyLottoApp());
 }
 
