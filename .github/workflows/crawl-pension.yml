@@ -2,8 +2,9 @@ name: Crawl Pension Lottery
 
 on:
   schedule:
-    # 매주 목요일 13:00 UTC (목요일 22:00 KST)
-    - cron: '0 13 * * 4'
+    # 매일 13:00 UTC (22:00 KST) — 연금복권 1등/보너스 당첨점 발표가
+    # 추첨일(목요일) 이후 며칠 지연될 수 있어 매일 확인하도록 변경
+    - cron: '0 13 * * *'
   workflow_dispatch:
 
 jobs:
