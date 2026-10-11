@@ -531,7 +531,7 @@ def run(db, key, a, raw=None, ready=None):
         log("[state] 버전 불일치 → 처음부터 재현"); state = None
     if state and state["last_completed_round"] > latest:
         log("[state] 상태가 대상 회차보다 앞섬 → 처음부터 재현"); state = None
-    provenance = {"state_restored": bool(state)}
+    provenance = {"state_restored": bool(state), "integrity_check": INTEGRITY_CHECK}
     if state:
         u = Universe(raw, latest, base=state["universe_base"])
         TUNED.update(state["tuned"])
@@ -1011,7 +1011,7 @@ def summarize(u, eng, tr, perf, latest, replayed, provenance):
             "provenance": provenance, "external_ai_api_calls": 0}
 
 
-FREE_TIER_BYTES = 500 * 1024 * 1024     # Supabase 무료 플랜 DB 한도 (유료 전환은 하지 않는다)
+FREE_TIER_BYTES = 500_000_000           # Supabase 무료 플랜 DB 한도 500MB (보수적으로 10^6 기준, 유료 전환은 하지 않는다)
 WARN_PCT, CRITICAL_PCT, WARN_WEEKS = 70.0, 90.0, 26
 
 
