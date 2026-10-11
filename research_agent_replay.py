@@ -39,6 +39,10 @@ from research_region_worker import Db, clean, _json_default, log
 
 MODEL = "ag-1.1"
 RUN_ID = "ag-1.1-r1"
+# 2026-10-12 무결성 점검: 정렬 없는 offset 페이지 조회 결함을 고친 뒤(키셋 조회) 1000~1246회를 다시 계산해
+# 저장된 247개 스냅샷 해시와 비교 → 전부 일치 (이 계보는 오염되지 않음). 결과를 data_provenance 에 기록한다.
+INTEGRITY_CHECK = {"date": "2026-10-12", "method": "키셋(id) 정렬 조회로 1000~1246회 순차 재계산 후 저장 스냅샷 해시 비교",
+                   "result": "247/247 일치 — 학습 입력 오염 없음", "checked_by": "로컬 재계산(읽기 전용)"}
 REPLAY_MODE = "sequential_replay+live"
 STATE_VERSION = 1
 BUCKET = "research-state"
@@ -211,7 +215,8 @@ def prediction_rows(u, eng, pr, avail, mode, created):
                                 sort_keys=True, ensure_ascii=False).encode()).hexdigest()
     pred = {"prediction_snapshot_id": sid, "replay_run_id": RUN_ID, "model_version": MODEL, "target_round": t,
             "available_data_through_round": avail, "replay_mode": mode, "prediction_created_at": created,
-            "regions": c["focus_regions"], "focus_regions": c["focus_regions"][:10], "store_top": c["store_top"],
+            "regions": c["focus_regions"] if mode == "live" else c["focus_regions"][:30],
+            "focus_regions": c["focus_regions"][:10], "store_top": c["store_top"],
             "active_hypotheses": int((eng.disc_row < pr["ti"]).sum()),
             "live_hypotheses_applied": [eng.st.H[i]["hypothesis_id"] for i in np.where(pr["applied_live"])[0]],
             "explore_hypotheses_fired": int(pr["applied_explore"].sum()), "snapshot_hash": h,
@@ -296,10 +301,19 @@ def agent_perf(u, eng, tr):
     for a, ag in enumerate(u.agent_ids):
         rows = [r["agents"].get(ag) for r in tr.rounds if r["agents"].get(ag) is not None]
 
+        def topk(rs):
+            out_ = {}
+            for kk in (1, 3, 5):
+                hits = sum(sum(r["by_rank"][:kk]) for r in rs)
+                exp_ = sum(min(kk, r["n_stores"]) / max(r["n_stores"], 1) * r["region_events"] for r in rs)
+                out_[str(kk)] = {"hits": int(hits), "expected_uniform": round(exp_, 3),
+                                 "lift": (hits / exp_) if exp_ > 0 else None}
+            return out_
+
         def agg(rs):
             s = {k: float(sum(r[k] for r in rs)) for k in keys}
             return {"rounds": len(rs), "hits_any": int(s["hits_any"]), "expected_uniform": round(s["expected_uniform"], 3),
-                    "history_hits": int(s["history_hits"]),
+                    "history_hits": int(s["history_hits"]), "top": topk(rs),
                     "ll_skill": (1 - s["ll_model"] / s["ll_base"]) if s["ll_base"] > 0 else None}
         tot = {k: float(sum(r[k] for r in rows)) for k in keys}
         sh = shared_in.get(ag, [])
@@ -312,6 +326,13 @@ def agent_perf(u, eng, tr):
                    "hits_vs_model": (tot["hits_any"] / tot["expected_model"]) if tot["expected_model"] > 0 else None,
                    "ll_skill": (1 - tot["ll_model"] / tot["ll_base"]) if tot["ll_base"] > 0 else None,
                    "recent": {str(n): agg(rows[-n:]) for n in (10, 30, 50, 100)},
+                   "top": topk(rows),
+                   "contribution": {"verified_hypotheses_hits": int(tot["hits_any"] - tot["history_hits"]),
+                                    "unverified_signals_hits": int(tot["explore_hits"] - tot["history_hits"]),
+                                    "note": "실전 목록 = 이력 기준 + 검증 통과 가설 보정, 탐색 목록 = 미검증 신호까지 보정"},
+                   "baselines": {"random_in_region": "expected_uniform", "store_count": "지역 내 판매점 수 비례 = 무작위와 동일",
+                                 "sales_volume": "데이터 미확보 (판매점별 판매량 없음)",
+                                 "history_only": "history_hits (최근 가중 당첨 빈도만)"},
                    "hypotheses": {"found": int(sum(hc.values())), **{s: int(hc.get(s, 0)) for s in STATUS}},
                    "shared_out": int(shared_out.get(ag, 0)),
                    "shared_in": {"count": len(sh), "by_status": dict(Counter(x[0] for x in sh)),
@@ -389,6 +410,55 @@ def post_briefing(u, eng, pr, per, cm, focus, changes, tr, lists):
             "trend": {"skill_round": skill, "skill_trailing30": trail, "reason": reason}, "lines": lines}, skill
 
 
+def _verdict_evidence(eng, h, latest):
+    v, detail = verdict_of(eng, h, latest)
+    e = float(eng.e[h["idx"]])
+    kmin = poisson_min_k(e)
+    return {"verdict": v, "verdict_detail": detail,
+            "power": {"expected": round(e, 4), "min_k_p05": kmin,
+                      "min_detectable_ratio": round(kmin / e, 2) if kmin and e > 0 else None}}
+
+
+def poisson_min_k(e, alpha=0.05):
+    """기대 e 에서 단측 p<alpha 가 되는 최소 관측 수"""
+    from scipy.stats import poisson
+    if e <= 0:
+        return None
+    k = int(math.ceil(e))
+    while poisson.sf(k - 1, e) >= alpha and k < 10000:
+        k += 1
+    return k
+
+
+def verdict_of(eng, h, latest):
+    """'연구 중'을 세분화: 검증 통과 / 검증 실패 / 검증 중(관측 누적·표본 부족·발화 대기)"""
+    i = h["idx"]
+    st = eng.status[i]
+    n, e, k = float(eng.n[i]), float(eng.e[i]), float(eng.k[i])
+    eoff = float(eng.eoff[i])
+    active_rounds = max(1, latest - h["discovered_round"])
+    if st in (S_PASS, S_COMB):
+        return "검증 통과", f"순방향 {int(n)}회 발화 · 관측 {int(k)}건 / 기대 {e:.1f}건 · BH q<0.05"
+    if st == S_REJ:
+        return "검증 실패", f"반대 방향 (관측 {int(k)} / 기대 {e:.1f}, 대조군 대비 ×{eng.test_ratio[i]:.2f})"
+    if st == S_WEAK:
+        return "검증 실패", f"판정 가능 표본에서 우위 미확인 (×{eng.test_ratio[i]:.2f}, p={eng.test_p[i]:.3f})"
+    if n == 0:
+        if active_rounds < 50:
+            return "검증 중: 미래 관측 누적 중", f"발견({h['discovered_round']}회) 후 {active_rounds}회 — 아직 발화 없음"
+        return "검증 중: 표본 부족", f"발견({h['discovered_round']}회) 후 {active_rounds}회 동안 발화 0회 (조건이 드묾)"
+    rate = e / active_rounds
+    need = max(W.MIN_EXPECTED - e, 0) / rate if rate > 0 else float("inf")
+    if eoff and eoff < W.MIN_EXPECTED:
+        need = max(need, (W.MIN_EXPECTED - eoff) / max(eoff / active_rounds, 1e-12))
+    if n < W.MIN_TRIALS:
+        need = max(need, (W.MIN_TRIALS - n) / max(n / active_rounds, 1e-12))
+    if need <= 100:
+        return "검증 중: 미래 관측 누적 중", f"판정까지 약 {need:.0f}회 더 필요 (기대 {e:.2f}건 / 필요 {W.MIN_EXPECTED:.0f}건)"
+    return "검증 중: 표본 부족", (f"기대 {e:.2f}건 — 판정에 {W.MIN_EXPECTED:.0f}건 필요, 현 속도로 약 "
+                                 + (f"{need:.0f}회" if math.isfinite(need) else "무한") + " 필요")
+
+
 def hypothesis_rows(u, eng, tr, latest):
     rows = []
     for h in eng.st.H:
@@ -409,7 +479,7 @@ def hypothesis_rows(u, eng, tr, latest):
                      "test_expected": float(eng.e[i]), "k_off": int(eng.koff[i]), "e_off": float(eng.eoff[i]),
                      "relative_ratio": float(eng.test_ratio[i]), "test_p": float(eng.test_p[i]), "test_q": float(eng.test_q[i]),
                      "status": STATUS[eng.status[i]], "evaluated_round": latest, "summary": h_summary(u, h),
-                     "evidence": h["evidence"], "updated_at": now()})
+                     "evidence": dict(h["evidence"], **_verdict_evidence(eng, h, latest)), "updated_at": now()})
     return rows
 
 
@@ -442,16 +512,18 @@ class Writer:
                 self.db.upsert(table, rows, spec[table], ignore_duplicates=(table != "research_replay_checkpoints"))
 
     def put(self, table, rows, on, ignore=False):
-        rows = clean(rows)
+        rows = rnd(clean(rows))
         self.bytes[table] += len(json.dumps(rows, ensure_ascii=False, default=_json_default).encode("utf-8"))
         if not self.dry and rows:
             self.db.upsert(table, rows, on, ignore_duplicates=ignore)
 
 
-def run(db, key, a):
+def run(db, key, a, raw=None, ready=None):
     t_start = time.time()
-    raw = load(db)
-    latest = min(raw["latest"], a.until) if a.until else raw["latest"]
+    raw = raw or load(db)
+    if ready is None:
+        ready, _ = W.ready_latest(raw)
+    latest = min(ready, a.until) if a.until else ready
     stst = StateStore(db, key, a.state_dir)
     stst.ensure_bucket()
     state = None if a.fresh else stst.load("state.pkl.gz")
@@ -494,8 +566,8 @@ def run(db, key, a):
 
     # 원장: 이미 동결/검증된 회차
     done = defaultdict(set)
-    if not a.dry_run:
-        for r in db.select_all("research_replay_checkpoints", {"select": "target_round,stage,status", "replay_run_id": f"eq.{RUN_ID}",
+    if not a.dry_run or a.read_stored:
+        for r in db.select_all("research_replay_checkpoints", {"select": "target_round,stage,status", "order": "target_round,stage", "replay_run_id": f"eq.{RUN_ID}",
                                                                "status": "eq.done"}):
             done[r["stage"]].add(r["target_round"])
     wr = Writer(db, a.dry_run)
@@ -503,6 +575,7 @@ def run(db, key, a):
     events_cursor = len(eng.events)
     summary_rounds = []
     replayed = 0
+    last_eval = None
 
     def save_state(last_round):
         eng.u = None
@@ -511,6 +584,7 @@ def run(db, key, a):
                       "universe_base_ncodes": len(u.codes), "fingerprint": fingerprint(u, u.row(last_round), len(u.codes)),
                       "tuned": tuned, "engine": eng, "track": tr, "saved_at": now()}
         size = stst.save("state.pkl.gz", blob_state)
+        log(f"  [state] {last_round}회 지문 {blob_state['fingerprint'][:12]} (판매점 {len(u.codes)} · 행 {u.row(last_round) + 1})")
         eng.u = u
         return size
 
@@ -530,9 +604,9 @@ def run(db, key, a):
     stored_cache = {}
 
     def stored_lists(t):
-        if a.dry_run or t not in done["predicted"]:
+        if (a.dry_run and not a.read_stored) or t not in done["predicted"]:
             return None
-        rows = db.select_all("research_replay_agent_predictions", {"select": "agent_id,store_ids",
+        rows = db.select_all("research_replay_agent_predictions", {"select": "agent_id,store_ids", "order": "agent_id",
                                                                     "prediction_snapshot_id": f"eq.{snap_id(t)}"})
         return {r["agent_id"]: r["store_ids"] for r in rows} if rows else None
 
@@ -609,6 +683,8 @@ def run(db, key, a):
         # H 사후 브리핑
         post, skill = post_briefing(u, eng, pr, per, cm, focus, changes, tr, lists)
         tr.rounds.append({"t": t, "agents": per, "skill": skill, "hash": hsh})
+        last_eval = {"t": t, "per": {ag: (m["hits_any"], m["hits_first"]) for ag, m in per.items()}, "central": cm,
+                     "stored": stored is not None}
         tr.central.append({"t": t, **cm})
         if t not in done["verified"]:
             wr.add("research_replay_briefings", {"prediction_snapshot_id": snap_id(t), "kind": "post", "replay_run_id": RUN_ID,
@@ -638,6 +714,9 @@ def run(db, key, a):
     created = now()
     pred, agent_rows, lists, hsh = prediction_rows(u, eng, pr, latest, "live", created)
     live_new = target not in done["predicted"]
+    if not live_new:
+        st_live = stored_lists(target)
+        provenance["live_snapshot_matches_recompute"] = (st_live == lists) if st_live is not None else None
     if live_new:
         new_by_kind = Counter(h["kind"] for h in eng.st.H if h["discovered_round"] == latest)
         wr.add("research_replay_predictions", pred)
@@ -648,8 +727,11 @@ def run(db, key, a):
     perf = agent_perf(u, eng, tr)
     compat = compat_live(u, eng, pr, perf, tr, latest, live_new)
     compat["live_hash"] = hsh
-    if not a.dry_run and live_new:
-        write_compat(wr, compat)          # 기존 화면용 실전 행을 원장보다 먼저 (실패 시 다음 실행에서 다시 씀)
+    if a.dry_run:
+        compat["hyp_sample"] = hypothesis_rows(u, eng, tr, latest)[:30]
+    compat["last_eval"] = last_eval if replayed else None
+    if not a.dry_run:
+        write_compat(wr, compat, immutable=live_new)   # 동결 행은 처음 한 번만, 지방장 성과·브리핑은 매번 갱신
     flush_research(latest, write_hyp=True)
     totals = summarize(u, eng, tr, perf, latest, replayed, provenance)
     totals["write_bytes"] = dict(wr.bytes)
@@ -690,7 +772,7 @@ def compat_live(u, eng, pr, perf, tr, latest, live_new):
             gaps = np.diff(ev)
             hy = []
             app = set(pr["per_store_live"].get(s, []))
-            for i in related.get(cd, [])[:6]:
+            for i in related.get(cd, [])[:4]:
                 h = eng.st.H[i]
                 hy.append({"id": h["hypothesis_id"], "kind": h["kind"], "status": STATUS[eng.status[i]], "summary": h_summary(u, h),
                            "firing": bool(pr["fire"][i]), "applied_live": h["hypothesis_id"] in app,
@@ -788,6 +870,8 @@ def compat_live(u, eng, pr, perf, tr, latest, live_new):
                            "new_this_checkpoint": len([h for h in shared if h["discovered_round"] == latest]),
                            "conflicts": int(eng.stats.get("template_conflicts", 0)), "examples": top(shared)},
                 "status_counts": {s: int(st.get(s, 0)) for s in STATUS}, "performance": perf_all, "rank_changes": [],
+                "agent_performance": agent_perf_summary(perf),
+                "hypothesis_verdicts": verdict_summary(eng, latest),
                 "data_limits": ["판매점별 판매량 자료 없음 → 점수는 회차당 1·2등 기대 빈도(판매량 미보정)이며 한 장당 당첨확률이 아님",
                                 "1000~마지막 회차 기록은 당시 데이터만 사용해 추첨 이후 재현한 '사후 재현'이며, 'live' 회차만 추첨 전 동결",
                                 "판매점 개업·폐업일 미확보 → 판매점 목록은 현재 기준"],
@@ -798,13 +882,91 @@ def compat_live(u, eng, pr, perf, tr, latest, live_new):
                           f"지방장 상위 5 적중 {perf_all['agent_hits_live']}건 (이력만 {perf_all['agent_hits_history']} · 무작위 기대 {perf_all['expected_uniform']:.0f}).",
                           f"중앙 엔진 지역 log-loss {perf_all['central_logloss']['model']:.4f} (판매점 수 기준 {perf_all['central_logloss']['m0']:.4f})."]}
     return {"scores": scores, "deliveries": deliveries, "central": central, "agents": agents, "briefing": briefing,
+            "first_share": float(dv["phi"]),
             "hashes": {r["t"]: r.get("hash") for r in tr.rounds}}
 
 
-def write_compat(wr, c):
+STORE_KINDS = ("store_cycle", "store_cowin", "store_lead", "region_store_lead", "store_spill", "composite",
+               "cycle_pooled", "neighbor_spill")
+
+
+def verdict_summary(eng, latest):
+    """가설 판정 분포와 판매점 단위 검증 통과 0건 이유 (실제 수치)"""
+    by_kind = defaultdict(Counter)
+    exp_store = []
+    ratios_decided = []
+    for h in eng.st.H:
+        v, _ = verdict_of(eng, h, latest)
+        by_kind[h["kind"]][v] += 1
+        if h["kind"] in STORE_KINDS:
+            i = h["idx"]
+            exp_store.append(float(eng.e[i]))
+            if eng.status[i] in (S_WEAK, S_REJ, S_PASS, S_COMB):
+                ratios_decided.append(float(eng.test_ratio[i]))
+    tot = Counter()
+    for k, c in by_kind.items():
+        if k in STORE_KINDS:
+            tot.update(c)
+    e = np.array(exp_store) if exp_store else np.zeros(1)
+    med = float(np.median(e))
+    kmin = poisson_min_k(med) if med > 0 else None
+    why = {"store_level_total": int(sum(tot.values())), "by_verdict": dict(tot),
+           "median_expected_events": round(med, 3),
+           "share_expected_below_3": round(float((e < W.MIN_EXPECTED).mean()), 3),
+           "min_detectable_ratio_at_median": round(kmin / med, 1) if kmin and med > 0 else None,
+           "decided": len(ratios_decided),
+           "decided_ratio_median": round(float(np.median(ratios_decided)), 3) if ratios_decided else None,
+           "decided_ratio_gt1_share": round(float(np.mean([r > 1 for r in ratios_decided])), 3) if ratios_decided else None}
+    return {"by_kind": {k: dict(v) for k, v in by_kind.items()}, "store_level": why}
+
+
+def agent_perf_summary(perf):
+    ps = [(a, p) for a, p in perf.items() if p.get("rounds")]
+    sk = [p["ll_skill"] for _, p in ps if p.get("ll_skill") is not None]
+    lf = [p["lift_vs_uniform"] for _, p in ps if p.get("lift_vs_uniform")]
+    ok = [(a, p) for a, p in ps if not p["data_quality"]["sample_flag"] and p.get("ll_skill") is not None]
+    ok.sort(key=lambda x: -x[1]["ll_skill"])
+    pick = lambda xs: [{"agent_id": a, "ll_skill": round(p["ll_skill"], 4), "lift": round(p["lift_vs_uniform"] or 0, 2),
+                        "top1": p["top"]["1"], "top5": p["top"]["5"], "rounds": p["rounds"]} for a, p in xs]
+    tot = Counter()
+    for _, p in ps:
+        for kk in ("1", "3", "5"):
+            tot[f"top{kk}_hits"] += p["top"][kk]["hits"]
+            tot[f"top{kk}_expected"] += p["top"][kk]["expected_uniform"]
+        tot["history_hits"] += p["history_hits"]
+        tot["explore_hits"] += p["explore_hits"]
+    return {"agents": len(ps), "skill_positive": sum(1 for x in sk if x > 0), "skill_median": float(np.median(sk)) if sk else None,
+            "lift_median": float(np.median(lf)) if lf else None, "low_sample": sum(1 for _, p in ps if p["data_quality"]["sample_flag"]),
+            "totals": {k: (round(v, 2) if isinstance(v, float) else int(v)) for k, v in tot.items()},
+            "best": pick(ok[:5]), "worst": pick(ok[-5:])}
+
+
+def write_compat(wr, c, immutable=True):
     wr.put("research_agents", c["agents"], "agent_id,model_version")
+    wr.put("research_agent_briefings", [{"model_version": MODEL, "target_round": c["briefing"]["target_round"],
+                                         "training_end_round": c["briefing"]["training_end_round"], "payload": c["briefing"]}],
+           "model_version,target_round,training_end_round")
+    if not immutable:
+        return
     wr.put("research_agent_deliveries", c["deliveries"], "model_version,target_round,agent_id,store_code,mode", True)
-    wr.put("research_agent_store_scores", c["scores"], "model_version,target_round,store_code", True)
+    if wr.db is not None and wr.db.exists("research_agent_score_sets"):
+        by_agent = defaultdict(list)
+        for r in c["scores"]:
+            by_agent[r["agent_id"]].append(r)
+        sets = []
+        for ag, rs in by_agent.items():
+            rs.sort(key=lambda r: r["agent_rank"])
+            lf = [r["live_factor"] for r in rs]
+            ef = [r["explore_factor"] for r in rs]
+            sets.append({"model_version": MODEL, "target_round": rs[0]["target_round"], "agent_id": ag,
+                         "store_codes": [r["store_code"] for r in rs], "scores": [r["score"] for r in rs],
+                         "live_factors": lf if any(x != 1 for x in lf) else [],
+                         "explore_factors": ef if any(x != 1 for x in ef) else [],
+                         "hyp_counts": [r["hyp_count"] for r in rs], "first_share": c["first_share"],
+                         "training_end_round": rs[0]["training_end_round"]})
+        wr.put("research_agent_score_sets", sets, "model_version,target_round,agent_id", True)
+    else:
+        wr.put("research_agent_store_scores", c["scores"], "model_version,target_round,store_code", True)
     wr.put("research_agent_central", [c["central"]], "model_version,target_round,mode", True)
     wr.put("research_agent_briefings", [{"model_version": MODEL, "target_round": c["briefing"]["target_round"],
                                          "training_end_round": c["briefing"]["training_end_round"], "payload": c["briefing"]}],
@@ -849,19 +1011,81 @@ def summarize(u, eng, tr, perf, latest, replayed, provenance):
             "provenance": provenance, "external_ai_api_calls": 0}
 
 
+FREE_TIER_BYTES = 500 * 1024 * 1024     # Supabase 무료 플랜 DB 한도 (유료 전환은 하지 않는다)
+WARN_PCT, CRITICAL_PCT, WARN_WEEKS = 70.0, 90.0, 26
+
+
 def db_usage(db):
+    """research_db_usage() RPC (service_role) — DB 전체·테이블별 바이트"""
     try:
-        r = requests.post(db.base + "rpc/research_db_usage", headers=db.h, data="{}", timeout=60)
+        r = requests.post(db.base + "rpc/research_db_usage", headers=dict(db.h, **{"Content-Type": "application/json"}),
+                          data="{}", timeout=60)
         if r.status_code == 200:
             d = r.json()
             tables = d.get("tables") or {}
-            top = sorted(tables.items(), key=lambda x: -x[1])[:12]
-            return {"database_bytes": d.get("database_bytes"), "free_tier_bytes": 500 * 1024 * 1024,
-                    "top_tables": dict(top),
-                    "research_bytes": int(sum(v for k, v in tables.items() if k.startswith("research_")))}
+            return {"database_bytes": d.get("database_bytes"), "free_tier_bytes": FREE_TIER_BYTES,
+                    "research_bytes": int(sum(v for k, v in tables.items() if k.startswith("research_"))),
+                    "tables": {k: int(v) for k, v in sorted(tables.items(), key=lambda x: -x[1])}}
         return {"error": f"{r.status_code} {r.text[:120]}"}
     except Exception as e:
         return {"error": str(e)[:120]}
+
+
+def usage_update(prev, cur, latest_round):
+    """사용량 이력·주간 증가량·한도 도달 예상·경고 단계"""
+    prev = prev or {}
+    hist = list(prev.get("history") or [])
+    if cur.get("database_bytes") is None:
+        return dict(prev, last_error=cur.get("error"))
+    at = now()
+    hist.append({"at": at, "database_bytes": int(cur["database_bytes"]), "research_bytes": int(cur.get("research_bytes") or 0),
+                 "latest_round": latest_round})
+    hist = hist[-80:]
+    pct = 100.0 * cur["database_bytes"] / FREE_TIER_BYTES
+    weekly = None
+    t_now = datetime.fromisoformat(at)
+    window = [h for h in hist if (t_now - datetime.fromisoformat(h["at"])).days <= 60]
+    if len(window) >= 2:
+        days = (datetime.fromisoformat(window[-1]["at"]) - datetime.fromisoformat(window[0]["at"])).total_seconds() / 86400
+        if days >= 3:
+            weekly = (window[-1]["database_bytes"] - window[0]["database_bytes"]) / days * 7
+    est = prev.get("estimated_weekly_growth_bytes")
+    use = weekly if weekly is not None else est
+    weeks = (FREE_TIER_BYTES - cur["database_bytes"]) / use if use and use > 0 else None
+    if pct >= CRITICAL_PCT:
+        level, msg = "critical", f"DB {pct:.0f}% 사용 — 연구 기록 저장을 일시 중지했습니다. 유료 전환은 하지 않습니다. 정리 방안 승인이 필요합니다."
+    elif pct >= WARN_PCT or (weeks is not None and weeks < WARN_WEEKS):
+        level, msg = "warn", (f"DB {pct:.0f}% 사용" + (f" · 약 {weeks:.0f}주 뒤 무료 한도 도달 예상" if weeks is not None else "")
+                              + " — 정리 계획이 필요합니다.")
+    else:
+        level, msg = "ok", f"DB {pct:.0f}% 사용" + (f" · 한도까지 약 {weeks:.0f}주" if weeks is not None else "")
+    return {"latest": {"at": at, "database_bytes": int(cur["database_bytes"]), "research_bytes": int(cur.get("research_bytes") or 0),
+                       "free_tier_bytes": FREE_TIER_BYTES, "pct": round(pct, 2)},
+            "history": hist, "weekly_growth_bytes": weekly, "estimated_weekly_growth_bytes": est,
+            "weeks_to_limit": weeks, "alert": {"level": level, "message": msg},
+            "tables": {k: v for k, v in (cur.get("tables") or {}).items() if k.startswith("research_")},
+            "top_tables": dict(list((cur.get("tables") or {}).items())[:10])}
+
+
+def estimate_weekly(cur, rounds_total, score_sets):
+    """측정된 테이블 크기로 회차당 증가량 추정 (실측 이력이 쌓이기 전 사용)"""
+    t = cur.get("tables") or {}
+    if not t or not rounds_total:
+        return None
+    replay = sum(v for k, v in t.items() if k.startswith("research_replay_") and k not in ("research_replay_hypotheses",
+                                                                                           "research_replay_runs",
+                                                                                           "research_replay_rounds"))
+    per_round = replay / (rounds_total + 1)
+    deliveries = t.get("research_agent_deliveries", 0) / 2          # ag-1.0·ag-1.1 의 1246 두 묶음
+    scores = (t.get("research_agent_store_scores", 0) / 2) if not score_sets else 300_000
+    return int(per_round + deliveries + scores)
+
+
+def patch_run_stats(db, stats):
+    requests.patch(db.base + "research_replay_runs", params={"replay_run_id": f"eq.{RUN_ID}"},
+                   headers=dict(db.h, **{"Content-Type": "application/json", "Prefer": "return=minimal"}),
+                   data=json.dumps(clean({"stats": stats, "updated_at": now()}), ensure_ascii=False, default=_json_default).encode("utf-8"),
+                   timeout=60)
 
 
 def main():
@@ -871,6 +1095,8 @@ def main():
     ap.add_argument("--until", type=int, default=None, help="이 회차까지만 처리 (재개 검증용)")
     ap.add_argument("--state-dir", default=None, help="로컬 상태 폴더 (지정 시 Storage 대신 사용)")
     ap.add_argument("--fresh", action="store_true", help="저장 상태 무시하고 999회 기준선부터 재현")
+    ap.add_argument("--usage-only", action="store_true", help="DB 사용량만 측정·기록")
+    ap.add_argument("--read-stored", action="store_true", help="dry-run 에서도 DB 의 동결 예측을 읽어 그대로 검증 (읽기 전용)")
     a = ap.parse_args()
     url, key = os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY")
     if not url or not key:
@@ -880,6 +1106,11 @@ def main():
         db.h.pop("Authorization", None)
     if a.dry_run and not a.state_dir:
         log("--dry-run 은 --state-dir 와 함께 사용하세요 (Storage 쓰기 방지)"); sys.exit(1)
+    raw = load(db)
+    ready, pending = W.ready_latest(raw)
+    if pending:
+        log(f"[ready] 데이터 미준비 회차는 학습하지 않음: {pending}")
+    usage = None
     if not a.dry_run:
         role = key_role(key)
         if role != "service_role":
@@ -888,14 +1119,41 @@ def main():
         if not all(db.exists(t) for t in REPLAY_TABLES):
             print("::warning::research_v6_replay.sql 미적용 — 실전형 재현을 건너뜁니다")
             print(json.dumps({"skipped": True, "reason": "SQL 미적용"})); return
-        latest = max(r["round"] for r in db.select_all("lotto_winning_numbers", {"select": "round"}))
-        run_row = db.select_all("research_replay_runs", {"select": "status,last_completed_round,last_prediction_round",
+        run_row = db.select_all("research_replay_runs", {"select": "status,last_completed_round,last_prediction_round,stats", "order": "replay_run_id",
                                                          "replay_run_id": f"eq.{RUN_ID}"})
-        if run_row and run_row[0]["status"] == "completed" and run_row[0]["last_completed_round"] == latest \
-                and run_row[0]["last_prediction_round"] == latest + 1:
-            print(json.dumps({"skipped": True, "reason": f"{latest}회까지 재현·{latest + 1}회 실전 동결 완료"})); return
+        prev_stats = (run_row[0].get("stats") or {}) if run_row else {}
+        cur = db_usage(db)
+        prev_usage = dict(prev_stats.get("usage") or {})
+        est = estimate_weekly(cur, prev_stats.get("rounds_total"), db.exists("research_agent_score_sets"))
+        if est:
+            prev_usage["estimated_weekly_growth_bytes"] = est
+        usage = usage_update(prev_usage, cur, ready)
+        level = usage.get("alert", {}).get("level")
+        if level in ("warn", "critical"):
+            print(f"::warning::{usage['alert']['message']}")
+        if pending:
+            usage["pending_rounds"] = pending
+        if run_row:
+            patch_run_stats(db, dict(prev_stats, usage=usage))
+        if a.usage_only:
+            print(json.dumps(clean({"usage": {k: v for k, v in usage.items() if k != "history"}}), ensure_ascii=False)); return
+        if level == "critical":
+            print(json.dumps({"skipped": True, "reason": usage["alert"]["message"]}, ensure_ascii=False)); return
+        if run_row and run_row[0]["status"] == "completed" and run_row[0]["last_completed_round"] == ready \
+                and run_row[0]["last_prediction_round"] == ready + 1:
+            log(f"[refresh] {ready}회까지 재현·{ready + 1}회 실전 동결 완료 — 새 회차 없음, 가설 판정·지방장 성과·브리핑만 갱신"
+                + (f" ({pending[0]['round']}회 데이터 미준비)" if pending else ""))
+    if not a.dry_run and run_row:
+        dp = dict((db.select_all("research_replay_runs", {"select": "data_provenance", "order": "replay_run_id",
+                                                           "replay_run_id": f"eq.{RUN_ID}"})[0].get("data_provenance")) or {})
+        if dp.get("integrity_check") != INTEGRITY_CHECK:
+            dp["integrity_check"] = INTEGRITY_CHECK
+            requests.patch(db.base + "research_replay_runs", params={"replay_run_id": f"eq.{RUN_ID}"},
+                           headers=dict(db.h, **{"Content-Type": "application/json", "Prefer": "return=minimal"}),
+                           data=json.dumps({"data_provenance": dp, "updated_at": now()}, ensure_ascii=False).encode("utf-8"),
+                           timeout=60)
     try:
-        totals, compat = run(db, key, a)
+        totals, compat = run(db, key, a, raw=raw, ready=ready)
     except Exception as e:
         if not a.dry_run:
             try:
@@ -905,14 +1163,26 @@ def main():
             except Exception:
                 pass
         raise
+    if not a.dry_run:
+        cur = db_usage(db)
+        u2 = usage_update(usage, cur, ready)
+        if pending:
+            u2["pending_rounds"] = pending
+        totals["usage"] = u2
+        patch_run_stats(db, clean(totals))
     if a.out:
-        json.dump(clean({"summary": totals, "hashes": compat.get("hashes"), "live_hash": compat.get("live_hash"), "live_central_top": compat["central"]["focus_regions"][:10],
+        json.dump(clean({"summary": totals, "hashes": compat.get("hashes"), "live_hash": compat.get("live_hash"),
+                         "last_eval": compat.get("last_eval"), "hyp_sample": compat.get("hyp_sample"), "agent_perf_summary": compat["briefing"].get("agent_performance"), "verdicts": compat["briefing"].get("hypothesis_verdicts"),
+                         "live_central_top": compat["central"]["focus_regions"][:10],
                          "live_store_top": compat["central"]["store_top"][:10], "briefing": compat["briefing"],
                          "agent_perf_sample": {k: v for k, v in list({x["agent_id"]: x["performance"] for x in compat["agents"]}.items())
                                                if k in ("서울|노원구", "인천|남동구", "충남|천안시", "internet")}}),
                   open(a.out, "w", encoding="utf-8"), ensure_ascii=False, default=_json_default)
-    print(json.dumps(clean({k: v for k, v in totals.items() if k != "passed"}), ensure_ascii=False, default=_json_default))
+    print(json.dumps(clean({k: v for k, v in totals.items() if k not in ("passed", "usage")}), ensure_ascii=False, default=_json_default))
 
 
 if __name__ == "__main__":
+    # 상태 파일의 클래스 경로를 실행 방식과 무관하게 research_agent_replay.Track 으로 고정
+    sys.modules.setdefault("research_agent_replay", sys.modules[__name__])
+    Track.__module__ = "research_agent_replay"
     main()

@@ -127,19 +127,53 @@ def norm_txt(s):
 # ── 데이터 ─────────────────────────────────────────────────────────
 def load(db):
     log("[load] lottery_stores (lotto)")
-    stores = db.select_all("lottery_stores", {
+    stores = db.select_keyset("lottery_stores", {
         "select": "dhlottery_code,store_name,address,region,latitude,longitude", "lottery_type": "eq.lotto"})
     log(f"  {len(stores)}")
     log("[load] winning_history (lotto 1·2등)")
-    hist = db.select_all("winning_history", {
+    hist = db.select_keyset("winning_history", {
         "select": "dhlottery_code,round,prize_tier", "lottery_type": "eq.lotto", "prize_tier": "in.(first,second)"})
     log(f"  {len(hist)}")
-    nums = db.select_all("lotto_winning_numbers", {"select": "round"})
+    nums = db.select_all("lotto_winning_numbers", {"select": "round", "order": "round"})
     prize = {}
     if db.exists("research_prize_stats"):
-        for r in db.select_all("research_prize_stats", {"select": "round,rank1_winners"}):
+        for r in db.select_all("research_prize_stats", {"select": "round,rank1_winners", "order": "round"}):
             prize[r["round"]] = r["rank1_winners"]
-    return {"stores": stores, "hist": hist, "latest": max(r["round"] for r in nums), "prize": prize}
+    crawl = None
+    if db.exists("round_crawl_status"):     # 크롤러가 남기는 회차별 판매점 수집 완료 표시 (읽기 전용)
+        crawl = {r["round"]: r.get("stores_status") for r in db.select_all(
+            "round_crawl_status", {"select": "round,stores_status", "lottery_type": "eq.lotto", "order": "lottery_type,round"})}
+    return {"stores": stores, "hist": hist, "latest": max(r["round"] for r in nums), "prize": prize,
+            "number_rounds": sorted({r["round"] for r in nums}), "crawl": crawl}
+
+
+def ready_latest(raw, floor=LEARN_START):
+    """당첨번호·1등 판매점·2등 판매점·크롤링 완료가 모두 갖춰진 마지막 회차 (미준비 회차는 학습하지 않음)"""
+    cnt = Counter((h["round"], h["prize_tier"]) for h in raw["hist"])
+    crawl = raw.get("crawl")
+    crawl_from = min(crawl) if crawl else None
+    numbers = set(raw.get("number_rounds") or [raw["latest"]])
+    pending = []
+    r = raw["latest"]
+    while r >= floor:
+        why = []
+        if r not in numbers:
+            why.append("당첨번호 없음")
+        if crawl is not None and r >= crawl_from and crawl.get(r) != "success":
+            why.append(f"판매점 크롤링 완료 표시 없음({crawl.get(r)})")
+        f, s2 = cnt[(r, "first")], cnt[(r, "second")]
+        p1 = raw["prize"].get(r)
+        if s2 == 0:
+            why.append("2등 판매점 기록 없음")
+        if f == 0 and p1 != 0:
+            why.append("1등 판매점 기록 없음")
+        elif p1 and f < 0.8 * p1:
+            why.append(f"1등 판매점 기록 부족 {f}/{p1}")
+        if not why:
+            return r, pending
+        pending.append({"round": r, "reasons": why})
+        r -= 1
+    return r, pending
 
 
 class Universe:
@@ -1668,7 +1702,10 @@ def main():
         # 새 형식 API 키(sb_secret_/sb_publishable_)는 JWT 가 아니므로 apikey 헤더로만 보낸다
         db.h.pop("Authorization", None)
     raw = load(db)
-    latest = min(raw["latest"], a.latest) if a.latest else raw["latest"]
+    ready, pending = ready_latest(raw)
+    if pending:
+        log(f"[ready] 데이터 미준비 회차 제외: {pending}")
+    latest = min(ready, a.latest) if a.latest else ready
 
     if a.selftest_leak:
         cut = a.selftest_leak
@@ -1717,7 +1754,7 @@ def main():
             print(f"::warning::SUPABASE_KEY 역할이 service_role 이 아님({role}) — 지방장 테이블은 service_role 만 쓸 수 있습니다")
             print(json.dumps({"skipped": True, "reason": f"키 역할 {role}"})); return
         if not a.force:
-            done = db.select_all("research_agent_runs", {"select": "status", "model_version": f"eq.{MODEL}",
+            done = db.select_all("research_agent_runs", {"select": "status", "order": "training_end_round", "model_version": f"eq.{MODEL}",
                                                          "training_end_round": f"eq.{latest}"})
             if any(d["status"] == "completed" for d in done):
                 print(json.dumps({"skipped": True, "reason": f"{latest}회 이미 완료"})); return
@@ -1733,7 +1770,7 @@ def main():
         prev_ranks = {}
         if tables_ok:
             try:
-                prev = db.select_all("research_agent_store_scores", {"select": "store_code,agent_rank", "model_version": f"eq.{MODEL}",
+                prev = db.select_all("research_agent_store_scores", {"select": "store_code,agent_rank", "order": "store_code", "model_version": f"eq.{MODEL}",
                                                                      "target_round": f"eq.{latest}"})
                 prev_ranks = {r["store_code"]: r["agent_rank"] for r in prev}
             except Exception as e:
@@ -1786,8 +1823,8 @@ def main():
 def evaluate_live(db, u, latest):
     """추첨 전에 저장된 live 스냅샷(store_scores·central)을 실제 결과로 평가 (아직 평가 안 된 회차만)"""
     done = {r["target_round"] for r in db.select_all("research_agent_central_evals", {
-        "select": "target_round", "model_version": f"eq.{MODEL}", "mode": "eq.live"})}
-    cands = db.select_all("research_agent_central", {"select": "target_round,focus_regions,store_top", "model_version": f"eq.{MODEL}",
+        "select": "target_round", "order": "target_round,mode", "model_version": f"eq.{MODEL}", "mode": "eq.live"})}
+    cands = db.select_all("research_agent_central", {"select": "target_round,focus_regions,store_top", "order": "target_round,mode", "model_version": f"eq.{MODEL}",
                                                      "mode": "eq.live", "target_round": f"lte.{latest}"})
     evals, cevals = [], []
     for c in cands:
@@ -1795,7 +1832,7 @@ def evaluate_live(db, u, latest):
         if tr in done or tr < u.r0:
             continue
         ti = u.row(tr)
-        sc = db.select_all("research_agent_store_scores", {"select": "store_code,agent_id,agent_rank,score,live_factor,explore_factor",
+        sc = db.select_all("research_agent_store_scores", {"select": "store_code,agent_id,agent_rank,score,live_factor,explore_factor", "order": "store_code",
                                                            "model_version": f"eq.{MODEL}", "target_round": f"eq.{tr}"})
         by_agent = defaultdict(list)
         for r in sc:
@@ -1831,7 +1868,7 @@ def evaluate_live(db, u, latest):
 
 def write_all(db, u, rows, briefing, live_evals, live_central_evals, latest):
     t0 = time.time()
-    jobs = {(r["job_type"], r["job_key"]) for r in db.select_all("research_agent_jobs", {
+    jobs = {(r["job_type"], r["job_key"]) for r in db.select_all("research_agent_jobs", {"order": "job_type,job_key", 
         "select": "job_type,job_key,status", "model_version": f"eq.{MODEL}", "status": "eq.done"})}
     done_bt = {k for (t, k) in jobs if t == "backtest_round"}
     max_done = max(done_bt) if done_bt else 0
@@ -1876,7 +1913,7 @@ def write_all(db, u, rows, briefing, live_evals, live_central_evals, latest):
     # 관계 그래프: 단계 체크포인트 + 최신만 유지 (이전 '최신' 체크포인트는 삭제)
     keep_cps = sorted({r["training_end_round"] for r in rows["relations"]})
     try:
-        old = db.select_all("research_agent_relations", {"select": "training_end_round", "model_version": f"eq.{MODEL}",
+        old = db.select_all("research_agent_relations", {"select": "training_end_round", "order": "training_end_round,kind,src_id,dst_id,lag", "model_version": f"eq.{MODEL}",
                                                          "kind": "eq.region_lead", "lag": "eq.1"})
         for cp in sorted({r["training_end_round"] for r in old} - set(keep_cps)):
             requests.delete(db.base + "research_agent_relations", params={"model_version": f"eq.{MODEL}",

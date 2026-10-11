@@ -62,6 +62,9 @@ class Db:
         self.h = {"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"}
 
     def select_all(self, table, params, page=1000):
+        """offset 페이지 조회. 반드시 고유 키 정렬(order)을 지정해야 한다 (정렬 없으면 페이지 간 중복·누락)."""
+        if "order" not in params:
+            raise ValueError(f"select_all({table}) 에 고유 키 정렬(order)이 필요합니다")
         out, off = [], 0
         while True:
             h = dict(self.h, **{"Range-Unit": "items", "Range": f"{off}-{off + page - 1}"})
@@ -73,6 +76,26 @@ class Db:
             if len(rows) < page:
                 return out
             off += page
+
+    def select_keyset(self, table, params, key="id", page=1000):
+        """키셋 페이지 조회: key > 마지막 값으로 이어 읽어, 조회 중 행이 추가·삭제돼도 밀리거나 겹치지 않는다."""
+        params = dict(params)
+        cols = [c.strip() for c in params.get("select", "*").split(",")]
+        if "*" not in cols and key not in cols:
+            params["select"] = ",".join(cols + [key])
+        out, last = [], None
+        while True:
+            q = dict(params, order=f"{key}.asc", limit=str(page))
+            if last is not None:
+                q[key] = f"gt.{last}"
+            r = requests.get(self.base + table, params=q, headers=self.h, timeout=60)
+            if r.status_code != 200:
+                raise RuntimeError(f"select {table} {r.status_code} {r.text[:200]}")
+            rows = r.json()
+            out.extend(rows)
+            if len(rows) < page:
+                return out
+            last = rows[-1][key]
 
     def exists(self, table):
         r = requests.get(self.base + table, params={"select": "*", "limit": 1}, headers=self.h, timeout=30)
@@ -217,21 +240,21 @@ def status_of(test_n, test_k, test_base, direction, m_disc, combined=False):
 def run(db, latest_override=None):
     t0 = time.time()
     log("[load] lottery_stores")
-    stores = db.select_all("lottery_stores", {
+    stores = db.select_keyset("lottery_stores", {
         "select": "dhlottery_code,store_name,address,region,latitude,longitude", "lottery_type": "eq.lotto"})
     log(f"  stores {len(stores)}")
     log("[load] winning_history (lotto 1·2등)")
-    hist = db.select_all("winning_history", {
+    hist = db.select_keyset("winning_history", {
         "select": "dhlottery_code,round,prize_tier,purchase_method", "lottery_type": "eq.lotto",
         "prize_tier": "in.(first,second)"})
     log(f"  history {len(hist)}")
-    nums = db.select_all("lotto_winning_numbers", {"select": "round"})
+    nums = db.select_all("lotto_winning_numbers", {"select": "round", "order": "round"})
     latest = max(r["round"] for r in nums)
     if latest_override:
         latest = min(latest, latest_override)
     prize = {}
     if db.exists("research_prize_stats"):
-        for r in db.select_all("research_prize_stats", {"select": "round,rank1_winners"}):
+        for r in db.select_all("research_prize_stats", {"select": "round,rank1_winners", "order": "round"}):
             prize[r["round"]] = r["rank1_winners"]
 
     # 판매점 → 지역
@@ -817,11 +840,11 @@ def main():
     if not tables_ok and not a.dry_run:
         log("[error] research_v4_regions.sql 미적용 — 테이블이 없습니다. --dry-run 으로만 실행 가능"); sys.exit(2)
 
-    latest = max(r["round"] for r in db.select_all("lotto_winning_numbers", {"select": "round"}))
+    latest = max(r["round"] for r in db.select_all("lotto_winning_numbers", {"select": "round", "order": "round"}))
     if a.latest:
         latest = min(latest, a.latest)
     if tables_ok and not a.force and not a.dry_run:
-        done = db.select_all("research_region_runs", {"select": "status", "model_version": f"eq.{MODEL}",
+        done = db.select_all("research_region_runs", {"select": "status", "order": "id", "model_version": f"eq.{MODEL}",
                                                       "training_end_round": f"eq.{latest}"})
         if any(d["status"] == "completed" for d in done):
             print(json.dumps({"skipped": True, "reason": f"{latest}회 이미 완료"})); return
