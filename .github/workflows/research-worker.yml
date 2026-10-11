@@ -65,7 +65,8 @@ jobs:
         if: ${{ !cancelled() }}
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          # 지방장 테이블은 service_role 만 쓰기 가능 → 시크릿 SUPABASE_SERVICE_KEY (없으면 기존 키로 시도 후 경고)
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY || secrets.SUPABASE_KEY }}
           RESEARCH_RUNNER: github-actions
         run: |
           if [ "${{ github.event.inputs.force }}" = "true" ]; then
