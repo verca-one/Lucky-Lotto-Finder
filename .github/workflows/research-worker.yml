@@ -2,7 +2,7 @@ name: Research Worker
 
 # 지역 연구(research_region_worker.py)·판매액 동기화(research_prize_stats_collector.py)·
 # 전국 지방장 에이전트(research_agent_worker.py)를 앱 실행 여부와 무관하게 서버에서 실행한다.
-# 기존 크롤링 워크플로는 수정하지 않는다. 외부 유료 AI API 호출 없음.
+# 기존 크롤링 워크플로는 수정하지 않는다. 외부 유료 AI API 호출 없음. (research_v5_agents.sql 적용 2026-10-11)
 on:
   push:
     branches: [main]
