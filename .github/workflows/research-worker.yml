@@ -8,6 +8,7 @@ on:
     branches: [main]
     paths:
       - 'research_agent_worker.py'
+      - 'research_agent_replay.py'
       - 'research_region_worker.py'
       - '.github/workflows/research-worker.yml'
   workflow_run:
@@ -31,7 +32,7 @@ jobs:
   research:
     if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 170
     steps:
       - uses: actions/checkout@v4
 
@@ -61,16 +62,21 @@ jobs:
             python research_region_worker.py
           fi
 
-      - name: Regional agents + central engine (ag-1.0, 완료 회차는 건너뜀)
+      - name: ag-1.0 실전 스냅샷 평가 (ag-1.0 은 동결, 새 예측 없음)
         if: ${{ !cancelled() }}
+        continue-on-error: true
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          # 지방장 테이블은 service_role 만 쓰기 가능 → 시크릿 SUPABASE_SERVICE_KEY (없으면 기존 키로 시도 후 경고)
+          # 지방장 테이블은 service_role 만 쓰기 가능 → 시크릿 SUPABASE_SERVICE_KEY
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY || secrets.SUPABASE_KEY }}
           RESEARCH_RUNNER: github-actions
-        run: |
-          if [ "${{ github.event.inputs.force }}" = "true" ]; then
-            python research_agent_worker.py --force --out /tmp/agent_summary.json
-          else
-            python research_agent_worker.py --out /tmp/agent_summary.json
-          fi
+        run: python research_agent_worker.py --evaluate-only
+
+      - name: Regional agents 실전형 순차 재현·실전 운영 (ag-1.1, 새 회차만 처리)
+        if: ${{ !cancelled() }}
+        timeout-minutes: 150
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY || secrets.SUPABASE_KEY }}
+          RESEARCH_RUNNER: github-actions
+        run: python research_agent_replay.py --out /tmp/agent_replay_summary.json

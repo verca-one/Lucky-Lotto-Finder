@@ -145,14 +145,24 @@ def load(db):
 class Universe:
     """판매점·지방장·회차 행렬 (latest 까지)"""
 
-    def __init__(self, raw, latest):
+    def __init__(self, raw, latest, base=None):
+        """base: 이전 실행의 판매점·지방장 순서 {"codes", "agent_ids", "stores"} — 인덱스를 고정하고 신규는 뒤에 추가
+        (상태 저장·재개용. 목록에서 사라진 판매점도 이전 정보로 유지)"""
         self.latest = latest
         by_code = {}
         for s in raw["stores"]:
             c = s.get("dhlottery_code")
             if c and c not in by_code:
                 by_code[c] = s
-        self.codes = sorted(by_code)
+        if base:
+            for c, m in base["stores"].items():
+                by_code.setdefault(c, m)
+            known = set(base["codes"])
+            self.codes = list(base["codes"]) + sorted(c for c in by_code if c not in known)
+        else:
+            self.codes = sorted(by_code)
+        self.store_snapshot = {c: {k: by_code[c].get(k) for k in ("dhlottery_code", "store_name", "address", "region",
+                                                                    "latitude", "longitude")} for c in self.codes}
         S = self.S = len(self.codes)
         self.cidx = {c: i for i, c in enumerate(self.codes)}
         self.name, self.addr, self.sub = [], [], []
@@ -177,6 +187,9 @@ class Universe:
                 pass
         self.unparsed = unparsed
         self.agent_ids = sorted({r for r in rid_list if r and r != "internet"}) + (["internet"] if "internet" in rid_list else [])
+        if base:
+            known_a = set(base["agent_ids"])
+            self.agent_ids = list(base["agent_ids"]) + sorted(a for a in set(self.agent_ids) if a not in known_a)
         self.aidx = {a: i for i, a in enumerate(self.agent_ids)}
         self.st_agent = np.array([self.aidx.get(r, -1) if r else -1 for r in rid_list])
         self.reg_ids = [a for a in self.agent_ids if a != "internet"]
@@ -307,11 +320,13 @@ class Store:
         key = h["canonical_key"]
         if key in self.by_key:
             old = self.H[self.by_key[key]]
-            ev = old["evidence"].setdefault("rediscovered_at", [])
-            if c not in ev and c != old["discovered_round"]:
-                ev.append(int(c))
+            if c != old["discovered_round"] and old["evidence"].get("rediscovered_last") != int(c):
+                old["evidence"]["rediscovered_count"] = old["evidence"].get("rediscovered_count", 0) + 1
+                old["evidence"]["rediscovered_last"] = int(c)
             if h.get("shared_from") is None and old.get("shared_from") is not None and h["discovery_significant"]:
-                old["evidence"].setdefault("also_found_by", []).append(h["agent_id"])
+                af = old["evidence"].setdefault("also_found_by", [])
+                if h["agent_id"] not in af:
+                    af.append(h["agent_id"])
             return self.by_key[key]
         h["hypothesis_id"] = hid(key)
         h["discovered_round"] = int(c)
@@ -332,7 +347,8 @@ def base_h(kind, scope, key, agent, direction="up", **kw):
 
 
 # ── 발견 (체크포인트 c 이하 데이터만) ─────────────────────────────
-def discover(u, st, ci, ps, pcnt, pr, stats):
+def discover(u, st, ci, ps, pcnt, pr, stats, full=True):
+    """full=False: 유의(BH q<0.10) 발견·템플릿 공유만 (탐색 상위·추세·복합은 50회 체크포인트에서만)"""
     c = int(u.rounds[ci])
     t0 = time.time()
     V = u.valid[:ci + 1].astype(np.float32)
@@ -419,7 +435,7 @@ def discover(u, st, ci, ps, pcnt, pr, stats):
             total //= 2
         k = C[ai, bi].astype(float)
         relations += add_pairs(kind, "store_pair", elig[ai], elig[bi], k, na[ai].astype(float), ps[elig[bi]], total, False, L,
-                               1 if L == 0 else 1, min_k)
+                               1 if full else 0, min_k)
         stats[f"tests_{kind}"] = stats.get(f"tests_{kind}", 0) + total
     del M
     # 2) 지역 → 판매점 (+1~+6)
@@ -435,7 +451,7 @@ def discover(u, st, ci, ps, pcnt, pr, stats):
         ai, bi = ai[sel], bi[sel]
         total = u.U * m
         relations += add_pairs("region_store_lead", "region_store", ai, elig[bi], C[ai, bi].astype(float), nA[ai].astype(float),
-                               ps[elig[bi]], total, True, L, 1, 2)
+                               ps[elig[bi]], total, True, L, 1 if full else 0, 2)
         stats["tests_region_store_lead"] = stats.get("tests_region_store_lead", 0) + total
     del Mb
 
@@ -467,7 +483,7 @@ def discover(u, st, ci, ps, pcnt, pr, stats):
             kind0 = "region_cowin" if L == 0 else "region_lead"
             keep = set(np.where(q < DISC_Q)[0].tolist())
             sig = set(keep)
-            if up and L > 0:                 # 지방장별 탐색: 들어오는 선행 관계 1개
+            if full and up and L > 0:        # 지방장별 탐색: 들어오는 선행 관계 1개
                 taken = set()
                 for j in np.argsort(p, kind="stable"):
                     b = B_[j]
@@ -529,7 +545,7 @@ def discover(u, st, ci, ps, pcnt, pr, stats):
                 best_by_agent[a] = j
         for j, (s, lo, hi, nn, kk, p0j, gaps) in enumerate(cyc_rows):
             famous = pcnt[s] >= famous_cut
-            if not (q[j] < DISC_Q or famous or best_by_agent.get(int(u.st_agent[s])) == j):
+            if not (q[j] < DISC_Q or (full and (famous or best_by_agent.get(int(u.st_agent[s])) == j))):
                 continue
             ag = u.agent_ids[u.st_agent[s]]
             cd = u.codes[s]
@@ -581,7 +597,7 @@ def discover(u, st, ci, ps, pcnt, pr, stats):
                     a = int(u.st_agent[s])
                     if a not in best or p[j] < p[best[a]]:
                         best[a] = j
-                keepj = set(np.where(q < DISC_Q)[0].tolist()) | (set(best.values()) if (d == NEIGH_KM[0] and L == 1) else set())
+                keepj = set(np.where(q < DISC_Q)[0].tolist()) | (set(best.values()) if (full and d == NEIGH_KM[0] and L == 1) else set())
                 for j in sorted(keepj):
                     s = int(sel[j])
                     cd = u.codes[s]
@@ -626,7 +642,7 @@ def discover(u, st, ci, ps, pcnt, pr, stats):
             for j in sorted(js, key=lambda j: (p[j], templates[j][2])):
                 t = templates[j]
                 is_origin = origin is not None and j == origin
-                keep = (q[j] < DISC_Q) or (origin is not None) or kind == "cycle_pooled" or best_by_agent.get(t[2]) == j
+                keep = (q[j] < DISC_Q) or (origin is not None) or (full and (kind == "cycle_pooled" or best_by_agent.get(t[2]) == j))
                 if not keep:
                     continue
                 a = t[2]
@@ -666,7 +682,7 @@ def discover(u, st, ci, ps, pcnt, pr, stats):
     # 5) 지역 집중·감소·미출현 (규칙 기반 발견, 이후 TREND_HORIZON 회차 검증)
     v = u.valid[:ci + 1]
     X = u.RF[:ci + 1][v]
-    if len(X) > 200:
+    if full and len(X) > 200:
         rec, pri = X[-100:].mean(0), X[:-100].mean(0)
         pooled_p = X.mean(0)
         se = np.sqrt(np.maximum(pooled_p * (1 - pooled_p), 1e-9) * (1 / 100 + 1 / max(len(X) - 100, 1)))
@@ -692,7 +708,7 @@ def discover(u, st, ci, ps, pcnt, pr, stats):
                 st.add(h, c)
 
     # 6) 복합 (판매점 주기 ∧ 같은 판매점을 겨냥한 선행 가설) — 학습 구간 동시 충족 검정
-    new = st.H[n_before:]
+    new = st.H[n_before:] if full else []
     cyc_by_store = {h["_s"]: h for h in new if h["kind"] == "store_cycle"}
     for h2 in new:
         if h2["kind"] not in ("store_lead", "region_store_lead"):
@@ -1642,6 +1658,7 @@ def main():
     ap.add_argument("--latest", type=int, default=None)
     ap.add_argument("--runner", default=os.getenv("RESEARCH_RUNNER", "local"))
     ap.add_argument("--selftest-leak", type=int, default=None)
+    ap.add_argument("--evaluate-only", action="store_true", help="ag-1.0 동결: 저장된 실전 스냅샷 평가만")
     a = ap.parse_args()
     url, key = os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY")
     if not url or not key:
@@ -1678,6 +1695,20 @@ def main():
 
     role = key_role(key)
     tables_ok = all(db.exists(t) for t in TABLES)
+    if a.evaluate_only:
+        # ag-1.0 은 동결: 새 예측 없이, 추첨 전 저장된 ag-1.0 실전 스냅샷만 실제 결과로 평가
+        if not tables_ok or role != "service_role":
+            print(json.dumps({"skipped": True, "reason": "SQL 미적용 또는 service_role 아님"})); return
+        u = Universe(raw, latest)
+        ev, cev, n = evaluate_live(db, u, latest)
+        if ev:
+            db.upsert("research_agent_round_evals", clean(ev), "model_version,target_round,agent_id,mode", ignore_duplicates=True)
+        if cev:
+            db.upsert("research_agent_central_evals", clean(cev), "model_version,target_round,mode", ignore_duplicates=True)
+            db.upsert("research_agent_jobs", [{"model_version": MODEL, "job_type": "live_eval", "job_key": c["target_round"],
+                                               "status": "done", "attempts": 1, "error": None} for c in cev],
+                      "model_version,job_type,job_key")
+        print(json.dumps({"evaluate_only": True, "live_rounds_evaluated": n}, ensure_ascii=False)); return
     if not a.dry_run:
         if not tables_ok:
             print("::warning::research_v5_agents.sql 미적용 — 지방장 연구를 건너뜁니다 (Supabase SQL Editor 에서 실행 필요)")
