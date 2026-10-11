@@ -1647,6 +1647,9 @@ def main():
     if not url or not key:
         log("SUPABASE_URL / SUPABASE_KEY 환경변수가 필요합니다"); sys.exit(1)
     db = Db(url, key)
+    if key.startswith("sb_"):
+        # 새 형식 API 키(sb_secret_/sb_publishable_)는 JWT 가 아니므로 apikey 헤더로만 보낸다
+        db.h.pop("Authorization", None)
     raw = load(db)
     latest = min(raw["latest"], a.latest) if a.latest else raw["latest"]
 
