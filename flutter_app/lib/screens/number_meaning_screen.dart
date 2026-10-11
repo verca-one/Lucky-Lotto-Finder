@@ -78,115 +78,117 @@ class _NumberMeaningContentState extends State<NumberMeaningContent> {
   @override
   Widget build(BuildContext context) {
     final list = _filtered;
-    return Column(
-      children: [
-        Image.asset(
-          'assets/gi.png',
-          width: double.infinity,
-          height: 300,
-          fit: BoxFit.cover,
-        ),
-        // 검색
-        Padding(
-          padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
-          child: TextField(
-            onChanged: (v) => setState(() => _searchQuery = v),
-            decoration: InputDecoration(
-              hintText: '번호 또는 키워드 검색',
-              hintStyle: TextStyle(fontSize: 13, color: Colors.grey.shade400),
-              prefixIcon: const Icon(Icons.search, size: 20),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
-              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-              isDense: true,
-            ),
-            style: const TextStyle(fontSize: 14),
-          ),
-        ),
-        // 구간 범례
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+    return ListView.builder(
+      padding: EdgeInsets.zero,
+      itemCount: list.length + 1, // +1 for header
+      itemBuilder: (context, index) {
+        if (index == 0) {
+          return Column(
             children: [
-              _legendChip('1~10', Colors.yellow.shade700),
-              _legendChip('11~20', Colors.blue),
-              _legendChip('21~30', Colors.red),
-              _legendChip('31~40', Colors.grey.shade700),
-              _legendChip('41~45', Colors.green),
-            ],
-          ),
-        ),
-        const SizedBox(height: 4),
-        // 목록
-        Expanded(
-          child: ListView.builder(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-            itemCount: list.length,
-            itemBuilder: (context, index) {
-              final info = list[index];
-              final color = _ballColor(info.number);
-              return Container(
-                margin: const EdgeInsets.only(bottom: 6),
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.06),
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: color.withValues(alpha: 0.2)),
+              Image.asset(
+                'assets/gi.png',
+                width: double.infinity,
+                height: 300,
+                fit: BoxFit.cover,
+              ),
+              // 검색
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+                child: TextField(
+                  onChanged: (v) => setState(() => _searchQuery = v),
+                  decoration: InputDecoration(
+                    hintText: '번호 또는 키워드 검색',
+                    hintStyle: TextStyle(fontSize: 13, color: Colors.grey.shade400),
+                    prefixIcon: const Icon(Icons.search, size: 20),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                    isDense: true,
+                  ),
+                  style: const TextStyle(fontSize: 14),
                 ),
+              ),
+              // 구간 범례
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    // 공
-                    Container(
-                      width: 38,
-                      height: 38,
-                      decoration: BoxDecoration(
-                        color: color,
-                        shape: BoxShape.circle,
-                      ),
-                      child: Center(
-                        child: Text(
-                          '${info.number}',
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    // 의미
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            info.meaning,
-                            style: const TextStyle(fontSize: 13, height: 1.3),
-                          ),
-                          const SizedBox(height: 4),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: color.withValues(alpha: 0.12),
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Text(
-                              info.note,
-                              style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w600),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
+                    _legendChip('1~10', Colors.yellow.shade700),
+                    _legendChip('11~20', Colors.blue),
+                    _legendChip('21~30', Colors.red),
+                    _legendChip('31~40', Colors.grey.shade700),
+                    _legendChip('41~45', Colors.green),
                   ],
                 ),
-              );
-            },
+              ),
+              const SizedBox(height: 4),
+            ],
+          );
+        }
+        final info = list[index - 1];
+        final color = _ballColor(info.number);
+        return Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12),
+          child: Container(
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: color.withValues(alpha: 0.06),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: color.withValues(alpha: 0.2)),
+            ),
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // 공
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: color,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Center(
+                    child: Text(
+                      '${info.number}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 14,
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                // 의미
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        info.meaning,
+                        style: const TextStyle(fontSize: 13, height: 1.3),
+                      ),
+                      const SizedBox(height: 4),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: color.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          info.note,
+                          style: TextStyle(fontSize: 10, color: color, fontWeight: FontWeight.w600),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
           ),
-        ),
-      ],
+        );
+      },
     );
   }
 

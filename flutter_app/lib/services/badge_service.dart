@@ -21,42 +21,51 @@ enum StoreBadgeType {
 }
 
 class BadgeService {
-  // 캐시: dhlottery_code → badges
-  static Map<String, List<StoreBadge>>? _badgeCache;
+  // 세션 캐시: dhlottery_code → badges
+  // DB에 미리 계산된 결과를 읽어 저장. 화면 진입 시 필요한 코드만 추가.
+  static final Map<String, List<StoreBadge>> _cache = {};
 
-  // 배지 로딩 실패 여부
+  // 배지 로딩 실패 여부 (홈 화면 배너용)
   static bool _loadFailed = false;
   static bool get loadFailed => _loadFailed;
 
-  /// store_badges 테이블에서 배지 데이터 로드
-  static Future<void> loadBadges(List<String> dhlotteryCodes, {String? lotteryType}) async {
-    _badgeCache ??= {};
+  /// 여러 판매점의 배지를 DB에서 한 번에 로드하여 캐시에 저장.
+  /// 이미 캐시된 코드는 건너뛰어 중복 요청을 방지.
+  static Future<void> loadBadges(
+    List<String> dhlotteryCodes, {
+    String? lotteryType,
+  }) async {
     _loadFailed = false;
 
-    if (dhlotteryCodes.isEmpty) return;
+    // 캐시에 없는 코드만 요청
+    final missing = dhlotteryCodes.where((c) => !_cache.containsKey(c)).toList();
+    if (missing.isEmpty) return;
 
     try {
       final rawBadges = await SupabaseService.getStoreBadges(
-        dhlotteryCodes,
+        missing,
         lotteryType: lotteryType,
       );
+
+      // 먼저 missing 코드를 빈 리스트로 초기화 (배지 없음도 캐시)
+      for (final code in missing) {
+        _cache.putIfAbsent(code, () => []);
+      }
 
       for (var row in rawBadges) {
         final code = row['dhlottery_code'] as String;
         final badgeType = _parseBadgeType(row['badge_type'] as String);
         final label = row['badge_label'] as String;
 
-        _badgeCache!.putIfAbsent(code, () => []);
-        // 중복 방지
-        final exists = _badgeCache![code]!.any((b) => b.label == label);
+        _cache.putIfAbsent(code, () => []);
+        final exists = _cache[code]!.any((b) => b.label == label);
         if (!exists) {
-          _badgeCache![code]!.add(StoreBadge(label, badgeType));
+          _cache[code]!.add(StoreBadge(label, badgeType));
         }
       }
 
       // priority 기준 정렬
-      for (var entry in _badgeCache!.entries) {
-        // hot → first → second → streak → regional → rank → pattern 순
+      for (final entry in _cache.entries) {
         entry.value.sort((a, b) => _typeOrder(a.type).compareTo(_typeOrder(b.type)));
       }
     } catch (_) {
@@ -64,42 +73,54 @@ class BadgeService {
     }
   }
 
-  /// 특정 판매점의 배지 목록 반환
-  static List<StoreBadge> getBadges(String dhlotteryCode) {
-    return _badgeCache?[dhlotteryCode] ?? [];
+  /// 특정 판매점 1개의 배지를 보장 로드 (캐시 미스 시 DB 조회).
+  /// store detail popup 등에서 단건 호출용.
+  static Future<List<StoreBadge>> loadBadgesForStore(
+    String dhlotteryCode, {
+    String? lotteryType,
+  }) async {
+    if (_cache.containsKey(dhlotteryCode)) return _cache[dhlotteryCode]!;
+    await loadBadges([dhlotteryCode], lotteryType: lotteryType);
+    return _cache[dhlotteryCode] ?? [];
   }
 
-  /// 캐시 초기화
+  /// 특정 판매점의 배지 목록 반환 (동기 — 이미 캐시된 경우만 유효).
+  static List<StoreBadge> getBadges(String dhlotteryCode) {
+    return _cache[dhlotteryCode] ?? [];
+  }
+
+  /// 캐시 초기화 (앱 재시작/로그아웃 시)
   static void clearCache() {
-    _badgeCache = null;
+    _cache.clear();
+    _loadFailed = false;
   }
 
   static StoreBadgeType _parseBadgeType(String type) {
     switch (type) {
-      case 'hot': return StoreBadgeType.hot;
-      case 'matjip': return StoreBadgeType.matjip;
-      case 'first': return StoreBadgeType.first;
-      case 'second': return StoreBadgeType.second;
-      case 'regional': return StoreBadgeType.regional;
-      case 'streak': return StoreBadgeType.streak;
-      case 'rank': return StoreBadgeType.rank;
-      case 'pattern': return StoreBadgeType.pattern;
+      case 'hot':        return StoreBadgeType.hot;
+      case 'matjip':     return StoreBadgeType.matjip;
+      case 'first':      return StoreBadgeType.first;
+      case 'second':     return StoreBadgeType.second;
+      case 'regional':   return StoreBadgeType.regional;
+      case 'streak':     return StoreBadgeType.streak;
+      case 'rank':       return StoreBadgeType.rank;
+      case 'pattern':    return StoreBadgeType.pattern;
       case 'myeongdang': return StoreBadgeType.myeongdang;
-      default: return StoreBadgeType.pattern;
+      default:           return StoreBadgeType.pattern;
     }
   }
 
   static int _typeOrder(StoreBadgeType type) {
     switch (type) {
-      case StoreBadgeType.hot: return 0;
+      case StoreBadgeType.hot:        return 0;
       case StoreBadgeType.myeongdang: return 1;
-      case StoreBadgeType.matjip: return 2;
-      case StoreBadgeType.first: return 3;
-      case StoreBadgeType.second: return 4;
-      case StoreBadgeType.streak: return 5;
-      case StoreBadgeType.regional: return 6;
-      case StoreBadgeType.rank: return 7;
-      case StoreBadgeType.pattern: return 8;
+      case StoreBadgeType.matjip:     return 2;
+      case StoreBadgeType.first:      return 3;
+      case StoreBadgeType.second:     return 4;
+      case StoreBadgeType.streak:     return 5;
+      case StoreBadgeType.regional:   return 6;
+      case StoreBadgeType.rank:       return 7;
+      case StoreBadgeType.pattern:    return 8;
     }
   }
 }

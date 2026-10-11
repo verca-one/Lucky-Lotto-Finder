@@ -79,8 +79,8 @@ class _StoreDetailSheet extends StatefulWidget {
 class _StoreDetailSheetState extends State<_StoreDetailSheet> {
   Map<String, Map<String, int>> _summary = {};
   Map<String, String> _myVotes = {};
-  Map<String, int> _top30Ranks = {};
   bool _isLoadingReviews = true;
+  bool _badgesLoaded = false;
   late bool _isFavorite;
   String _deviceId = '';
 
@@ -88,18 +88,15 @@ class _StoreDetailSheetState extends State<_StoreDetailSheet> {
   void initState() {
     super.initState();
     _isFavorite = widget.favorites.contains(widget.store.dhlotteryCode);
-    _loadTop30Ranks();
+    _loadBadgesIfNeeded();
     _loadDeviceId();
   }
 
-  Future<void> _loadTop30Ranks() async {
-    final prefs = await SharedPreferences.getInstance();
-    final rankList = prefs.getStringList('prev_ranking') ?? [];
-    final Map<String, int> ranks = {};
-    for (int i = 0; i < rankList.length; i++) {
-      ranks[rankList[i]] = i + 1;
-    }
-    if (mounted) setState(() => _top30Ranks = ranks);
+  // 배지가 캐시에 없으면 DB에서 로드 (on-demand)
+  Future<void> _loadBadgesIfNeeded() async {
+    final code = widget.store.dhlotteryCode;
+    await BadgeService.loadBadgesForStore(code);
+    if (mounted) setState(() => _badgesLoaded = true);
   }
 
   Future<void> _loadDeviceId() async {
@@ -276,7 +273,8 @@ class _StoreDetailSheetState extends State<_StoreDetailSheet> {
   Widget build(BuildContext context) {
     final store = widget.store;
     final badges = BadgeService.getBadges(store.dhlotteryCode);
-    final top30Rank = _top30Ranks[store.dhlotteryCode];
+    // current_rank는 LotteryStore 모델에서 직접 읽음 (DB 값)
+    final top30Rank = store.currentRank;
 
     return DraggableScrollableSheet(
       initialChildSize: 0.7,

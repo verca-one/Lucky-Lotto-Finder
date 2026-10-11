@@ -439,6 +439,8 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
   final Map<String, List<Map<String, dynamic>>> _historyCache = {};
   // 즐겨찾기
   Set<String> _favorites = {};
+  // 로그인 여부
+  String _userId = '';
   // 순위 변동 (dhlotteryCode -> 변동값, 양수=상승, 음수=하락, 0=유지)
   Map<String, int> _rankChanges = {};
 
@@ -460,6 +462,7 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
     )..repeat();
     _loadFavorites();
     _loadRanking();
+    _loadUserId();
     favoritesNotifier.addListener(_loadFavorites);
   }
 
@@ -469,6 +472,11 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
     _shimmerController.dispose();
     favoritesNotifier.removeListener(_loadFavorites);
     super.dispose();
+  }
+
+  Future<void> _loadUserId() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) setState(() => _userId = prefs.getString('userId') ?? '');
   }
 
   Future<void> _loadFavorites() async {
@@ -501,15 +509,13 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
     }
 
     try {
-      // 1. home_stats(1건) + TOP 20 + prefs — 병렬 실행 (getLatestRound 2번 → home_stats 1번으로 대체)
+      // 1. home_stats(1건) + TOP 20 — 병렬 실행
       final results = await Future.wait([
         SupabaseService.getHomeStats(),
         SupabaseService.getTopRankedStores(limit: 20),
-        SharedPreferences.getInstance(),
       ]);
 
       final homeStats = results[0] as Map<String, dynamic>?;
-      // home_stats 없으면 winning_history에서 직접 조회 (fallback)
       final int? latestRound = homeStats != null
           ? (homeStats['lotto_latest_round'] as num?)?.toInt()
           : await SupabaseService.getLatestRound('lotto');
@@ -517,7 +523,6 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
           ? (homeStats['pension_latest_round'] as num?)?.toInt()
           : await SupabaseService.getLatestRound('pension');
       final allStores = results[1] as List<Map<String, dynamic>>;
-      final prefs = results[2] as SharedPreferences;
 
       if (allStores.isEmpty) {
         setState(() {
@@ -538,45 +543,21 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
         return !name.startsWith('인터넷');
       }).take(20).toList();
 
-      // 2. 순위 변동 계산
-      final prevRound    = prefs.getInt('prev_ranking_round') ?? 0;
-      final currentRound = latestRound ?? 0;
-
       final codes    = stores.map((s) => s['dhlottery_code'] as String).toList();
       final allCodes = [...codes, ...internetStores.map((s) => s['dhlottery_code'] as String)];
 
-      Map<String, int> changes = {};
-
-      if (currentRound != prevRound) {
-        final prevRankList = prefs.getStringList('prev_ranking') ?? [];
-        final Map<String, int> prevRankMap = {};
-        for (int i = 0; i < prevRankList.length; i++) {
-          prevRankMap[prevRankList[i]] = i + 1;
-        }
-        for (int i = 0; i < codes.length; i++) {
-          final code = codes[i];
-          final curRank = i + 1;
-          if (prevRankMap.containsKey(code)) {
-            changes[code] = prevRankMap[code]! - curRank;
-          } else if (prevRankList.isNotEmpty) {
-            changes[code] = 99;
-          }
-        }
-        await prefs.setStringList('prev_ranking', codes);
-        await prefs.setInt('prev_ranking_round', currentRound);
-        final changesStr = changes.entries.map((e) => '${e.key}:${e.value}').join(',');
-        await prefs.setString('prev_ranking_changes', changesStr);
-      } else {
-        final saved = prefs.getString('prev_ranking_changes') ?? '';
-        if (saved.isNotEmpty) {
-          for (final part in saved.split(',')) {
-            final idx = part.lastIndexOf(':');
-            if (idx > 0) {
-              final code = part.substring(0, idx);
-              final delta = int.tryParse(part.substring(idx + 1));
-              if (delta != null) changes[code] = delta;
-            }
-          }
+      // 2. 순위 변동은 DB의 rank_change / rank_status 값을 그대로 사용
+      //    (recalculate_store_counts.py가 크롤링마다 DB에 저장)
+      final Map<String, int> changes = {};
+      for (final s in allStores) {
+        final code       = s['dhlottery_code'] as String;
+        final rankStatus = s['rank_status'] as String? ?? 'same';
+        final rankChange = (s['rank_change'] as num?)?.toInt() ?? 0;
+        // 홈 UI 호환: 'new' → 99, 'up' → 양수, 'down' → 음수, 'same' → 0
+        if (rankStatus == 'new') {
+          changes[code] = 99;
+        } else {
+          changes[code] = rankChange;
         }
       }
 
@@ -947,30 +928,39 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      '복권명당',
+                    Text(
+                      '실제 당첨 이력을 분석한 통계입니다.',
                       style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w500,
-                        color: Colors.white60,
-                        letterSpacing: 1.2,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white.withValues(alpha: 0.95),
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      '당첨주기 예상은 예측이 아닌 참고 정보입니다.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: Colors.white.withValues(alpha: 0.7),
                       ),
                     ),
                     const SizedBox(height: 4),
-                    const Text(
-                      'TOP 30',
-                      style: TextStyle(
-                        fontSize: 36,
-                        fontWeight: FontWeight.w900,
-                        color: Colors.white,
-                        letterSpacing: -1,
-                        height: 1.1,
+                    Container(
+                      margin: const EdgeInsets.only(top: 8),
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(6),
+                        border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1),
                       ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      '로또 1등 누적 당첨 횟수 기준',
-                      style: TextStyle(fontSize: 13, color: Colors.white.withValues(alpha: 0.7)),
+                      child: const Text(
+                        '⚠️ 복권명당 찾기 앱은 당첨을 보장하지 않습니다.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
                     ),
                   ],
                 ),
@@ -1221,8 +1211,20 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
     final bool isTop3 = rank <= 3;
     final double glowOffset = rank == 1 ? 0.0 : (rank == 2 ? 0.33 : 0.66);
 
-    // 연속당첨 배지 분리 (지점명 옆에 표시할 것)
-    final streakBadges = badges.where((b) => b.type == StoreBadgeType.streak).toList();
+    // 연속당첨 배지 분리 (지점명 아래 표시)
+    // "이번 달 N회 당첨" 배지가 여러 개면 가장 높은 것만 표시
+    final allStreakBadges = badges.where((b) => b.type == StoreBadgeType.streak).toList();
+    final monthWinBadges = allStreakBadges.where((b) => b.label.contains('이번 달')).toList();
+    final otherStreakBadges = allStreakBadges.where((b) => !b.label.contains('이번 달')).toList();
+    StoreBadge? topMonthBadge;
+    if (monthWinBadges.isNotEmpty) {
+      topMonthBadge = monthWinBadges.reduce((a, b) {
+        final aNum = RegExp(r'(\d+)회').firstMatch(a.label)?.group(1);
+        final bNum = RegExp(r'(\d+)회').firstMatch(b.label)?.group(1);
+        return (int.tryParse(aNum ?? '0') ?? 0) >= (int.tryParse(bNum ?? '0') ?? 0) ? a : b;
+      });
+    }
+    final streakBadges = [if (topMonthBadge != null) topMonthBadge!, ...otherStreakBadges];
     final otherBadges = badges.where((b) => b.type != StoreBadgeType.streak).toList();
 
     // 금/은/동 카드 그라데이션
@@ -1316,22 +1318,20 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              storeName,
-                              style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          if (streakBadges.isNotEmpty) ...[
-                            const SizedBox(width: 6),
-                            ...streakBadges.map((b) => _buildStreakBadgeGlow(b)),
-                          ],
-                        ],
+                      Text(
+                        storeName,
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
                       ),
+                      if (streakBadges.isNotEmpty) ...[
+                        const SizedBox(height: 3),
+                        Wrap(
+                          spacing: 4,
+                          runSpacing: 4,
+                          children: streakBadges.map((b) => _buildStreakBadgeGlow(b)).toList(),
+                        ),
+                      ],
                       const SizedBox(height: 2),
                       Row(
                         children: [
@@ -1713,7 +1713,7 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.local_fire_department, size: 12, color: Color.lerp(const Color(0xFFFF6D00), const Color(0xFFFFD600), glow)),
+              Icon(Icons.local_fire_department, size: 12, color: Color.lerp(const Color(0xFFD32F2F), const Color(0xFFFF5252), glow)),
               const SizedBox(width: 2),
               Text(
                 badge.label,
@@ -1835,6 +1835,7 @@ class _InlineReviewSection extends StatefulWidget {
 class _InlineReviewSectionState extends State<_InlineReviewSection> {
   Map<String, Map<String, int>> _summary = {};
   bool _isLoading = true;
+  bool _isLoggedIn = false;
   String _deviceId = '';
 
   @override
@@ -1851,11 +1852,13 @@ class _InlineReviewSectionState extends State<_InlineReviewSection> {
       await prefs.setString('device_id', deviceId);
     }
     _deviceId = deviceId;
+    final userId = prefs.getString('userId') ?? '';
 
     final summary = await SupabaseService.getReviewSummary(widget.dhlotteryCode);
     if (!mounted) return;
     setState(() {
       _summary = summary;
+      _isLoggedIn = userId.isNotEmpty;
       _isLoading = false;
     });
   }
@@ -1959,7 +1962,18 @@ class _InlineReviewSectionState extends State<_InlineReviewSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
+        if (!_isLoggedIn)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                Icon(Icons.lock_outline, size: 13, color: Colors.grey.shade400),
+                const SizedBox(width: 4),
+                Text('로그인해야 지점평가가 가능합니다.', style: TextStyle(fontSize: 12, color: Colors.grey.shade400)),
+              ],
+            ),
+          )
+        else Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
             GestureDetector(

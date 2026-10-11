@@ -47,6 +47,13 @@
 				</array>
 			</dict>
 		</dict>
+		<!-- 경로 기반 추천(관리자): 외부 내비 앱 스킴 조회 (canOpenURL) -->
+		<key>LSApplicationQueriesSchemes</key>
+		<array>
+			<string>nmap</string>
+			<string>kakaomap</string>
+			<string>tmap</string>
+		</array>
 		<key>UIApplicationSupportsIndirectInputEvents</key>
 		<true/>
 		<key>UILaunchStoryboardName</key>

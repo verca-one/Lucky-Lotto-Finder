@@ -241,6 +241,43 @@ class SupabaseService {
     return getStoresByRound(round: round, lotteryType: 'lotto');
   }
 
+  // 여러 회차의 1등 당첨지점명 배치 조회 → Map<round, storeName>
+  static Future<Map<int, String>> getFirstPlaceStoreNamesByRounds(List<int> rounds) async {
+    if (rounds.isEmpty) return {};
+    try {
+      final histRows = await _supabase
+          .from('winning_history')
+          .select('round, dhlottery_code')
+          .inFilter('round', rounds)
+          .eq('lottery_type', 'lotto')
+          .eq('prize_tier', '1');
+      final Map<int, String> codeByRound = {};
+      for (final r in histRows as List) {
+        final round = r['round'] as int;
+        if (!codeByRound.containsKey(round)) {
+          codeByRound[round] = r['dhlottery_code'] as String;
+        }
+      }
+      if (codeByRound.isEmpty) return {};
+      final storeRows = await _supabase
+          .from('lottery_stores')
+          .select('dhlottery_code, store_name')
+          .inFilter('dhlottery_code', codeByRound.values.toList())
+          .eq('lottery_type', 'lotto');
+      final Map<String, String> nameByCode = {};
+      for (final s in storeRows as List) {
+        nameByCode[s['dhlottery_code'] as String] = s['store_name'] as String? ?? '';
+      }
+      final Map<int, String> result = {};
+      codeByRound.forEach((round, code) {
+        result[round] = nameByCode[code] ?? '';
+      });
+      return result;
+    } catch (_) {
+      return {};
+    }
+  }
+
   // 판매점별 당첨 회차 목록 조회 (배지 분석용)
   // 반환: { dhlottery_code: [round1, round2, ...] }
   static Future<Map<String, List<int>>> getWinningRoundsForStores(
@@ -305,6 +342,7 @@ class SupabaseService {
   }
 
   // winning_history 페이지네이션 배치 조회 (추천 판매점 계산용)
+  // purchase_method 포함 (자동/수동/반자동 — 지역 추천 점수 계산용)
   static Future<List<Map<String, dynamic>>> getWinningHistoryBatch({
     required String lotteryType,
     required String prizeTier,
@@ -314,7 +352,7 @@ class SupabaseService {
     try {
       final resp = await _supabase
           .from('winning_history')
-          .select('dhlottery_code, round')
+          .select('dhlottery_code, round, purchase_method')
           .eq('lottery_type', lotteryType)
           .eq('prize_tier', prizeTier)
           .range(offset, offset + limit - 1);
@@ -325,6 +363,7 @@ class SupabaseService {
   }
 
   // 코드 목록으로 판매점 기본 정보 조회 (추천 판매점 계산용)
+  // region/좌표 포함 (지역 추천·지도 표시용)
   static Future<List<Map<String, dynamic>>> getStoreInfoByCodes(
     List<String> codes,
     String lotteryType,
@@ -337,7 +376,7 @@ class SupabaseService {
       try {
         final resp = await _supabase
             .from('lottery_stores')
-            .select('dhlottery_code, store_name, address')
+            .select('dhlottery_code, store_name, address, region, latitude, longitude')
             .eq('lottery_type', lotteryType)
             .inFilter('dhlottery_code', chunk);
         result.addAll((resp as List).cast<Map<String, dynamic>>());
@@ -708,54 +747,62 @@ class SupabaseService {
   static Future<List<Map<String, dynamic>>> getTopRankedStores({
     int limit = 40,
   }) async {
+    // ① DB에 current_rank 컬럼이 있으면 그 순서를 그대로 사용 (정렬 기준 통일).
+    //    마이그레이션(add_rank_columns.sql) 미실행 환경은 ② fallback으로 처리.
     try {
-      // ① lottery_stores에 집계된 first_count 기준 TOP N 직접 조회 (단일 쿼리)
-      //    recalculate_store_counts.py가 크롤링 후 항상 갱신하므로 정확함
       final storeResp = await _supabase
           .from('lottery_stores')
-          .select('dhlottery_code, store_name, address, region, lottery_type, purchase_method, first_count, second_count, total_count')
+          .select(
+            'dhlottery_code, store_name, address, region, lottery_type, '
+            'purchase_method, first_count, second_count, total_count, '
+            'latest_first_win, latest_second_win, '
+            'current_rank, previous_rank, rank_change, rank_status',
+          )
+          .eq('lottery_type', 'lotto')
+          .gt('first_count', 0)
+          .filter('current_rank', 'not.is', 'null')
+          .order('current_rank', ascending: true)
+          .limit(limit);
+
+      final List result = storeResp as List;
+      final ranked = result
+          .where((s) => (s['store_name'] ?? '').toString().isNotEmpty)
+          .map((s) => Map<String, dynamic>.from(s as Map))
+          .toList();
+
+      if (ranked.isNotEmpty) return ranked;
+      // current_rank 가 모두 null 이면 fallback 으로 계속
+    } catch (_) {
+      // current_rank 컬럼 없음 → fallback
+    }
+
+    // ② Fallback: current_rank 컬럼 미지원 환경 (마이그레이션 전)
+    //    first_count DESC → latest_first_win DESC 클라이언트 정렬
+    try {
+      final storeResp = await _supabase
+          .from('lottery_stores')
+          .select(
+            'dhlottery_code, store_name, address, region, lottery_type, '
+            'purchase_method, first_count, second_count, total_count, '
+            'latest_first_win, latest_second_win',
+          )
           .eq('lottery_type', 'lotto')
           .gt('first_count', 0)
           .order('first_count', ascending: false)
-          .order('total_count', ascending: false)
+          .order('latest_first_win', ascending: false)
           .limit(limit);
 
-      if ((storeResp as List).isEmpty) return [];
-
-      final topCodes = storeResp.map((s) => s['dhlottery_code'] as String).toList();
-
-      // ② top N 판매점의 최신 1등 회차만 조회 (판매점당 1건, 상한 500)
-      final histResp = await _supabase
-          .from('winning_history')
-          .select('dhlottery_code, round')
-          .eq('lottery_type', 'lotto')
-          .eq('prize_tier', 'first')
-          .inFilter('dhlottery_code', topCodes)
-          .order('round', ascending: false)
-          .limit(500);
-
-      final Map<String, int> latestRoundMap = {};
-      for (final row in (histResp as List)) {
-        final code = row['dhlottery_code'] as String;
-        if (!latestRoundMap.containsKey(code)) {
-          latestRoundMap[code] = (row['round'] as num).toInt();
-        }
-      }
-
-      // ③ latest_first_win 병합 후 원래 정렬 기준 적용 (1등횟수 DESC, 최신당첨회차 DESC)
-      final result = <Map<String, dynamic>>[];
-      for (final s in storeResp) {
-        if ((s['store_name'] ?? '').toString().isEmpty) continue;
-        final merged = Map<String, dynamic>.from(s as Map<String, dynamic>);
-        merged['latest_first_win'] = latestRoundMap[s['dhlottery_code'] as String] ?? 0;
-        result.add(merged);
-      }
-      result.sort((a, b) {
-        final cmp = (b['first_count'] as int).compareTo(a['first_count'] as int);
-        if (cmp != 0) return cmp;
-        return (b['latest_first_win'] as int).compareTo(a['latest_first_win'] as int);
-      });
-      return result;
+      final List result = storeResp as List;
+      return result
+          .where((s) => (s['store_name'] ?? '').toString().isNotEmpty)
+          .map((s) {
+            final m = Map<String, dynamic>.from(s as Map);
+            // rank_change 없음을 0으로 채워 UI가 '─' 표시
+            m.putIfAbsent('rank_change', () => 0);
+            m.putIfAbsent('rank_status', () => 'same');
+            return m;
+          })
+          .toList();
     } catch (e) {
       print('TOP 랭킹 조회 오류: $e');
       return [];
@@ -929,72 +976,74 @@ class SupabaseService {
   // 쿠폰 시스템
   // ========================
 
-  /// 쿠폰 유효성 검증 + 사용 처리 (원자적)
-  /// 반환: {'success': bool, 'message': String, 'type': String?}
+  /// 쿠폰 유효성 검증 + 사용 처리 (RPC 원자 처리 → 클라이언트 폴백 순)
+  /// 반환: {'success': bool, 'message': String, 'type': String?,
+  ///         'coupon_type': String?, 'benefit_type': String?,
+  ///         'coupon_name': String?, 'duration_days': int?,
+  ///         'benefit_expires_at': String?, 'target_app': String?}
   static Future<Map<String, dynamic>> redeemCoupon({
     required String couponCode,
     required String deviceId,
+    String targetApp = 'lottery',
   }) async {
+    // ① Supabase RPC 원자 처리 시도 (coupon_migration.sql의 redeem_coupon 함수)
     try {
-      // 1. 쿠폰 조회
-      final couponResp = await _supabase
-          .from('coupons')
-          .select()
-          .eq('code', couponCode)
-          .maybeSingle();
-
-      if (couponResp == null) {
-        return {'success': false, 'message': '존재하지 않는 쿠폰입니다'};
-      }
-
-      // 2. 활성 여부
-      if (couponResp['is_active'] != true) {
-        return {'success': false, 'message': '비활성화된 쿠폰입니다'};
-      }
-
-      // 3. 만료일 체크
-      if (couponResp['expires_at'] != null) {
-        final expiresAt = DateTime.parse(couponResp['expires_at']);
-        if (DateTime.now().isAfter(expiresAt)) {
-          return {'success': false, 'message': '만료된 쿠폰입니다'};
-        }
-      }
-
-      // 4. 사용 횟수 체크
-      final usedCount = couponResp['used_count'] ?? 0;
-      final maxUses = couponResp['max_uses'] ?? 1;
-      if (usedCount >= maxUses) {
-        return {'success': false, 'message': '사용 횟수를 초과한 쿠폰입니다'};
-      }
-
-      // 5. 디바이스 중복 체크
-      final dupResp = await _supabase
-          .from('coupon_redemptions')
-          .select('id')
-          .eq('coupon_code', couponCode)
-          .eq('device_id', deviceId)
-          .maybeSingle();
-
-      if (dupResp != null) {
-        return {'success': false, 'message': '이미 사용한 쿠폰입니다'};
-      }
-
-      // 6. 사용 기록 추가
-      await _supabase.from('coupon_redemptions').insert({
-        'coupon_code': couponCode,
-        'device_id': deviceId,
+      final rpcResp = await _supabase.rpc('redeem_coupon', params: {
+        'p_coupon_code': couponCode,
+        'p_device_id':   deviceId,
+        'p_target_app':  targetApp,
       });
+      if (rpcResp is Map) {
+        return Map<String, dynamic>.from(rpcResp);
+      }
+    } catch (_) {
+      // RPC 없으면 클라이언트 폴백으로 진행
+    }
 
-      // 7. used_count 증가
-      await _supabase
-          .from('coupons')
-          .update({'used_count': usedCount + 1})
-          .eq('code', couponCode);
+    // ② 클라이언트 폴백 (RPC 미배포 환경 대비)
+    try {
+      final couponResp = await _supabase
+          .from('coupons').select().eq('code', couponCode).maybeSingle();
+      if (couponResp == null) return {'success': false, 'message': '존재하지 않는 쿠폰입니다'};
+      if (couponResp['is_active'] != true) return {'success': false, 'message': '비활성화된 쿠폰입니다'};
+      if (couponResp['expires_at'] != null &&
+          DateTime.now().isAfter(DateTime.parse(couponResp['expires_at']))) {
+        return {'success': false, 'message': '등록 기간이 만료된 쿠폰입니다'};
+      }
+      final usedCount = (couponResp['used_count'] ?? 0) as int;
+      final maxUses   = (couponResp['max_uses'] ?? 1) as int;
+      if (maxUses > 0 && usedCount >= maxUses) return {'success': false, 'message': '사용 횟수를 초과한 쿠폰입니다'};
+      final dup = await _supabase.from('coupon_redemptions').select('id')
+          .eq('coupon_code', couponCode).eq('device_id', deviceId).maybeSingle();
+      if (dup != null) return {'success': false, 'message': '이미 사용한 쿠폰입니다'};
+
+      final couponType  = couponResp['coupon_type'] as String? ?? 'duration';
+      final durationDays = couponResp['duration_days'] as int?;
+      DateTime? benefitExpiresAt;
+      if (couponType == 'duration' && durationDays != null) {
+        benefitExpiresAt = DateTime.now().add(Duration(days: durationDays));
+      }
+
+      await _supabase.from('coupon_redemptions').insert({
+        'coupon_code':        couponCode,
+        'device_id':          deviceId,
+        'target_app':         couponResp['target_app'] ?? 'lottery',
+        'benefit_type':       couponResp['benefit_type'] ?? 'interstitial_ad_free',
+        'benefit_expires_at': benefitExpiresAt?.toIso8601String(),
+      });
+      await _supabase.from('coupons')
+          .update({'used_count': usedCount + 1}).eq('code', couponCode);
 
       return {
-        'success': true,
-        'message': '쿠폰이 적용되었습니다!',
-        'type': couponResp['type'],
+        'success':            true,
+        'message':            '쿠폰이 적용되었습니다!',
+        'type':               couponResp['type'],
+        'coupon_name':        couponResp['coupon_name'],
+        'coupon_type':        couponType,
+        'benefit_type':       couponResp['benefit_type'] ?? 'interstitial_ad_free',
+        'target_app':         couponResp['target_app'] ?? 'lottery',
+        'duration_days':      durationDays,
+        'benefit_expires_at': benefitExpiresAt?.toIso8601String(),
       };
     } catch (e) {
       print('쿠폰 사용 오류: $e');
@@ -1002,21 +1051,31 @@ class SupabaseService {
     }
   }
 
-  /// 관리자: 쿠폰 생성
+  /// 관리자: 쿠폰 생성 (기존 복권명당 + 카트담다 공용)
   static Future<bool> createCoupon({
     required String code,
-    required String type,
+    required String type,          // 레거시 호환 (예: 'interstitial_removal')
     required int maxUses,
-    DateTime? expiresAt,
+    DateTime? expiresAt,           // 쿠폰 등록 가능 마감일
+    String targetApp  = 'lottery', // 'lottery' | 'cartdamda'
+    String? couponName,            // 사용자에게 보여줄 쿠폰명
+    String couponType = 'duration', // 'duration' | 'master'
+    String benefitType = 'interstitial_ad_free',
+    int? durationDays,             // 기간형 혜택 일수 (master는 null)
   }) async {
     try {
       await _supabase.from('coupons').insert({
-        'code': code,
-        'type': type,
-        'max_uses': maxUses,
-        'used_count': 0,
-        'is_active': true,
-        'expires_at': expiresAt?.toIso8601String(),
+        'code':         code,
+        'type':         type,
+        'max_uses':     maxUses,
+        'used_count':   0,
+        'is_active':    true,
+        'expires_at':   expiresAt?.toIso8601String(),
+        'target_app':   targetApp,
+        'coupon_name':  couponName,
+        'coupon_type':  couponType,
+        'benefit_type': benefitType,
+        'duration_days': durationDays,
       });
       return true;
     } catch (e) {
@@ -1161,8 +1220,18 @@ class SupabaseService {
   /// 관리자: 쿠폰 삭제 (단건)
   static Future<bool> deleteCoupon(String code) async {
     try {
+      // 자식 테이블 먼저 삭제 (외래키 제약)
       await _supabase.from('coupon_redemptions').delete().eq('coupon_code', code);
-      await _supabase.from('coupons').delete().eq('code', code);
+      // .select()로 실제 삭제 여부 확인 (RLS가 막으면 빈 배열 반환)
+      final result = await _supabase
+          .from('coupons')
+          .delete()
+          .eq('code', code)
+          .select('code');
+      if ((result as List).isEmpty) {
+        print('쿠폰 삭제 실패: RLS 정책 또는 코드 불일치 ($code)');
+        return false;
+      }
       return true;
     } catch (e) {
       print('쿠폰 삭제 오류: $e');

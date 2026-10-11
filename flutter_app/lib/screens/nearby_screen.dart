@@ -11,6 +11,9 @@ import '../services/supabase_service.dart';
 import '../services/badge_service.dart';
 import '../widgets/store_detail_popup.dart';
 import '../services/favorites_notifier.dart';
+import '../services/rpa_joint_engine.dart';
+import '../services/rpa_store_engine.dart';
+import 'admin_comprehensive_prediction_screen.dart';
 
 class NearbyScreen extends StatefulWidget {
   const NearbyScreen({super.key});
@@ -32,6 +35,24 @@ class _NearbyScreenState extends State<NearbyScreen> {
   Map<String, int> _top30Ranks = {}; // dhlotteryCode -> 순위
   String _userId = '';
 
+  // GPS 정밀도 관련
+  bool _isRefiningGps = false;     // 정밀 측정 진행 중
+  double? _gpsAccuracy;            // 현재 채택된 위치의 accuracy (m)
+  bool _isApproxLocation = false;  // 대략적 위치 권한 사용 중
+
+  static const double _goodAccuracyM  = 30.0;   // 이 이하면 즉시 채택
+  static const double _usableAccuracyM = 150.0;  // 이 이하면 사용 가능
+  static const Duration _refineTimeout = Duration(seconds: 20);
+
+  // 랜덤확률분석엔진 연동
+  int _latestRound = 0;
+  List<String> _engineCandidateRegions = []; // Joint Model 유력 지역
+  bool _isAnalyzingList = false;
+  Map<String, bool> _engineEndorsed = {}; // dhlotteryCode → 엔진 추천 여부
+  Map<String, RegionTemporalInfo> _regionTemporal = {}; // sido → 지역 temporal 신호
+
+  bool _mapReady = false; // flutter_map 컨트롤러 attach 완료 여부
+
   @override
   void initState() {
     super.initState();
@@ -40,7 +61,178 @@ class _NearbyScreenState extends State<NearbyScreen> {
     _loadTop30Ranks();
     _loadUserId();
     _getCurrentLocation();
+    _loadLatestRound();
     favoritesNotifier.addListener(_onFavoritesChanged);
+  }
+
+  void _safeMapMove(double lat, double lng, double zoom) {
+    if (!_mapReady) return; // 컨트롤러가 아직 attach되지 않았으면 무시
+    try {
+      _mapController?.move(LatLng(lat, lng), zoom);
+    } catch (_) {} // LateInitializationError 방어
+  }
+
+  // ── 랜덤확률분석엔진 연동 ──────────────────────────────────────────
+
+  Future<void> _loadLatestRound() async {
+    try {
+      final round = await SupabaseService.getLatestRound('lotto');
+      if (mounted && round != null) setState(() => _latestRound = round);
+    } catch (_) {}
+  }
+
+  // 5-9: 현재 목록 판매점을 Joint Model 후보 지역과 대조하여 엔진 추천 표시
+  Future<void> _analyzeCurrentList() async {
+    if (_nearbyStores == null || _nearbyStores!.isEmpty) return;
+    setState(() => _isAnalyzingList = true);
+    try {
+      final round = _latestRound > 0 ? _latestRound + 1 : null;
+      if (round == null) { setState(() => _isAnalyzingList = false); return; }
+
+      // Joint Model 예측에서 유력 지역 로드
+      final preds = await JointModelEngine.instance.loadRecentPredictions(limit: 6);
+      final targetPred = preds.where((p) => p['target_round'] == round).firstOrNull
+          ?? (preds.isNotEmpty ? preds.first : null);
+
+      List<String> candidates = [];
+      if (targetPred != null) {
+        candidates = List<String>.from(
+            targetPred['joint_candidate_regions'] as List? ?? []);
+      }
+
+      // 각 판매점의 지역(sido)이 후보에 포함되는지 확인
+      final endorsed = <String, bool>{};
+      for (final store in _nearbyStores!) {
+        final sido = _getSido(store.region ?? '');
+        endorsed[store.dhlotteryCode] = candidates.contains(sido);
+      }
+
+      // 지역 temporal 신호: 최근 당첨 현황 로드
+      Map<String, RegionTemporalInfo> temporal = {};
+      try {
+        final storeHistory = await StoreModelEngine.instance.loadWinHistory();
+        temporal = computeRegionTemporalSignals(storeHistory, round - 1);
+      } catch (_) {}
+
+      if (mounted) {
+        setState(() {
+          _engineCandidateRegions = candidates;
+          _engineEndorsed = endorsed;
+          _regionTemporal = temporal;
+          _isAnalyzingList = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _isAnalyzingList = false);
+    }
+  }
+
+  String _getSido(String region) {
+    if (region.isEmpty) return '';
+    final parts = region.split(' ');
+    return parts.first;
+  }
+
+  // ── GPS 정밀 측정 ────────────────────────────────────────────────
+
+  /// 초기 위치 확보 + 백그라운드에서 정밀도 개선
+  Future<void> _getCurrentLocation() async {
+    try {
+      setState(() { _isLoading = true; _error = null; });
+
+      // 권한 확인
+      LocationPermission permission = await Geolocator.checkPermission();
+      if (permission == LocationPermission.denied) {
+        permission = await Geolocator.requestPermission();
+        if (permission == LocationPermission.denied) {
+          throw Exception('위치 권한이 거부되었습니다');
+        }
+      }
+      if (permission == LocationPermission.deniedForever) {
+        throw Exception('위치 권한이 영구적으로 거부되었습니다. 설정에서 권한을 변경해주세요.');
+      }
+
+      // 빠른 첫 위치: lastKnown (임시 표시용만, 검색에는 쓰지 않음)
+      final lastKnown = await Geolocator.getLastKnownPosition();
+      if (lastKnown != null && mounted) {
+        setState(() {
+          _currentPosition = lastKnown;
+          _gpsAccuracy = lastKnown.accuracy;
+          _isLoading = false;
+        });
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          _safeMapMove(lastKnown.latitude, lastKnown.longitude, 14.0);
+        });
+      }
+
+      // 정밀 측정 시작 (스트림 기반)
+      await _refineLocation(triggerSearch: true);
+    } catch (e) {
+      if (mounted) setState(() { _error = e.toString(); _isLoading = false; });
+    }
+  }
+
+  /// GPS 스트림으로 정밀도 개선.
+  /// triggerSearch=true 이면 충분한 정밀도 확보 시 주변판매점 검색.
+  Future<void> _refineLocation({bool triggerSearch = false}) async {
+    if (_isRefiningGps) return;
+    if (mounted) setState(() { _isRefiningGps = true; _isApproxLocation = false; });
+
+    try {
+      final deadline = DateTime.now().add(_refineTimeout);
+      Position? best = _currentPosition;
+
+      await for (final pos in Geolocator.getPositionStream(
+        locationSettings: const LocationSettings(
+          accuracy: LocationAccuracy.best,
+          distanceFilter: 0,
+        ),
+      ).timeout(_refineTimeout, onTimeout: (sink) => sink.close())) {
+
+        if (!mounted) break;
+
+        // 더 정확한 위치만 채택
+        if (best == null || pos.accuracy < best.accuracy) {
+          best = pos;
+          setState(() {
+            _currentPosition = pos;
+            _gpsAccuracy = pos.accuracy;
+            _isLoading = false;
+          });
+          _safeMapMove(pos.latitude, pos.longitude, 14.0);
+        }
+
+        // 충분히 정밀하면 즉시 중단
+        if (pos.accuracy <= _goodAccuracyM) break;
+        // 타임아웃 체크
+        if (DateTime.now().isAfter(deadline)) break;
+      }
+
+      if (!mounted) return;
+      setState(() => _isRefiningGps = false);
+
+      final finalAcc = best?.accuracy ?? 9999;
+      if (finalAcc > _usableAccuracyM) {
+        setState(() => _isApproxLocation = true);
+      }
+
+      // 검색 트리거: 위치가 확보됐고 아직 검색을 안 했거나 재측정인 경우
+      if (triggerSearch && best != null && mounted) {
+        await _searchNearbyStores();
+      }
+    } catch (e) {
+      if (mounted) setState(() { _isRefiningGps = false; _isLoading = false; });
+    }
+  }
+
+  /// 사용자가 [다시 측정] 버튼 누를 때
+  Future<void> _remeasureLocation() async {
+    if (_isRefiningGps) return;
+    setState(() {
+      _gpsAccuracy = null;
+      _isApproxLocation = false;
+    });
+    await _refineLocation(triggerSearch: true);
   }
 
   void _onFavoritesChanged() {
@@ -114,52 +306,6 @@ class _NearbyScreenState extends State<NearbyScreen> {
     _mapController?.dispose();
     _sheetController.dispose();
     super.dispose();
-  }
-
-  Future<void> _getCurrentLocation() async {
-    try {
-      setState(() {
-        _isLoading = true;
-        _error = null;
-      });
-
-      // 위치 권한 확인
-      LocationPermission permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-        if (permission == LocationPermission.denied) {
-          throw Exception('위치 권한이 거부되었습니다');
-        }
-      }
-
-      if (permission == LocationPermission.deniedForever) {
-        throw Exception('위치 권한이 영구적으로 거부되었습니다. 설정에서 권한을 변경해주세요.');
-      }
-
-      // 현재 위치 가져오기 (실시간 GPS)
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-      ).timeout(const Duration(seconds: 10));
-
-      setState(() {
-        _currentPosition = position;
-      });
-
-      // 근처 판매점 검색
-      if (mounted) {
-        await _searchNearbyStores();
-      }
-    } catch (e) {
-      setState(() {
-        _error = e.toString();
-        _isLoading = false;
-      });
-      if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('오류: $e')));
-      }
-    }
   }
 
   Future<void> _searchNearbyStores() async {
@@ -335,6 +481,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
               ),
               initialZoom: 14.0,
               onTap: (_, __) => setState(() => _selectedMarkerIndex = null),
+              onMapReady: () => setState(() => _mapReady = true),
             ),
             children: [
               TileLayer(
@@ -507,7 +654,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
                   ),
                   // 헤더
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 10),
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
                     child: Row(
                       children: [
                         const Icon(Icons.store_rounded, size: 18, color: Color(0xFF1565C0)),
@@ -531,6 +678,73 @@ class _NearbyScreenState extends State<NearbyScreen> {
                       ],
                     ),
                   ),
+                  // GPS 정확도 상태 바
+                  _buildGpsStatusBar(),
+                  // ── 이번 회차 분석 버튼 (5-8, 5-9) ──────────────
+                  if (_latestRound > 0)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
+                      child: Row(children: [
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: () => Navigator.push(context,
+                                MaterialPageRoute(builder: (_) =>
+                                    AdminComprehensivePredictionScreen(
+                                        targetRound: _latestRound + 1))),
+                            icon: const Icon(Icons.auto_graph_rounded, size: 13),
+                            label: Text('${_latestRound + 1}회 분석',
+                                style: const TextStyle(fontSize: 11)),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xFF5E35B1),
+                              side: const BorderSide(color: Color(0xFF5E35B1), width: 1),
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8)),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: OutlinedButton.icon(
+                            onPressed: _isAnalyzingList ? null : _analyzeCurrentList,
+                            icon: _isAnalyzingList
+                                ? const SizedBox(width: 13, height: 13,
+                                    child: CircularProgressIndicator(strokeWidth: 2))
+                                : const Icon(Icons.checklist_rounded, size: 13),
+                            label: Text(
+                              _engineEndorsed.isEmpty ? '현재 목록 분석' : '재분석',
+                              style: const TextStyle(fontSize: 11),
+                            ),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: Colors.teal.shade700,
+                              side: BorderSide(color: Colors.teal.shade700, width: 1),
+                              padding: const EdgeInsets.symmetric(vertical: 6),
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(8)),
+                            ),
+                          ),
+                        ),
+                      ]),
+                    ),
+                  // 엔진 추천 지역 배지
+                  if (_engineCandidateRegions.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(12, 2, 12, 4),
+                      child: Wrap(spacing: 4, runSpacing: 2, children: [
+                        const Text('유력 지역:',
+                            style: TextStyle(fontSize: 10, color: Colors.grey)),
+                        ..._engineCandidateRegions.map((r) => Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE8EAF6),
+                            borderRadius: BorderRadius.circular(10),
+                            border: Border.all(color: const Color(0xFF5E35B1), width: 0.5),
+                          ),
+                          child: Text(r, style: const TextStyle(fontSize: 10,
+                              color: Color(0xFF5E35B1), fontWeight: FontWeight.w600)),
+                        )),
+                      ]),
+                    ),
                   // 리스트
                   Expanded(
                     child: storeCount == 0
@@ -584,8 +798,20 @@ class _NearbyScreenState extends State<NearbyScreen> {
   // 선택된 마커 인덱스 (말풍선 표시용)
   int? _selectedMarkerIndex;
 
-  /// 지도 마커 탭 → 말풍선 + 시트 절반으로 열기 + 리스트 스크롤 + 상세 팝업
+  /// 지도 마커 탭 → 지도 중앙 이동 + 시트 열기 + 리스트 스크롤 + 카드 펼침
   void _onMarkerTap(LotteryStore store, int index) {
+    // 마커를 지도 보이는 영역 상단으로 이동
+    if (store.latitude != null && store.longitude != null && _mapReady && _mapController != null) {
+      try {
+        final sheetSize = _sheetController.isAttached ? _sheetController.size : 0.5;
+        final screenHeight = MediaQuery.of(context).size.height;
+        final visibleMapHeight = screenHeight * (1 - sheetSize);
+        final zoom = _mapController!.camera.zoom;
+        final metersPerPx = 156543.03392 / (1 << zoom.round()) * math.cos(store.latitude! * math.pi / 180);
+        final latOffset = (visibleMapHeight / 2.2) * metersPerPx / 111320;
+        _mapController!.move(LatLng(store.latitude! - latOffset, store.longitude!), zoom);
+      } catch (_) {}
+    }
     setState(() {
       _selectedMarkerIndex = index;
       _expandedStoreIndices.clear();
@@ -603,13 +829,11 @@ class _NearbyScreenState extends State<NearbyScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _scrollListToIndex(index);
     });
-    // 상세 팝업 열기
-    _showStoreDetailSheet(store, index);
   }
 
   void _scrollListToIndex(int index) {
     if (_listScrollController == null || !_listScrollController!.hasClients) return;
-    const estimatedItemHeight = 140.0;
+    const estimatedItemHeight = 180.0;
     final maxExtent = _listScrollController!.position.maxScrollExtent;
     final offset = (index * estimatedItemHeight).clamp(0.0, maxExtent);
     _listScrollController!.animateTo(
@@ -619,41 +843,35 @@ class _NearbyScreenState extends State<NearbyScreen> {
     );
   }
 
-  /// 리스트 카드 탭 → 상세 팝업 (아래서 올라오는 작은 시트)
-  Future<void> _showStoreDetailSheet(LotteryStore store, int index) async {
-    final distance = _calculateDistance(
-      _currentPosition!.latitude,
-      _currentPosition!.longitude,
-      store.latitude ?? 0,
-      store.longitude ?? 0,
-    );
-
-    // 지도를 해당 판매점으로 이동
-    if (store.latitude != null && store.longitude != null && _mapController != null) {
-      _mapController!.move(LatLng(store.latitude!, store.longitude!), 15);
+  /// 리스트 카드 탭 → 지도 마커를 시트 위 보이는 영역 중앙으로 이동 + 카드 인라인 토글 펼침
+  void _onCardTap(LotteryStore store, int index) {
+    if (store.latitude != null && store.longitude != null && _mapReady && _mapController != null) {
+      try {
+        final sheetSize = _sheetController.isAttached ? _sheetController.size : 0.5;
+        final screenHeight = MediaQuery.of(context).size.height;
+        final visibleMapHeight = screenHeight * (1 - sheetSize);
+        final zoom = _mapController!.camera.zoom;
+        final metersPerPx = 156543.03392 / (1 << zoom.round()) * math.cos(store.latitude! * math.pi / 180);
+        final latOffset = (visibleMapHeight / 2.2) * metersPerPx / 111320;
+        _mapController!.move(
+          LatLng(store.latitude! - latOffset, store.longitude!),
+          zoom,
+        );
+      } catch (_) {}
     }
-
-    final prefs = await SharedPreferences.getInstance();
-    final currentUserId = prefs.getString('userId') ?? '';
-
-    showStoreDetailPopup(
-      context: context,
-      store: store,
-      favorites: _favorites,
-      onToggleFavorite: _toggleFavorite,
-      distanceKm: distance,
-      isLoggedIn: currentUserId.isNotEmpty,
-    ).then((_) {
-      _loadFavorites();
+    setState(() {
+      _selectedMarkerIndex = index;
+      if (_expandedStoreIndices.contains(index)) {
+        _expandedStoreIndices.remove(index);
+      } else {
+        _expandedStoreIndices.clear();
+        _expandedStoreIndices.add(index);
+      }
     });
-  }
-
-  /// 아래 리스트 카드 탭 → 지도 이동 + 상세 팝업
-  void _scrollToAndExpand(int index, LotteryStore store) {
-    if (store.latitude != null && store.longitude != null && _mapController != null) {
-      _mapController!.move(LatLng(store.latitude!, store.longitude!), 15);
-    }
-    _showStoreDetailSheet(store, index);
+    // 리스트에서 해당 카드가 보이도록 스크롤
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _scrollListToIndex(index);
+    });
   }
 
   Future<void> _openExternalMap(String mapType, LotteryStore store) async {
@@ -689,6 +907,77 @@ class _NearbyScreenState extends State<NearbyScreen> {
     }
   }
 
+  // ── GPS 정확도 상태 바 ───────────────────────────────────────────
+  Widget _buildGpsStatusBar() {
+    // 측정 중
+    if (_isRefiningGps) {
+      return Padding(
+        padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+        child: Row(
+          children: [
+            const SizedBox(
+              width: 12, height: 12,
+              child: CircularProgressIndicator(strokeWidth: 1.5, color: Color(0xFF1565C0)),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              'GPS 정밀 측정 중...',
+              style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
+            ),
+          ],
+        ),
+      );
+    }
+
+    if (_gpsAccuracy == null) return const SizedBox(height: 4);
+
+    final acc = _gpsAccuracy!;
+    final Color accColor;
+    final String accLabel;
+    if (acc <= _goodAccuracyM) {
+      accColor = const Color(0xFF2E7D32);
+      accLabel = '약 ${acc.toStringAsFixed(0)}m (양호)';
+    } else if (acc <= _usableAccuracyM) {
+      accColor = const Color(0xFFE65100);
+      accLabel = '약 ${acc.toStringAsFixed(0)}m (보통)';
+    } else {
+      accColor = Colors.red.shade600;
+      accLabel = '약 ${acc.toStringAsFixed(0)}m (저정밀)';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Row(
+        children: [
+          Icon(Icons.gps_fixed_rounded, size: 12, color: accColor),
+          const SizedBox(width: 4),
+          Text(
+            'GPS 정확도: $accLabel',
+            style: TextStyle(fontSize: 11, color: accColor, fontWeight: FontWeight.w500),
+          ),
+          if (_isApproxLocation || acc > _usableAccuracyM) ...[
+            const SizedBox(width: 8),
+            GestureDetector(
+              onTap: _remeasureLocation,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: const Color(0xFFE3F2FD),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: const Color(0xFF90CAF9)),
+                ),
+                child: const Text(
+                  '다시 측정',
+                  style: TextStyle(fontSize: 11, color: Color(0xFF1565C0), fontWeight: FontWeight.w600),
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
   Widget _buildStoreCard(LotteryStore store, int index) {
     final distance = _calculateDistance(
       _currentPosition!.latitude,
@@ -697,21 +986,10 @@ class _NearbyScreenState extends State<NearbyScreen> {
       store.longitude ?? 0,
     );
     final isFav = _favorites.contains(store.dhlotteryCode);
+    final isExpanded = _expandedStoreIndices.contains(index);
 
     return GestureDetector(
-      onTap: () {
-        // 지도를 해당 판매점으로 이동
-        if (store.latitude != null && store.longitude != null && _mapController != null) {
-          _mapController!.move(LatLng(store.latitude!, store.longitude!), 15);
-        }
-        setState(() {
-          _selectedMarkerIndex = index;
-          _expandedStoreIndices.clear();
-          _expandedStoreIndices.add(index);
-        });
-        // 상세 팝업 열기
-        _showStoreDetailSheet(store, index);
-      },
+      onTap: () => _onCardTap(store, index),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
         margin: const EdgeInsets.only(bottom: 8),
@@ -727,15 +1005,33 @@ class _NearbyScreenState extends State<NearbyScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // 헤더: 이름 + 거리 + 즐겨찾기
+            // 헤더: 이름 + 거리 + [엔진추천] + 즐겨찾기
             Row(
               children: [
                 Expanded(
-                  child: Text(
-                    store.storeName,
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF1A1A1A)),
-                    overflow: TextOverflow.ellipsis,
-                  ),
+                  child: Row(children: [
+                    Flexible(
+                      child: Text(
+                        store.storeName,
+                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF1A1A1A)),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                    if (_engineEndorsed[store.dhlotteryCode] == true) ...[
+                      const SizedBox(width: 5),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFEDE7F6),
+                          borderRadius: BorderRadius.circular(6),
+                          border: Border.all(color: const Color(0xFF7E57C2), width: 0.5),
+                        ),
+                        child: const Text('엔진추천',
+                            style: TextStyle(fontSize: 9, color: Color(0xFF5E35B1),
+                                fontWeight: FontWeight.w700)),
+                      ),
+                    ],
+                  ]),
                 ),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -798,17 +1094,181 @@ class _NearbyScreenState extends State<NearbyScreen> {
                 }),
               ],
             ),
-            // 탭 안내 아이콘
-            Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Center(
-                child: Icon(Icons.keyboard_arrow_right_rounded, color: Colors.grey.shade300, size: 20),
+            // 엔진추천 판매점 → 추천 구매시점 표시
+            if (_engineEndorsed[store.dhlotteryCode] == true) ...[
+              const SizedBox(height: 8),
+              _buildTemporalCard(store),
+            ],
+            // 펼침 토글 아이콘
+            Center(
+              child: Icon(
+                isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
+                color: Colors.grey.shade400,
+                size: 22,
               ),
             ),
+            // ── 인라인 펼침 섹션 ──
+            if (isExpanded) ...[
+              const SizedBox(height: 10),
+              Divider(height: 1, color: Colors.grey.shade200),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _openExternalMap('naver', store),
+                      icon: const Icon(Icons.map_outlined, size: 15),
+                      label: const Text('네이버지도', style: TextStyle(fontSize: 13)),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        side: BorderSide(color: Colors.grey.shade300),
+                        foregroundColor: Colors.grey.shade700,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      onPressed: () => _openExternalMap('kakao', store),
+                      icon: const Icon(Icons.place_outlined, size: 15),
+                      label: const Text('카카오지도', style: TextStyle(fontSize: 13)),
+                      style: OutlinedButton.styleFrom(
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        side: BorderSide(color: Colors.grey.shade300),
+                        foregroundColor: Colors.grey.shade700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
           ],
         ),
       ),
     );
+  }
+
+  Widget _buildTemporalCard(LotteryStore store) {
+    final sido = _getSido(store.region ?? '');
+    final temporal = _regionTemporal[sido];
+    final nextRound = _latestRound > 0 ? _latestRound + 1 : null;
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF3E5F5),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: const Color(0xFFCE93D8), width: 0.5),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 헤더
+          Row(children: [
+            const Icon(Icons.access_time_outlined, size: 13, color: Color(0xFF7B1FA2)),
+            const SizedBox(width: 4),
+            const Text('추천 구매시점', style: TextStyle(
+                fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF7B1FA2))),
+            const SizedBox(width: 4),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+              decoration: BoxDecoration(
+                color: const Color(0xFF7B1FA2),
+                borderRadius: BorderRadius.circular(4),
+              ),
+              child: const Text('랜덤확률분석엔진 반영',
+                  style: TextStyle(fontSize: 8, color: Colors.white, fontWeight: FontWeight.w600)),
+            ),
+          ]),
+          const SizedBox(height: 6),
+          // 다음 추첨일 정보
+          if (nextRound != null) ...[
+            Row(children: [
+              const Icon(Icons.event_rounded, size: 11, color: Color(0xFF9C27B0)),
+              const SizedBox(width: 4),
+              Text('${nextRound}회 추첨: ${RegionTemporalInfo.drawDateLabel(nextRound)}',
+                  style: const TextStyle(fontSize: 11, color: Color(0xFF6A1B9A), fontWeight: FontWeight.w600)),
+              const SizedBox(width: 6),
+              () {
+                final days = RegionTemporalInfo.daysUntilNextDraw(nextRound);
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+                  decoration: BoxDecoration(
+                    color: days <= 2 ? const Color(0xFFE91E63) : const Color(0xFF9C27B0),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    days == 0 ? 'D-Day' : 'D-$days',
+                    style: const TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.w700),
+                  ),
+                );
+              }(),
+            ]),
+            const SizedBox(height: 4),
+          ],
+          // 지역 당첨 현황
+          if (temporal != null) ...[
+            _buildTemporalRow(
+              Icons.history_rounded,
+              '최근 당첨',
+              temporal.lastWinRound != null
+                  ? '${temporal.roundsAgoLastWin}회차 전 (${temporal.lastWinRound}회)'
+                  : '기록 없음',
+              _temporalStatusColor(temporal.recencyStatus),
+            ),
+            const SizedBox(height: 2),
+            _buildTemporalRow(
+              Icons.bar_chart_rounded,
+              '최근 30회',
+              '${temporal.winsLast30Rounds}회 당첨',
+              temporal.winsLast30Rounds >= 3 ? const Color(0xFF388E3C)
+                  : temporal.winsLast30Rounds >= 1 ? const Color(0xFF1976D2)
+                  : Colors.grey.shade600,
+            ),
+            const SizedBox(height: 4),
+            // 상태 배지
+            Row(children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: _temporalStatusColor(temporal.recencyStatus).withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(4),
+                  border: Border.all(color: _temporalStatusColor(temporal.recencyStatus).withOpacity(0.4)),
+                ),
+                child: Text(temporal.recencyStatus,
+                    style: TextStyle(fontSize: 9, color: _temporalStatusColor(temporal.recencyStatus),
+                        fontWeight: FontWeight.w700)),
+              ),
+              const SizedBox(width: 6),
+              Text('(실제 구매 시각 데이터 없음 — 회차 이력 기반)',
+                  style: TextStyle(fontSize: 9, color: Colors.grey.shade500)),
+            ]),
+          ] else ...[
+            Text('지역 당첨 이력 분석 중',
+                style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTemporalRow(IconData icon, String label, String value, Color valueColor) {
+    return Row(children: [
+      Icon(icon, size: 11, color: Colors.grey.shade500),
+      const SizedBox(width: 4),
+      Text('$label  ', style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
+      Text(value, style: TextStyle(fontSize: 10, color: valueColor, fontWeight: FontWeight.w600)),
+    ]);
+  }
+
+  Color _temporalStatusColor(String status) {
+    switch (status) {
+      case '최근활성': return const Color(0xFF388E3C);
+      case '활성': return const Color(0xFF1976D2);
+      case '보통': return const Color(0xFF7B1FA2);
+      default: return Colors.grey.shade500;
+    }
   }
 
   Widget _buildMapButton(String label, IconData icon, VoidCallback onTap) {
@@ -966,7 +1426,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
                 onTap: () => _onMarkerTap(store, index),
                 child: Icon(
                   Icons.place,
-                  color: isSelected ? const Color(0xFFFFD600) : const Color(0xFFE53935),
+                  color: isSelected ? Colors.white : const Color(0xFFE53935),
                   size: isSelected ? 44 : 36,
                   shadows: const [
                     Shadow(
@@ -1115,36 +1575,16 @@ class _NearbyScreenState extends State<NearbyScreen> {
     }
   }
 
-  /// 내 위치로 이동 (GPS 재조회)
-  Future<void> _moveToCurrentLocation() async {
-    try {
-      final position = await Geolocator.getCurrentPosition(
-        desiredAccuracy: LocationAccuracy.high,
-        forceAndroidLocationManager: true,
-      ).timeout(const Duration(seconds: 10));
-      setState(() => _currentPosition = position);
+  /// 내 위치 버튼 — 지도를 현재 위치로 이동만 (정밀 측정 중이면 현재 best 위치 사용)
+  void _moveToCurrentLocation() {
+    if (_currentPosition != null) {
       _mapController?.move(
-        LatLng(position.latitude, position.longitude),
+        LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
         14.0,
       );
-    } catch (e) {
-      // 타임아웃 시 마지막 알려진 위치 시도
-      try {
-        final lastPosition = await Geolocator.getLastKnownPosition();
-        if (lastPosition != null && mounted) {
-          setState(() => _currentPosition = lastPosition);
-          _mapController?.move(
-            LatLng(lastPosition.latitude, lastPosition.longitude),
-            14.0,
-          );
-          return;
-        }
-      } catch (_) {}
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('위치 갱신 실패: $e')),
-        );
-      }
+    } else {
+      // 위치가 없으면 재측정 트리거
+      _remeasureLocation();
     }
   }
 
@@ -1210,6 +1650,7 @@ class _InlineReviewSection extends StatefulWidget {
 class _InlineReviewSectionState extends State<_InlineReviewSection> {
   Map<String, Map<String, int>> _summary = {};
   bool _isLoading = true;
+  bool _isLoggedIn = false;
   String _deviceId = '';
 
   @override
@@ -1226,11 +1667,13 @@ class _InlineReviewSectionState extends State<_InlineReviewSection> {
       await prefs.setString('device_id', deviceId);
     }
     _deviceId = deviceId;
+    final userId = prefs.getString('userId') ?? '';
 
     final summary = await SupabaseService.getReviewSummary(widget.dhlotteryCode);
     if (!mounted) return;
     setState(() {
       _summary = summary;
+      _isLoggedIn = userId.isNotEmpty;
       _isLoading = false;
     });
   }
@@ -1335,8 +1778,19 @@ class _InlineReviewSectionState extends State<_InlineReviewSection> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // 신고 + 평가 버튼 행
-        Row(
+        // 로그인 안내 or 신고+평가 버튼
+        if (!_isLoggedIn)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8),
+            child: Row(
+              children: [
+                Icon(Icons.lock_outline, size: 13, color: Colors.grey.shade400),
+                const SizedBox(width: 4),
+                Text('로그인해야 지점평가가 가능합니다.', style: TextStyle(fontSize: 12, color: Colors.grey.shade400)),
+              ],
+            ),
+          )
+        else Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
             GestureDetector(

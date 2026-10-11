@@ -7,6 +7,12 @@ import 'number_meaning_screen.dart';
 import 'ac_value_screen.dart';
 import 'zone_balance_screen.dart';
 import 'tax_calculator_screen.dart';
+import 'admin_pattern_analysis_screen.dart';
+import 'purchase_prediction_screen.dart';
+import 'recommend_numbers_content.dart';
+import '../models/lotto_winning_number.dart';
+import '../services/research/research_scheduler.dart';
+import '../services/supabase_service.dart';
 
 class RecommendScreen extends StatefulWidget {
   const RecommendScreen({super.key});
@@ -18,6 +24,27 @@ class RecommendScreen extends StatefulWidget {
 class RecommendScreenState extends State<RecommendScreen> {
   // null: 메인메뉴, 'tax': 세금계산기, 'ai_sub': AI하위메뉴, ...
   String? _currentSub;
+
+  LottoWinningNumber? _latestRound;
+  DateTime?           _loadedAt;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadLatestRound();
+  }
+
+  Future<void> _loadLatestRound() async {
+    try {
+      final list = await SupabaseService.getRecentWinningNumbers(1);
+      if (!mounted) return;
+      if (list.isNotEmpty) {
+        setState(() { _latestRound = list.first; _loadedAt = DateTime.now(); });
+      }
+    } catch (_) {}
+    // 예측 연구: 마감 전 다음 회차 예측 등록·미채점 예측 채점 (세션당 최신 회차 1회)
+    ResearchScheduler.instance.runIfNeeded().ignore();
+  }
 
   /// 메인 메뉴로 초기화
   void resetToMain() {
@@ -49,6 +76,12 @@ class RecommendScreenState extends State<RecommendScreen> {
     }
     if (_currentSub == 'meaning') {
       return _wrapWithBack(const NumberMeaningContent(), '번호 추천', null);
+    }
+    if (_currentSub == 'numbers') {
+      return _wrapWithBack(const RecommendNumbersContent(), '번호 추천', null);
+    }
+    if (_currentSub == 'purchase') {
+      return _wrapWithBack(const PurchasePredictionContent(), '번호 추천', null);
     }
     if (_currentSub == 'ai_sub') {
       return _buildAiSubMenu();
@@ -94,52 +127,31 @@ class RecommendScreenState extends State<RecommendScreen> {
   Widget _buildMenu() {
     return Container(
       color: const Color(0xFFF2F4F8),
-      child: Column(
-        children: [
-          // 헤더
-          Container(
-            width: double.infinity,
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Color(0xFF1565C0), Color(0xFF1E88E5)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.only(
-                bottomLeft: Radius.circular(28),
-                bottomRight: Radius.circular(28),
-              ),
-            ),
-            padding: const EdgeInsets.fromLTRB(24, 16, 24, 22),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('번호 추천', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.white60, letterSpacing: 1.0)),
-                      SizedBox(height: 4),
-                      Text('도구', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -0.5, height: 1.1)),
-                      SizedBox(height: 4),
-                      Text('당첨금 계산 · 나만의 번호', style: TextStyle(fontSize: 13, color: Colors.white70)),
-                    ],
-                  ),
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // ── 최신 당첨번호 헤더 ──────────────────────────────
+            Container(
+              width: double.infinity,
+              decoration: const BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [Color(0xFF1565C0), Color(0xFF1E88E5)],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
-                Container(
-                  width: 56, height: 56,
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.15),
-                    shape: BoxShape.circle,
-                  ),
-                  child: const Icon(Icons.auto_awesome_rounded, color: Colors.white, size: 28),
+                borderRadius: BorderRadius.only(
+                  bottomLeft: Radius.circular(28),
+                  bottomRight: Radius.circular(28),
                 ),
-              ],
+              ),
+              padding: const EdgeInsets.fromLTRB(20, 16, 20, 20),
+              child: _latestRound == null
+                  ? _buildHeaderSkeleton()
+                  : _buildLatestWinningHeader(_latestRound!),
             ),
-          ),
-          // 메뉴 목록
-          Expanded(
-            child: SingleChildScrollView(
+            // 메뉴 목록
+            Padding(
               padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -179,6 +191,41 @@ class RecommendScreenState extends State<RecommendScreen> {
                   ),
                   const SizedBox(height: 12),
                   _buildMenuCard(
+                    icon: Icons.analytics_rounded,
+                    iconColor: const Color(0xFF1565C0),
+                    bgColor: const Color(0xFFF0F4FF),
+                    borderColor: const Color(0xFFBBD6F5),
+                    title: '자리별 패턴 분석',
+                    subtitle: '지난 회차 기준 다음 회차 번호 통계 예측',
+                    onTap: () => Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => const AdminPatternAnalysisScreen(),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildMenuCard(
+                    icon: Icons.confirmation_number_rounded,
+                    iconColor: Colors.deepPurple,
+                    bgColor: Colors.white,
+                    borderColor: const Color(0xFFE8EDF5),
+                    title: '추천번호',
+                    subtitle: '기존 번호예측 · 구매예측 추천번호 (엔진별 분리 표시)',
+                    onTap: () => setState(() => _currentSub = 'numbers'),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildMenuCard(
+                    icon: Icons.groups_rounded,
+                    iconColor: const Color(0xFF00897B),
+                    bgColor: const Color(0xFFEFF8F6),
+                    borderColor: const Color(0xFFB2DFDB),
+                    title: '구매예측',
+                    subtitle: '다른 구매자가 고를 가능성이 높은 번호 특성 분석',
+                    onTap: () => setState(() => _currentSub = 'purchase'),
+                  ),
+                  const SizedBox(height: 12),
+                  _buildMenuCard(
                     icon: Icons.menu_book,
                     iconColor: Colors.teal,
                     bgColor: Colors.white,
@@ -190,8 +237,8 @@ class RecommendScreenState extends State<RecommendScreen> {
                 ],
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -203,44 +250,150 @@ class RecommendScreenState extends State<RecommendScreen> {
     );
   }
 
+  // ── 헤더: 로딩 중 스켈레톤 ────────────────────────────────────
+  Widget _buildHeaderSkeleton() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('최신 당첨번호',
+            style: TextStyle(fontSize: 12, color: Colors.white60, letterSpacing: 0.8)),
+        const SizedBox(height: 10),
+        Row(
+          children: List.generate(7, (i) => Container(
+            margin: EdgeInsets.only(right: i < 6 ? 6 : 0),
+            width: 38, height: 38,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.2),
+              shape: BoxShape.circle,
+            ),
+          )),
+        ),
+        const SizedBox(height: 8),
+        Container(height: 10, width: 120,
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(6),
+            )),
+      ],
+    );
+  }
+
+  // ── 헤더: 최신 당첨번호 표시 ─────────────────────────────────
+  Widget _buildLatestWinningHeader(LottoWinningNumber r) {
+    final nums = [...r.numbers]..sort();
+    final loadedStr = _loadedAt == null ? '' : _formatLoadedAt(_loadedAt!);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                '${r.round}회 당첨번호',
+                style: const TextStyle(
+                    fontSize: 14, fontWeight: FontWeight.w800,
+                    color: Colors.white, letterSpacing: 0.3),
+              ),
+            ),
+            if (loadedStr.isNotEmpty)
+              Text(loadedStr,
+                  style: const TextStyle(fontSize: 10, color: Colors.white54)),
+          ],
+        ),
+        const SizedBox(height: 6),
+        Text(r.drawDate,
+            style: const TextStyle(fontSize: 11, color: Colors.white60)),
+        const SizedBox(height: 12),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.start,
+          children: [
+            ...nums.asMap().entries.map((e) => Padding(
+              padding: const EdgeInsets.only(right: 6),
+              child: _lottoball(e.value),
+            )),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 4),
+              child: Text('+', style: TextStyle(color: Colors.white54, fontSize: 18,
+                  fontWeight: FontWeight.w300)),
+            ),
+            _lottoball(r.bonusNumber, bonus: true),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Color _ballColor(int n) {
+    if (n <= 10) return const Color(0xFFFFB300);
+    if (n <= 20) return const Color(0xFF42A5F5);
+    if (n <= 30) return const Color(0xFFEF5350);
+    if (n <= 40) return const Color(0xFF9E9E9E);
+    return const Color(0xFF66BB6A);
+  }
+
+  Widget _lottoball(int n, {bool bonus = false}) {
+    final bg = bonus ? Colors.orange.shade600 : _ballColor(n);
+    return Container(
+      width: 38, height: 38,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: bg,
+        shape: BoxShape.circle,
+        boxShadow: [BoxShadow(color: bg.withValues(alpha: 0.45), blurRadius: 6, offset: const Offset(0, 2))],
+      ),
+      child: Text('$n',
+          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Colors.white)),
+    );
+  }
+
+  String _formatLoadedAt(DateTime dt) {
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    if (diff.inMinutes < 1) return '방금 업데이트';
+    if (diff.inHours < 1)   return '${diff.inMinutes}분 전 업데이트';
+    return '${dt.month}/${dt.day} ${dt.hour.toString().padLeft(2,'0')}:${dt.minute.toString().padLeft(2,'0')} 업데이트';
+  }
+
   /// AI 조합번호 하위 메뉴
   Widget _buildAiSubMenu() {
-    return Column(
-      children: [
-        // 뒤로가기 헤더
-        Container(
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
-          child: Row(
-            children: [
-              InkWell(
-                onTap: () => setState(() => _currentSub = null),
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF5F5F5),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.arrow_back_rounded, size: 26, color: Color(0xFF1565C0)),
-                      const SizedBox(width: 8),
-                      const Text('도구', style: TextStyle(fontSize: 16, color: Color(0xFF333333), fontWeight: FontWeight.w700)),
-                    ],
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // 뒤로가기 헤더
+          Container(
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 6),
+            child: Row(
+              children: [
+                InkWell(
+                  onTap: () => setState(() => _currentSub = null),
+                  borderRadius: BorderRadius.circular(12),
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF5F5F5),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.arrow_back_rounded, size: 26, color: Color(0xFF1565C0)),
+                        const SizedBox(width: 8),
+                        const Text('도구', style: TextStyle(fontSize: 16, color: Color(0xFF333333), fontWeight: FontWeight.w700)),
+                      ],
+                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
-        Expanded(
-          child: SingleChildScrollView(
+          // pig.png 이미지 + 메뉴
+          Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // pig.png 이미지
                 ClipRRect(
                   borderRadius: BorderRadius.circular(20),
                   child: Image.asset(
@@ -250,7 +403,6 @@ class RecommendScreenState extends State<RecommendScreen> {
                   ),
                 ),
                 const SizedBox(height: 16),
-
                 _buildMenuCard(
                   icon: Icons.auto_awesome,
                   iconColor: Colors.purple,
@@ -261,7 +413,6 @@ class RecommendScreenState extends State<RecommendScreen> {
                   onTap: () => setState(() => _currentSub = 'ai_7183'),
                 ),
                 const SizedBox(height: 16),
-
                 _buildMenuCard(
                   icon: Icons.waves,
                   iconColor: Colors.amber.shade700,
@@ -272,7 +423,6 @@ class RecommendScreenState extends State<RecommendScreen> {
                   onTap: () => setState(() => _currentSub = 'ai_golden'),
                 ),
                 const SizedBox(height: 16),
-
                 _buildMenuCard(
                   icon: Icons.auto_graph,
                   iconColor: Colors.deepPurple,
@@ -283,7 +433,6 @@ class RecommendScreenState extends State<RecommendScreen> {
                   onTap: () => setState(() => _currentSub = 'ai_saju'),
                 ),
                 const SizedBox(height: 16),
-
                 _buildMenuCard(
                   icon: Icons.calculate_rounded,
                   iconColor: Colors.indigo,
@@ -294,7 +443,6 @@ class RecommendScreenState extends State<RecommendScreen> {
                   onTap: () => setState(() => _currentSub = 'ai_ac'),
                 ),
                 const SizedBox(height: 16),
-
                 _buildMenuCard(
                   icon: Icons.equalizer_rounded,
                   iconColor: Colors.teal,
@@ -304,11 +452,12 @@ class RecommendScreenState extends State<RecommendScreen> {
                   subtitle: '5구간 분포 최적화 기반 번호 생성',
                   onTap: () => setState(() => _currentSub = 'ai_zone'),
                 ),
+                const SizedBox(height: 20),
               ],
             ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
