@@ -1,0 +1,55 @@
+name: Research Worker
+
+# 지역 연구(research_region_worker.py)·판매액 동기화(research_prize_stats_collector.py)를
+# 앱 실행 여부와 무관하게 서버에서 실행한다. 기존 크롤링 워크플로는 수정하지 않는다.
+on:
+  workflow_run:
+    workflows: ["Crawl Lotto"]   # 로또 크롤링 성공 직후 (새 회차 당첨 판매점 반영)
+    types: [completed]
+  schedule:
+    - cron: '30 1 * * 0'    # 일 10:30 KST (보조 실행)
+    - cron: '30 13 * * 0'   # 일 22:30 KST (보조 실행)
+  workflow_dispatch:
+    inputs:
+      force:
+        description: '이미 완료된 회차도 재실행'
+        required: false
+        default: 'false'
+
+concurrency:
+  group: research-worker
+  cancel-in-progress: false
+
+jobs:
+  research:
+    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install numpy scipy requests supabase
+
+      - name: Prize stats (최신 10회차, 누락분만 upsert)
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: python research_prize_stats_collector.py --latest 10 --sleep 2 --out /tmp/prize_latest.json
+
+      - name: Region research (증분, 완료 회차는 건너뜀)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+          RESEARCH_RUNNER: github-actions
+        run: |
+          if [ "${{ github.event.inputs.force }}" = "true" ]; then
+            python research_region_worker.py --force
+          else
+            python research_region_worker.py
+          fi
