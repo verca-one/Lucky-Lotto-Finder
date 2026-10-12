@@ -11,7 +11,7 @@ void main() {
   test('번호 추천 메뉴 (모드 공통)', () {
     for (final admin in [false, true]) {
       expect(recommendNumberMenuFor(admin: admin).map((m) => m.title).toList(),
-          ['AI 조합번호 생성', '나만의 번호 생성', '추천번호', '번호별 의미']);
+          ['AI 조합번호 생성', '나만의 번호 생성', '추천번호', '구매예측번호', '번호별 의미']);
     }
   });
 

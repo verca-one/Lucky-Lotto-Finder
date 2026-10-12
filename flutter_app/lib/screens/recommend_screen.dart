@@ -8,6 +8,7 @@ import 'ac_value_screen.dart';
 import 'zone_balance_screen.dart';
 import 'tax_calculator_screen.dart';
 import 'random_recommend_content.dart';
+import 'purchase_public_content.dart';
 import '../models/lotto_winning_number.dart';
 import '../services/research/research_scheduler.dart';
 import '../services/supabase_service.dart';
@@ -23,13 +24,15 @@ class RecommendMenuItem {
 }
 
 /// 추천 탭 '번호 추천' 메뉴 — 일반·관리자 모드 동일.
-/// '자리별 패턴 분석'·'구매예측'은 추천 탭에 두지 않는다 (관리자 메뉴의 '패턴 분석'·'예측 연구 현황'에만 있음).
+/// '자리별 패턴 분석'은 추천 탭에 두지 않는다 (관리자 메뉴 '패턴 분석'에만 있음).
+/// '구매예측번호'는 서버가 공개 승인한 요약(3세트 + 공개 연구 1개)만 보여 준다 (관리자 연구 원본·엔진 미노출).
 /// '번호 추천' 메뉴. '추천번호'는 관리자 로그인 여부와 상관없이 엔진 개입 없는 랜덤 추천이다.
 /// (랜덤확률분석엔진 추천번호는 관리자 메뉴의 엔진 브리핑·패턴분석에서만 본다)
 const List<RecommendMenuItem> kRecommendNumberMenu = [
   RecommendMenuItem('ai_sub', Icons.auto_awesome, Colors.purple, 'AI 조합번호 생성', 'AI 법칙 기반 번호 추천'),
   RecommendMenuItem('random', Icons.casino, Colors.orange, '나만의 번호 생성', '주사위를 굴려 랜덤 번호 조합'),
   RecommendMenuItem('numbers', Icons.confirmation_number_rounded, Colors.deepPurple, '추천번호', '이번 회차 추천번호'),
+  RecommendMenuItem('purchase', Icons.people_alt_rounded, Color(0xFF00897B), '구매예측번호', '다른 구매자가 덜 사는 조합 추천'),
   RecommendMenuItem('meaning', Icons.menu_book, Colors.teal, '번호별 의미', '1~45 각 번호의 상징과 법칙 연계'),
 ];
 
@@ -97,6 +100,9 @@ class RecommendScreenState extends State<RecommendScreen> {
     }
     if (_currentSub == 'meaning') {
       return _wrapWithBack(const NumberMeaningContent(), '번호 추천', null);
+    }
+    if (_currentSub == 'purchase') {
+      return _wrapWithBack(const PurchasePublicContent(), '번호 추천', null);
     }
     if (_currentSub == 'numbers') {
       return _wrapWithBack(const RandomRecommendContent(), '번호 추천', null);
