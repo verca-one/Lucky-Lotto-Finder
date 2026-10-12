@@ -9,14 +9,10 @@ import 'dart:math' as math;
 import '../models/lottery_store.dart';
 import '../services/supabase_service.dart';
 import '../services/badge_service.dart';
-import '../services/admin_gate.dart';
 import '../services/ranking_extras_service.dart';
 import '../widgets/ranking_store_card.dart';
 import '../widgets/store_detail_popup.dart';
 import '../services/favorites_notifier.dart';
-import '../services/rpa_joint_engine.dart';
-import '../services/rpa_store_engine.dart';
-import 'admin_comprehensive_prediction_screen.dart';
 
 class NearbyScreen extends StatefulWidget {
   const NearbyScreen({super.key});
@@ -49,15 +45,9 @@ class _NearbyScreenState extends State<NearbyScreen> {
 
   // 랜덤확률분석엔진 연동
   int _latestRound = 0;
-  List<String> _engineCandidateRegions = []; // Joint Model 유력 지역
-  bool _isAnalyzingList = false;
-  Map<String, bool> _engineEndorsed = {}; // dhlotteryCode → 엔진 추천 여부
-  Map<String, RegionTemporalInfo> _regionTemporal = {}; // sido → 지역 temporal 신호
 
   bool _mapReady = false; // flutter_map 컨트롤러 attach 완료 여부
 
-  /// 엔진 관련 표시(회차 분석·목록 분석·유력 지역·엔진추천)는 관리자 모드에서만
-  bool _isAdmin = false;
 
   /// 카드 하단 통계(평균 간격 등) — 목록 단위 일괄 조회
   Map<String, RankingStoreExtras> _extras = {};
@@ -71,7 +61,6 @@ class _NearbyScreenState extends State<NearbyScreen> {
     _loadUserId();
     _getCurrentLocation();
     _loadLatestRound();
-    AdminGate.isAdmin().then((v) { if (mounted) setState(() => _isAdmin = v); });
     favoritesNotifier.addListener(_onFavoritesChanged);
   }
 
@@ -97,58 +86,6 @@ class _NearbyScreenState extends State<NearbyScreen> {
       final round = await SupabaseService.getLatestRound('lotto');
       if (mounted && round != null) setState(() => _latestRound = round);
     } catch (_) {}
-  }
-
-  // 5-9: 현재 목록 판매점을 Joint Model 후보 지역과 대조하여 엔진 추천 표시
-  Future<void> _analyzeCurrentList() async {
-    if (_nearbyStores == null || _nearbyStores!.isEmpty) return;
-    setState(() => _isAnalyzingList = true);
-    try {
-      final round = _latestRound > 0 ? _latestRound + 1 : null;
-      if (round == null) { setState(() => _isAnalyzingList = false); return; }
-
-      // Joint Model 예측에서 유력 지역 로드
-      final preds = await JointModelEngine.instance.loadRecentPredictions(limit: 6);
-      // 해당 회차 예측만 사용 (다른 회차 예측으로 대체하지 않음)
-      final targetPred = preds.where((p) => p['target_round'] == round).firstOrNull;
-
-      List<String> candidates = [];
-      if (targetPred != null) {
-        candidates = List<String>.from(
-            targetPred['joint_candidate_regions'] as List? ?? []);
-      }
-
-      // 각 판매점의 지역(sido)이 후보에 포함되는지 확인
-      final endorsed = <String, bool>{};
-      for (final store in _nearbyStores!) {
-        final sido = _getSido(store.region ?? '');
-        endorsed[store.dhlotteryCode] = candidates.contains(sido);
-      }
-
-      // 지역 temporal 신호: 최근 당첨 현황 로드
-      Map<String, RegionTemporalInfo> temporal = {};
-      try {
-        final storeHistory = await StoreModelEngine.instance.loadWinHistory();
-        temporal = computeRegionTemporalSignals(storeHistory, round - 1);
-      } catch (_) {}
-
-      if (mounted) {
-        setState(() {
-          _engineCandidateRegions = candidates;
-          _engineEndorsed = endorsed;
-          _regionTemporal = temporal;
-          _isAnalyzingList = false;
-        });
-      }
-    } catch (_) {
-      if (mounted) setState(() => _isAnalyzingList = false);
-    }
-  }
-
-  String _getSido(String region) {
-    if (region.isEmpty) return '';
-    final parts = region.split(' ');
-    return parts.first;
   }
 
   // ── GPS 정밀 측정 ────────────────────────────────────────────────
@@ -700,71 +637,6 @@ class _NearbyScreenState extends State<NearbyScreen> {
                   ),
                   // GPS 정확도 상태 바
                   _buildGpsStatusBar(),
-                  // ── 이번 회차 분석 버튼 (5-8, 5-9) — 관리자 모드 전용 ──────────────
-                  if (_isAdmin && _latestRound > 0)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-                      child: Row(children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: () => Navigator.push(context,
-                                MaterialPageRoute(builder: (_) =>
-                                    AdminComprehensivePredictionScreen(
-                                        targetRound: _latestRound + 1))),
-                            icon: const Icon(Icons.auto_graph_rounded, size: 13),
-                            label: Text('${_latestRound + 1}회 분석',
-                                style: const TextStyle(fontSize: 11)),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xFF5E35B1),
-                              side: const BorderSide(color: Color(0xFF5E35B1), width: 1),
-                              padding: const EdgeInsets.symmetric(vertical: 6),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8)),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            onPressed: _isAnalyzingList ? null : _analyzeCurrentList,
-                            icon: _isAnalyzingList
-                                ? const SizedBox(width: 13, height: 13,
-                                    child: CircularProgressIndicator(strokeWidth: 2))
-                                : const Icon(Icons.checklist_rounded, size: 13),
-                            label: Text(
-                              _engineEndorsed.isEmpty ? '현재 목록 분석' : '재분석',
-                              style: const TextStyle(fontSize: 11),
-                            ),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: Colors.teal.shade700,
-                              side: BorderSide(color: Colors.teal.shade700, width: 1),
-                              padding: const EdgeInsets.symmetric(vertical: 6),
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8)),
-                            ),
-                          ),
-                        ),
-                      ]),
-                    ),
-                  // 엔진 추천 지역 배지 — 관리자 모드 전용
-                  if (_isAdmin && _engineCandidateRegions.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.fromLTRB(12, 2, 12, 4),
-                      child: Wrap(spacing: 4, runSpacing: 2, children: [
-                        const Text('유력 지역:',
-                            style: TextStyle(fontSize: 10, color: Colors.grey)),
-                        ..._engineCandidateRegions.map((r) => Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFE8EAF6),
-                            borderRadius: BorderRadius.circular(10),
-                            border: Border.all(color: const Color(0xFF5E35B1), width: 0.5),
-                          ),
-                          child: Text(r, style: const TextStyle(fontSize: 10,
-                              color: Color(0xFF5E35B1), fontWeight: FontWeight.w600)),
-                        )),
-                      ]),
-                    ),
                   // 리스트
                   Expanded(
                     child: storeCount == 0
@@ -1008,7 +880,6 @@ class _NearbyScreenState extends State<NearbyScreen> {
     final isFav = _favorites.contains(store.dhlotteryCode);
     final isExpanded = _expandedStoreIndices.contains(index);
     final (highlight, others) = splitStoreBadges(BadgeService.getBadges(store.dhlotteryCode));
-    final endorsed = _isAdmin && _engineEndorsed[store.dhlotteryCode] == true;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
@@ -1027,20 +898,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
         trailing: DistanceTag(km: distance),
         extraChips: [
           if (_top30Ranks.containsKey(store.dhlotteryCode)) _buildTop30Badge(_top30Ranks[store.dhlotteryCode]!),
-          if (endorsed)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: const Color(0xFFEDE7F6),
-                borderRadius: BorderRadius.circular(6),
-                border: Border.all(color: const Color(0xFF7E57C2), width: 0.5),
-              ),
-              child: const Text('엔진추천',
-                  style: TextStyle(fontSize: 10, color: Color(0xFF5E35B1), fontWeight: FontWeight.w700)),
-            ),
         ],
-        // 엔진추천 판매점 → 추천 구매시점 (관리자 모드 전용)
-        extraBody: endorsed ? _buildTemporalCard(store) : null,
         onTap: () => _onCardTap(store, index),
         onFavoriteTap: () => _toggleFavorite(store.dhlotteryCode),
         expandedChild: isExpanded
@@ -1076,129 +934,6 @@ class _NearbyScreenState extends State<NearbyScreen> {
             : null,
       ),
     );
-  }
-
-  Widget _buildTemporalCard(LotteryStore store) {
-    final sido = _getSido(store.region ?? '');
-    final temporal = _regionTemporal[sido];
-    final nextRound = _latestRound > 0 ? _latestRound + 1 : null;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(10),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF3E5F5),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: const Color(0xFFCE93D8), width: 0.5),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // 헤더
-          Row(children: [
-            const Icon(Icons.access_time_outlined, size: 13, color: Color(0xFF7B1FA2)),
-            const SizedBox(width: 4),
-            const Text('추천 구매시점', style: TextStyle(
-                fontSize: 11, fontWeight: FontWeight.w700, color: Color(0xFF7B1FA2))),
-            const SizedBox(width: 4),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-              decoration: BoxDecoration(
-                color: const Color(0xFF7B1FA2),
-                borderRadius: BorderRadius.circular(4),
-              ),
-              child: const Text('랜덤확률분석엔진 반영',
-                  style: TextStyle(fontSize: 8, color: Colors.white, fontWeight: FontWeight.w600)),
-            ),
-          ]),
-          const SizedBox(height: 6),
-          // 다음 추첨일 정보
-          if (nextRound != null) ...[
-            Row(children: [
-              const Icon(Icons.event_rounded, size: 11, color: Color(0xFF9C27B0)),
-              const SizedBox(width: 4),
-              Text('${nextRound}회 추첨: ${RegionTemporalInfo.drawDateLabel(nextRound)}',
-                  style: const TextStyle(fontSize: 11, color: Color(0xFF6A1B9A), fontWeight: FontWeight.w600)),
-              const SizedBox(width: 6),
-              () {
-                final days = RegionTemporalInfo.daysUntilNextDraw(nextRound);
-                return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-                  decoration: BoxDecoration(
-                    color: days <= 2 ? const Color(0xFFE91E63) : const Color(0xFF9C27B0),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Text(
-                    days == 0 ? 'D-Day' : 'D-$days',
-                    style: const TextStyle(fontSize: 9, color: Colors.white, fontWeight: FontWeight.w700),
-                  ),
-                );
-              }(),
-            ]),
-            const SizedBox(height: 4),
-          ],
-          // 지역 당첨 현황
-          if (temporal != null) ...[
-            _buildTemporalRow(
-              Icons.history_rounded,
-              '최근 당첨',
-              temporal.lastWinRound != null
-                  ? '${temporal.roundsAgoLastWin}회차 전 (${temporal.lastWinRound}회)'
-                  : '기록 없음',
-              _temporalStatusColor(temporal.recencyStatus),
-            ),
-            const SizedBox(height: 2),
-            _buildTemporalRow(
-              Icons.bar_chart_rounded,
-              '최근 30회',
-              '${temporal.winsLast30Rounds}회 당첨',
-              temporal.winsLast30Rounds >= 3 ? const Color(0xFF388E3C)
-                  : temporal.winsLast30Rounds >= 1 ? const Color(0xFF1976D2)
-                  : Colors.grey.shade600,
-            ),
-            const SizedBox(height: 4),
-            // 상태 배지
-            Row(children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: _temporalStatusColor(temporal.recencyStatus).withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(4),
-                  border: Border.all(color: _temporalStatusColor(temporal.recencyStatus).withOpacity(0.4)),
-                ),
-                child: Text(temporal.recencyStatus,
-                    style: TextStyle(fontSize: 9, color: _temporalStatusColor(temporal.recencyStatus),
-                        fontWeight: FontWeight.w700)),
-              ),
-              const SizedBox(width: 6),
-              Text('(실제 구매 시각 데이터 없음 — 회차 이력 기반)',
-                  style: TextStyle(fontSize: 9, color: Colors.grey.shade500)),
-            ]),
-          ] else ...[
-            Text('지역 당첨 이력 분석 중',
-                style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTemporalRow(IconData icon, String label, String value, Color valueColor) {
-    return Row(children: [
-      Icon(icon, size: 11, color: Colors.grey.shade500),
-      const SizedBox(width: 4),
-      Text('$label  ', style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
-      Text(value, style: TextStyle(fontSize: 10, color: valueColor, fontWeight: FontWeight.w600)),
-    ]);
-  }
-
-  Color _temporalStatusColor(String status) {
-    switch (status) {
-      case '최근활성': return const Color(0xFF388E3C);
-      case '활성': return const Color(0xFF1976D2);
-      case '보통': return const Color(0xFF7B1FA2);
-      default: return Colors.grey.shade500;
-    }
   }
 
   Widget _buildMapButton(String label, IconData icon, VoidCallback onTap) {

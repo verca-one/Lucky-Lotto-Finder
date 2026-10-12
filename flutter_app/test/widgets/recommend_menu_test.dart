@@ -1,4 +1,4 @@
-// 추천 탭 — '추천번호' 메뉴는 모드 공통. 일반 모드는 엔진 없는 랜덤 추천, 관리자 모드는 엔진 추천번호
+// 추천 탭 — '추천번호'는 관리자 로그인 여부와 상관없이 엔진 없는 랜덤 추천
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -37,8 +37,8 @@ void main() {
     });
   }
 
-  testWidgets('일반 모드 추천번호 = 엔진 없는 랜덤 5세트', (tester) async {
-    SharedPreferences.setMockInitialValues({'isAdmin': false});
+  for (final admin in [false, true]) testWidgets('추천번호 = 엔진 없는 랜덤 5세트 (관리자 로그인 ${admin ? '중' : '안 함'})', (tester) async {
+    SharedPreferences.setMockInitialValues({'isAdmin': admin});
     await tester.pumpWidget(const MaterialApp(home: Scaffold(body: RecommendScreen())));
     await tester.pumpAndSettle();
     await tester.tap(find.text('추천번호'));
