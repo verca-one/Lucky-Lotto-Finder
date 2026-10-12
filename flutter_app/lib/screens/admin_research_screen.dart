@@ -9,6 +9,7 @@ import '../services/research/research_scheduler.dart';
 import '../services/rpa_store_engine.dart' show StoreWinRecord;
 import '../widgets/purchase_recommend_card.dart';
 import 'purchase_prediction_screen.dart';
+import '../widgets/server_pipeline_status_card.dart';
 
 class AdminResearchScreen extends StatefulWidget {
   const AdminResearchScreen({super.key});
@@ -55,7 +56,8 @@ class _AdminResearchScreenState extends State<AdminResearchScreen> with SingleTi
       final summary = await PredictionRegistry.instance.summarize();
       final recent = await PredictionRegistry.instance.recent();
       final store = await _storeAnalysis(d.history);
-      final replay = await HypothesisReplayEngine.instance.loadLatest() ?? await HypothesisReplayEngine.instance.runAndPersist(d.allData);
+      // 가설 순차 재현은 서버가 실행·저장 — 앱은 저장본만 (없으면 서버 실행 대기)
+      final replay = await HypothesisReplayEngine.instance.loadLatest();
       if (!mounted) return;
       setState(() {
         _data = d; _freq = freq; _wf = wf; _region = region; _summary = summary; _recent = recent; _store = store;
@@ -68,10 +70,10 @@ class _AdminResearchScreenState extends State<AdminResearchScreen> with SingleTi
     }
   }
 
+  /// 서버 결과 다시 읽기 (연구 실행은 서버 파이프라인)
   Future<void> _runNow() async {
     setState(() => _busy = true);
     try {
-      await ResearchScheduler.instance.runIfNeeded(force: true);
       await _load();
     } finally {
       if (mounted) setState(() => _busy = false);
@@ -134,9 +136,9 @@ class _AdminResearchScreenState extends State<AdminResearchScreen> with SingleTi
         title: const Text('예측 연구 현황', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
         actions: [
           IconButton(
-            tooltip: '지금 등록·채점·연구 갱신',
+            tooltip: '서버 연구 결과 새로고침',
             icon: _busy ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white))
-                        : const Icon(Icons.play_circle_outline, color: Colors.white),
+                        : const Icon(Icons.refresh_rounded, color: Colors.white),
             onPressed: _busy ? null : _runNow,
           ),
         ],
@@ -147,13 +149,7 @@ class _AdminResearchScreenState extends State<AdminResearchScreen> with SingleTi
         ),
       ),
       body: _loading
-          ? ValueListenableBuilder<ResearchStatus>(
-              valueListenable: ResearchScheduler.instance.status,
-              builder: (context, s, _) => Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-                const CircularProgressIndicator(),
-                const SizedBox(height: 12),
-                Text('${s.label} · ${s.message}', style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
-              ])))
+          ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text('오류: $_error')))
               : TabBarView(controller: _tab, children: [
@@ -191,6 +187,7 @@ class _AdminResearchScreenState extends State<AdminResearchScreen> with SingleTi
     final f = _freq!;
     final sortedZ = List<NumberFreqRow>.of(f.main)..sort((a, b) => b.z.abs().compareTo(a.z.abs()));
     return ListView(padding: const EdgeInsets.all(14), children: [
+      const ServerPipelineStatusCard(),
       _card('A. 번호별 출현 빈도 (${f.rounds}회차, 본번호)', Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _kv('기대 빈도/번호', '${f.main.first.expected.toStringAsFixed(1)}회'),
         _kv('χ² 적합도 (df=44)', '${f.chiSq.toStringAsFixed(1)} · p=${_p(f.chiP)}', color: f.chiP < 0.05 ? Colors.red.shade700 : Colors.teal.shade800),

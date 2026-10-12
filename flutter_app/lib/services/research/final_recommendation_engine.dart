@@ -30,6 +30,7 @@ import '../rpa_number_core.dart' show rpaActualIndicatorValues, rpaIndicatorBase
 import '../rpa_unified_prediction.dart';
 import '../supabase_service.dart';
 import 'research_core.dart';
+import 'research_runtime.dart';
 
 const String kFinalRecVersion = 'fr-1.0';
 
@@ -135,7 +136,24 @@ class FinalRecommendationEngine {
     return l.isEmpty ? null : (l.first['training_end_round'] as num?)?.toInt();
   }
 
+  /// 서버 파이프라인만 생성·저장한다 (앱은 null → 저장본 또는 '준비 중').
   Future<FinalRecommendation?> buildAndStore(int targetRound) async {
+    if (!ResearchRuntime.serverWriter) return null;
+    final rec = await compute(targetRound);
+    if (rec == null) return null;
+    try {
+      await _db.from('research_results').upsert({
+        'research_type': 'final_recommendation', 'model_version': kFinalRecVersion,
+        'training_end_round': rec.trainingEndRound, 'target_round': targetRound, 'payload': rec.toJson(),
+      }, onConflict: 'research_type,model_version,training_end_round,target_round', ignoreDuplicates: true);
+    } catch (e) {
+      debugPrint('[FinalRec] persist skipped: $e');
+    }
+    return (await loadStored(targetRound, trainingEndRound: rec.trainingEndRound)) ?? rec;
+  }
+
+  /// 최종 추천 계산만 (저장 없음) — 저장된 Number 엔진 결과에서 결정적으로 만든다. 기본 후보가 없으면 null.
+  Future<FinalRecommendation?> compute(int targetRound) async {
     // 1) 목표 회차의 Number 엔진 저장 결과 (가장 최근 학습 회차)
     final rows = await _db.from('rpa_prediction_results')
         .select('training_end_round,model_version,prediction_type,payload,gate_status,generated_at')
@@ -258,15 +276,7 @@ class FinalRecommendationEngine {
           ? '검증 통과 신호가 반영됐으나 당첨확률 향상은 보장되지 않음 (내부 점수는 확률이 아님)'
           : '검증된 당첨확률 우위 없음 — 모든 조합의 1등 확률은 동일. 내부 점수는 정렬용이며 확률이 아님',
     );
-    try {
-      await _db.from('research_results').upsert({
-        'research_type': 'final_recommendation', 'model_version': kFinalRecVersion,
-        'training_end_round': te, 'target_round': targetRound, 'payload': rec.toJson(),
-      }, onConflict: 'research_type,model_version,training_end_round,target_round', ignoreDuplicates: true);
-    } catch (e) {
-      debugPrint('[FinalRec] persist skipped: $e');
-    }
-    return (await loadStored(targetRound, trainingEndRound: te)) ?? rec;
+    return rec;
   }
 }
 

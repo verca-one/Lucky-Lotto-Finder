@@ -16,6 +16,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../models/lotto_winning_number.dart';
 import '../rpa_store_engine.dart' show StoreWinRecord;
 import 'research_core.dart';
+import 'research_runtime.dart';
 
 const String kDrawResearchVersion = 'dr-1.0';
 
@@ -362,6 +363,7 @@ class DrawResearchEngine {
       _persist('number_frequency', r.trainingEnd, r.toJson());
 
   Future<void> _persist(String type, int trainingEnd, Map<String, dynamic> payload) async {
+    if (!ResearchRuntime.serverWriter) return; // 연구 결과 저장은 서버 파이프라인만
     try {
       await _db.from('research_results').upsert({
         'research_type': type, 'model_version': kDrawResearchVersion,

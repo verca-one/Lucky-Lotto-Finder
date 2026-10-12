@@ -36,8 +36,7 @@ class _AdminScreenState extends State<AdminScreen> {
   @override
   void initState() {
     super.initState();
-    // 예측 연구: 아직 실행 전이면 시작 (이미 실행됐으면 즉시 반환)
-    ResearchScheduler.instance.runIfNeeded().ignore();
+    // 예측 연구는 서버 파이프라인이 실행한다 — 관리자 화면은 저장된 결과·실행 상태만 본다
   }
 
 

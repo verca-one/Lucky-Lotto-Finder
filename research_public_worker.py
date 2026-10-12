@@ -191,14 +191,20 @@ def run(db):
         "order": "created_at.desc", "limit": "20"})
     if not rows:
         print(f"{target}회 구매예측 원본 결과 없음 — 공개 행을 만들지 않음 (앱: 준비 중)")
-        return
-    src = max(rows, key=lambda r: (version_key(r["model_version"]), r["created_at"]))
+        return {"target": target, "published": False, "reason": "구매예측 원본 결과 없음"}
+    # 관리자 화면(loadStoredReport)과 같은 행: 최신 모델 버전 → 최신 학습 회차
+    src = max(rows, key=lambda r: (version_key(r["model_version"]), r["training_end_round"], r["created_at"]))
     payload = src["payload"]
     print(f"원본 연구 결과 {src['id']} ({src['model_version']}, 학습 ~{src['training_end_round']}회 → {target}회)")
 
     prow = purchase_row(src, target)
     db.upsert("research_public_purchase", prow, "target_round")
     print(f"  구매예측번호: {prow['validation_status']} · {len(prow['sets'])}세트")
+    admin_top3 = [sorted(r["numbers"]) for r in (payload.get("recommendations") or [])[:MAX_SETS]] \
+        if payload.get("ranking_source") == "popularity" else []
+    result = {"target": target, "published": True, "source_research_id": src["id"],
+              "model_version": src["model_version"], "sets": len(prow["sets"]),
+              "matches_admin_top3": [x["numbers"] for x in prow["sets"]] == admin_top3, "study": None}
 
     # 공개 연구: 같은 회차 → 유지·동기화 / 새 회차 → 직전 공개 연구 이어 가기 / 없으면 생략
     current = [] if db.dry else db.get("research_public_study", {
@@ -217,7 +223,7 @@ def run(db):
         key = choose_study(payload, keep)
     if key is None:
         print("  공개 연구: 후보 없음 ('연구 중' 상태 연구 없음) — 공개 연구를 만들지 않음")
-        return
+        return result
     s = study_summary(key, payload.get(key) or {}, payload)
     db.patch("research_public_study", {"target_round": f"eq.{target}", "study_key": f"neq.{key}"}, {"is_active": False})
     db.upsert("research_public_study", dict(s, target_round=target, source_research_id=src["id"], study_key=key,
@@ -225,17 +231,58 @@ def run(db):
                                              is_active=True, updated_at=now_iso()),
               "target_round,study_key")
     print(f"  공개 연구: {key} · {s['status']}")
+    result["study"] = {"key": key, "status": s["status"]}
+    return result
+
+
+def record_run(db, result, error):
+    """같은 목표 회차의 최신 파이프라인 실행 기록에 공개 단계 결과를 덧붙인다 (실패면 success → partial)."""
+    target = (result or {}).get("target")
+    if not target:
+        return
+    runs = db.get("research_pipeline_runs", {"select": "id,status,steps,outputs", "target_round": f"eq.{target}",
+                                             "status": "in.(success,partial,failed)", "order": "started_at.desc",
+                                             "limit": "1"})
+    if not runs:
+        print(f"  {target}회 파이프라인 실행 기록 없음 — 공개 결과 기록 생략")
+        return
+    run = runs[0]
+    ok = error is None and result.get("published") and result.get("matches_admin_top3")
+    why = error or (None if ok else ("공개 3세트 ≠ 관리자 상위 3세트" if result.get("published") else result.get("reason")))
+    steps = [x for x in (run.get("steps") or []) if x.get("name") != "public_publish"]
+    steps.append({"name": "public_publish", "ok": bool(ok), "at": now_iso(), **({"error": why} if why else {})})
+    outputs = dict(run.get("outputs") or {}, public=result)
+    row = {"steps": steps, "outputs": outputs}
+    if not ok and run["status"] == "success":
+        row["status"] = "partial"
+        row["error"] = f"공개 단계 실패: {why}"
+    db.patch("research_pipeline_runs", {"id": f"eq.{run['id']}"}, row)
+    print(f"  파이프라인 실행 {run['id']} 에 공개 결과 기록: {'OK' if ok else why}")
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--record-run", action="store_true", help="파이프라인 실행 기록에 공개 결과를 남긴다")
     a = ap.parse_args()
     url, key = os.environ.get("SUPABASE_URL", ""), os.environ.get("SUPABASE_KEY", "")
     if not url or not key:
         print("SUPABASE_URL / SUPABASE_KEY 환경변수 필요")
         sys.exit(1)
-    run(Db(url, key, dry_run=a.dry_run))
+    db = Db(url, key, dry_run=a.dry_run)
+    result, error = None, None
+    try:
+        result = run(db)
+    except Exception as e:  # 기록 후 실패로 종료
+        error = str(e)[:300]
+        print(f"공개 실패: {error}")
+    if a.record_run and not a.dry_run:
+        if result is None:
+            latest = db.get("lotto_winning_numbers", {"select": "round", "order": "round.desc", "limit": "1"})
+            result = {"target": int(latest[0]["round"]) + 1 if latest else None, "published": False}
+        record_run(db, result, error)
+    if error:
+        sys.exit(1)
 
 
 if __name__ == "__main__":

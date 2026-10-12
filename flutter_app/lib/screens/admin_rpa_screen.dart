@@ -18,9 +18,8 @@ import '../services/rpa_unified_prediction.dart' show kRpaActiveModelVersion;
 import '../services/supabase_service.dart';
 import 'admin_comprehensive_prediction_screen.dart';
 import 'admin_mnd_screen.dart';
-import '../services/mnd_engine.dart';
 import '../services/research/hypothesis_replay_engine.dart';
-import '../services/research/research_scheduler.dart';
+import '../services/research/research_runtime.dart';
 
 // ══════════════════════════════════════════════════════════
 // Models
@@ -758,6 +757,134 @@ Map<String, double> _runSimulation(int iterations) {
 // Hypothesis Service
 // ══════════════════════════════════════════════════════════
 
+// ══════════════════════════════════════════════════════════════
+// 가설 연구소 자동 유지 — 서버 파이프라인(tool/server/research_pipeline_test.dart)이 호출.
+// 화면에 있던 규칙(자동 검증 · 신호 가능성 등록 · 만료 폐기)을 그대로 옮겼다. 앱은 실행하지 않는다.
+// 신호(z)는 이 실행에서 계산한 시뮬레이션 기준값으로 판단한다 (기기별 캐시 대신).
+// ══════════════════════════════════════════════════════════════
+Future<Map<String, int>> runRpaHypothesisLabMaintenance(List<LottoWinningNumber> data) async {
+  if (!ResearchRuntime.serverWriter || data.isEmpty) return const {};
+  final svc = _RpaService();
+  final hypotheses = await svc.loadHypotheses();
+  final verified = await _autoVerifyHypotheses(svc, hypotheses, data);
+  final indicators = _Analyzer(data).allIndicators();
+  final sim = await compute(_runSimulation, 50000);
+  _applySimulationZ(indicators, sim, data.length);
+  final latest = data.map((d) => d.round).reduce(max);
+  final (created, discarded) = await _registerSignalHypotheses(svc, indicators, hypotheses, latest);
+  return {'verifications': verified, 'created': created, 'discarded': discarded};
+}
+
+void _applySimulationZ(List<_IndicatorResult> indicators, Map<String, double> base, int count) {
+  final n = count.toDouble();
+  for (final ind in indicators) {
+    double? z;
+    if (ind.id == 'odd_even_33') z = (ind.observed - (base['odd_even_33'] ?? _Baselines.oddEven33)) / sqrt((base['odd_even_33'] ?? _Baselines.oddEven33) * (1 - (base['odd_even_33'] ?? _Baselines.oddEven33)) / n);
+    if (ind.id == 'low_high_33') z = (ind.observed - (base['low_high_33'] ?? _Baselines.lowHigh33)) / sqrt((base['low_high_33'] ?? _Baselines.lowHigh33) * (1 - (base['low_high_33'] ?? _Baselines.lowHigh33)) / n);
+    if (ind.id == 'consecutive') z = (ind.observed - (base['consecutive'] ?? _Baselines.consecutiveAny)) / sqrt((base['consecutive'] ?? _Baselines.consecutiveAny) * (1 - (base['consecutive'] ?? _Baselines.consecutiveAny)) / n);
+    if (ind.id == 'sum_parity') z = (ind.observed - (base['sum_parity'] ?? 0.5)) / sqrt(0.25 / n);
+    if (z != null) ind.zScore = z;
+  }
+}
+
+/// 관찰 중 가설의 목표 구간 회차를 실제 당첨번호로 검증·저장. 반환 = 새 검증 수.
+Future<int> _autoVerifyHypotheses(_RpaService svc, List<_Hypothesis> hypotheses, List<LottoWinningNumber> data) async {
+  if (data.isEmpty) return 0;
+  final latest = data.map((d) => d.round).reduce(max);
+  final byRound = {for (final d in data) d.round: d};
+  int saved = 0;
+
+  for (final h in hypotheses) {
+    if (h.status != 'observing') continue;
+    if (latest < h.targetStartRound) continue;
+
+    // Get all rounds in target window
+    for (int r = h.targetStartRound; r <= min(h.targetEndRound, latest); r++) {
+      final draw = byRound[r];
+      if (draw == null) continue;
+      final already = h.verifications.any((v) => v.verifiedRound == r);
+      if (already) continue;
+
+      // Check condition
+      final reps = h.representativeNumbers;
+      final matches = reps.isEmpty ? 0 : draw.numbers.where(reps.contains).length;
+      final result = reps.isEmpty
+          ? 'partial'
+          : matches >= 3
+              ? 'hit'
+              : matches >= 1
+                  ? 'partial'
+                  : 'miss';
+
+      try {
+        await svc.saveVerification(
+          hypothesisId: h.id,
+          round: r,
+          numbers: draw.numbers,
+          bonus: draw.bonusNumber,
+          matches: matches,
+          result: result,
+        );
+        saved++;
+      } catch (_) {}
+    }
+
+    if (latest >= h.targetEndRound) h.status = 'verified';
+  }
+  // Update observing → observing for active ones
+  for (final h in hypotheses) {
+    if (h.status == 'pending' && latest >= h.targetStartRound) {
+      h.status = 'observing';
+      try { await svc.updateStatus(h.id, 'observing'); } catch (_) {}
+    }
+  }
+  return saved;
+}
+
+/// 신호(|z|≥2) 지표를 새 가능성으로 등록하고, 목표 구간이 지난 관찰 가설을 폐기. 반환 = (등록 수, 폐기 수).
+Future<(int, int)> _registerSignalHypotheses(
+    _RpaService svc, List<_IndicatorResult> indicators, List<_Hypothesis> hypotheses, int latestRound) async {
+  if (indicators.isEmpty) return (0, 0);
+  final signals = indicators.where((i) => i.isSignal).toList();
+  int created = 0, discarded = 0;
+
+  for (final sig in signals) {
+    // 이미 같은 지표로 등록된 active 가능성이 있으면 스킵
+    final alreadyActive = hypotheses.any((h) =>
+        h.type == 'auto_signal' &&
+        h.conditions['indicator_id'] == sig.id &&
+        (h.status == 'pending' || h.status == 'observing'));
+    if (alreadyActive) continue;
+
+    // 새 가능성 자동 등록
+    try {
+      await svc.createHypothesis(
+        createdRound: latestRound,
+        targetStartRound: latestRound + 1,
+        targetEndRound: latestRound + 10,
+        type: 'auto_signal',
+        conditions: {'indicator_id': sig.id, 'indicator_name': sig.name},
+        representativeNumbers: const [],
+        evidence: '신호 자동 감지: ${sig.name} Z=${sig.zScore?.toStringAsFixed(2)}σ (최근 100회 편차)',
+        zScore: sig.zScore,
+      );
+      created++;
+    } catch (_) {}
+  }
+
+  // 오래된 미검증 가능성 자동 폐기 (targetEndRound 지나고 observing 상태인 것)
+  for (final h in hypotheses) {
+    if (h.status == 'observing' && h.targetEndRound < latestRound - 5) {
+      try {
+        await svc.updateStatus(h.id, 'discarded');
+        h.status = 'discarded';
+        discarded++;
+      } catch (_) {}
+    }
+  }
+  return (created, discarded);
+}
+
 class _RpaService {
   final _db = Supabase.instance.client;
 
@@ -972,65 +1099,15 @@ class _AdminRpaScreenState extends State<AdminRpaScreen>
         });
       }
 
-      // gate 누락 회차 자동 동기화 (당첨번호+판매점 있는데 gate row 없는 경우)
-      try {
-        await RpaEngine.instance.syncMissingGates(data);
-      } catch (_) {}
-
-      // 대기 중인 회차 확인: 판매점 크롤링 완료 후 미처리 회차 자동 처리 (round ASC 순서)
-      try {
-        await RpaEngine.instance.checkAndProcessReadyRounds(data);
-      } catch (_) {}
-
-      // 불완전 회차 복구: completed 상태이지만 실제 Prediction이 없는 회차 감지 및 재처리
-      try {
-        await RpaEngine.instance.checkAndRepairIncompleteRounds(data);
-      } catch (_) {}
-
-      // 활성 엔진 버전 결과 보장: 버전이 바뀌었거나 결과가 없으면 Snapshot·통합 결과 자동 생성
-      RpaEngine.instance.ensureActiveVersionPredictions(data).ignore();
-
-      // MND 명당 연구소 초기 자동 연구: 분석 결과가 없으면 백그라운드에서 자동 실행
-      if (_mndTrainingEnd > 0) {
-        MndEngine.instance.autoStartIfNeeded(_mndTrainingEnd).ignore();
-      }
-      // 예측 연구: 다음 회차 예측 등록·채점·연구 갱신 (기존 엔진과 독립)
-      ResearchScheduler.instance.runIfNeeded().ignore();
-      // MC 큐: 게이트가 모두 완료된 상태에서도 기준값·Random Control이 돌도록 화면 진입 시 처리
-      MonteCarloEngine.instance.processQueueBatch(maxJobs: 5).ignore();
-
-      // 새 회차 자동 업데이트: 최신 회차 > 마지막 학습 회차면 엔진 자동 적용
-      final latestAvailable = data.isNotEmpty
-          ? data.map((d) => d.round).reduce((a, b) => a > b ? a : b)
-          : 0;
-      if (latestAvailable > modelState.lastTrainedRound && mounted) {
-        final gap = latestAvailable - modelState.lastTrainedRound;
-        if (gap <= 5) {
-          _runIncrementalUpdate(from: modelState.lastTrainedRound + 1, to: latestAvailable);
-        } else if (!modelState.replayCompleted) {
-          // 재현이 한 번도 완료되지 않은 경우에만 자동 실행 (완료 후 격차는 Round Gate가 처리)
-          _runReplay();
-        }
-      }
+      // 엔진 처리(Round Gate·증분 업데이트·활성 버전 결과·MND·예측 연구·Monte Carlo)는
+      // 서버 파이프라인(GitHub Actions)이 자동 실행한다. 화면을 연다고 계산·저장하지 않는다.
     } catch (e) {
       if (mounted) setState(() { _error = e.toString(); _loading = false; });
     }
   }
 
-  // _RoundFlowPanel 콜백: ready 게이트 발견 시 엔진 자동 처리
-  Future<void> _onReadyGateDetected() async {
-    if (_data.isEmpty) return;
-    try {
-      await RpaEngine.instance.syncMissingGates(_data);
-    } catch (_) {}
-    try {
-      await RpaEngine.instance.checkAndProcessReadyRounds(_data);
-    } catch (_) {}
-    try {
-      await RpaEngine.instance.checkAndRepairIncompleteRounds(_data);
-    } catch (_) {}
-    RpaEngine.instance.ensureActiveVersionPredictions(_data).ignore();
-  }
+  // _RoundFlowPanel 콜백: ready 게이트 처리는 서버 파이프라인이 한다 → 화면은 다시 읽기만
+  Future<void> _onReadyGateDetected() async {}
 
   Future<void> _applySimCache(List<_IndicatorResult> indicators) async {
     try {
@@ -1047,66 +1124,13 @@ class _AdminRpaScreenState extends State<AdminRpaScreen>
 
   void _applySimToIndicators(List<_IndicatorResult> indicators) {
     if (_simResult == null) return;
-    final n = _data.length.toDouble();
-    for (final ind in indicators) {
-      final base = _simResult!;
-      double? z;
-      if (ind.id == 'odd_even_33') z = (ind.observed - (base['odd_even_33'] ?? _Baselines.oddEven33)) / sqrt((base['odd_even_33'] ?? _Baselines.oddEven33) * (1 - (base['odd_even_33'] ?? _Baselines.oddEven33)) / n);
-      if (ind.id == 'low_high_33') z = (ind.observed - (base['low_high_33'] ?? _Baselines.lowHigh33)) / sqrt((base['low_high_33'] ?? _Baselines.lowHigh33) * (1 - (base['low_high_33'] ?? _Baselines.lowHigh33)) / n);
-      if (ind.id == 'consecutive') z = (ind.observed - (base['consecutive'] ?? _Baselines.consecutiveAny)) / sqrt((base['consecutive'] ?? _Baselines.consecutiveAny) * (1 - (base['consecutive'] ?? _Baselines.consecutiveAny)) / n);
-      if (ind.id == 'sum_parity') z = (ind.observed - (base['sum_parity'] ?? 0.5)) / sqrt(0.25 / n);
-      if (z != null) ind.zScore = z;
-    }
+    _applySimulationZ(indicators, _simResult!, _data.length);
   }
 
+  /// 가설 자동 검증 — 서버 파이프라인만 저장한다 (앱에서는 표시만)
   Future<void> _autoVerify(List<_Hypothesis> hypotheses, List<LottoWinningNumber> data) async {
-    if (data.isEmpty) return;
-    final latest = data.map((d) => d.round).reduce(max);
-    final byRound = {for (final d in data) d.round: d};
-
-    for (final h in hypotheses) {
-      if (h.status != 'observing') continue;
-      if (latest < h.targetStartRound) continue;
-
-      // Get all rounds in target window
-      for (int r = h.targetStartRound; r <= min(h.targetEndRound, latest); r++) {
-        final draw = byRound[r];
-        if (draw == null) continue;
-        final already = h.verifications.any((v) => v.verifiedRound == r);
-        if (already) continue;
-
-        // Check condition
-        final reps = h.representativeNumbers;
-        final matches = reps.isEmpty ? 0 : draw.numbers.where(reps.contains).length;
-        final result = reps.isEmpty
-            ? 'partial'
-            : matches >= 3
-                ? 'hit'
-                : matches >= 1
-                    ? 'partial'
-                    : 'miss';
-
-        try {
-          await _svc.saveVerification(
-            hypothesisId: h.id,
-            round: r,
-            numbers: draw.numbers,
-            bonus: draw.bonusNumber,
-            matches: matches,
-            result: result,
-          );
-        } catch (_) {}
-      }
-
-      if (latest >= h.targetEndRound) h.status = 'verified';
-    }
-    // Update observing → observing for active ones
-    for (final h in hypotheses) {
-      if (h.status == 'pending' && latest >= h.targetStartRound) {
-        h.status = 'observing';
-        try { await _svc.updateStatus(h.id, 'observing'); } catch (_) {}
-      }
-    }
+    if (!ResearchRuntime.serverWriter) return;
+    await _autoVerifyHypotheses(_svc, hypotheses, data);
   }
 
   // 1~5 회차 차이 → 증분 업데이트 (전체 리플레이 없이 새 회차만 처리)
@@ -1207,47 +1231,11 @@ class _AdminRpaScreenState extends State<AdminRpaScreen>
   }
 
   // 신호 감지 → 가능성 자동 생성/검증/폐기
+  /// 신호 가능성 등록·만료 폐기 — 서버 파이프라인만 저장한다
   Future<void> _autoRegisterSignals() async {
-    if (_indicators.isEmpty) return;
-    final signals = _indicators.where((i) => i.isSignal).toList();
-    bool changed = false;
-
-    for (final sig in signals) {
-      // 이미 같은 지표로 등록된 active 가능성이 있으면 스킵
-      final alreadyActive = _hypotheses.any((h) =>
-          h.type == 'auto_signal' &&
-          h.conditions['indicator_id'] == sig.id &&
-          (h.status == 'pending' || h.status == 'observing'));
-      if (alreadyActive) continue;
-
-      // 새 가능성 자동 등록
-      try {
-        await _svc.createHypothesis(
-          createdRound: _latestRound,
-          targetStartRound: _latestRound + 1,
-          targetEndRound: _latestRound + 10,
-          type: 'auto_signal',
-          conditions: {'indicator_id': sig.id, 'indicator_name': sig.name},
-          representativeNumbers: const [],
-          evidence: '신호 자동 감지: ${sig.name} Z=${sig.zScore?.toStringAsFixed(2)}σ (최근 100회 편차)',
-          zScore: sig.zScore,
-        );
-        changed = true;
-      } catch (_) {}
-    }
-
-    // 오래된 미검증 가능성 자동 폐기 (targetEndRound 지나고 observing 상태인 것)
-    for (final h in _hypotheses) {
-      if (h.status == 'observing' && h.targetEndRound < _latestRound - 5) {
-        try {
-          await _svc.updateStatus(h.id, 'discarded');
-          h.status = 'discarded';
-          changed = true;
-        } catch (_) {}
-      }
-    }
-
-    if (changed) {
+    if (!ResearchRuntime.serverWriter) return;
+    final (created, discarded) = await _registerSignalHypotheses(_svc, _indicators, _hypotheses, _latestRound);
+    if (created + discarded > 0) {
       final updated = await _svc.loadHypotheses();
       if (mounted) setState(() => _hypotheses = updated);
     }

@@ -19,6 +19,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../models/lotto_winning_number.dart';
 import 'research_core.dart';
+import 'research_runtime.dart';
 
 class AlgorithmSummary {
   final String algorithm, version;
@@ -59,6 +60,7 @@ class PredictionRegistry {
     required String algorithm, required String version, required int targetRound,
     required int dataEndRound, required List<List<int>> sets, required DateTime deadline,
   }) async {
+    if (!ResearchRuntime.serverWriter) return false; // 등록은 서버 파이프라인만
     if (sets.isEmpty) return false;
     final now = DateTime.now().toUtc();
     try {
@@ -82,6 +84,7 @@ class PredictionRegistry {
 
   /// 추첨 결과가 들어온 회차의 미채점 예측을 채점
   Future<int> verifyPending(List<LottoWinningNumber> allData) async {
+    if (!ResearchRuntime.serverWriter) return 0; // 채점은 서버 파이프라인만
     final byRound = {for (final d in allData) d.round: d};
     List<Map<String, dynamic>> rows;
     try {

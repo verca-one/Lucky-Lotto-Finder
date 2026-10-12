@@ -10,7 +10,6 @@ import 'tax_calculator_screen.dart';
 import 'random_recommend_content.dart';
 import 'purchase_public_content.dart';
 import '../models/lotto_winning_number.dart';
-import '../services/research/research_scheduler.dart';
 import '../services/supabase_service.dart';
 
 /// 추천 탭 '번호 추천' 메뉴 항목
@@ -66,8 +65,7 @@ class RecommendScreenState extends State<RecommendScreen> {
         setState(() { _latestRound = list.first; _loadedAt = DateTime.now(); });
       }
     } catch (_) {}
-    // 예측 연구: 마감 전 다음 회차 예측 등록·미채점 예측 채점 (세션당 최신 회차 1회)
-    ResearchScheduler.instance.runIfNeeded().ignore();
+    // 예측 연구는 서버 파이프라인(GitHub Actions)이 실행한다 — 앱은 계산하지 않는다
   }
 
   /// 메인 메뉴로 초기화

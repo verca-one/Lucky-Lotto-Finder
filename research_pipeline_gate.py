@@ -1,0 +1,142 @@
+"""
+서버 연구 파이프라인 실행 여부 판단 (research-engine.yml 첫 단계) — DB 읽기 + 실행 기록만, 외부 사이트 접속 없음
+
+실행 조건 (모두 충족해야 run=true)
+  1. 최신 회차 당첨번호 있음 (lotto_winning_numbers)
+  2. 최신 회차 판매점 크롤링 완료 표시 (round_crawl_status.stores_status = success)
+  3. 최신 회차 2등 판매점 기록 있음, 1등 판매점 기록 ≥ 1등 당첨자 수의 80% (research_agent_worker.ready_latest 와 같은 규칙)
+  4. 같은 (파이프라인 버전, 목표 회차) 성공 기록 없음 (FORCE=true 면 무시하지 않음 — 성공 기록은 다시 만들지 않는다)
+준비가 안 됐으면 실행하지 않고 'waiting' 기록만 남긴다. 3시간 넘게 running 인 기록은 failed(timeout)로 정리한다.
+
+출력 (GITHUB_OUTPUT): run, latest, target
+"""
+
+import os
+import sys
+from datetime import datetime, timedelta, timezone
+
+import requests
+
+PIPELINE_VERSION = "sp-1.0"   # tool/server/research_pipeline_test.dart 와 같아야 한다
+STALE_HOURS = 3
+
+
+class Db:
+    def __init__(self, url, key):
+        self.base = url.rstrip("/") + "/rest/v1/"
+        self.h = {"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+
+    def get(self, table, params):
+        r = requests.get(self.base + table, params=params, headers=self.h, timeout=60)
+        if r.status_code != 200:
+            raise RuntimeError(f"select {table} {r.status_code} {r.text[:200]}")
+        return r.json()
+
+    def count(self, table, params):
+        h = dict(self.h, Prefer="count=exact", Range="0-0")
+        r = requests.get(self.base + table, params=dict(params, select="round"), headers=h, timeout=60)
+        if r.status_code not in (200, 206):
+            raise RuntimeError(f"count {table} {r.status_code} {r.text[:200]}")
+        return int(r.headers.get("Content-Range", "*/0").split("/")[-1])
+
+    def post(self, table, row):
+        r = requests.post(self.base + table, headers=dict(self.h, Prefer="return=minimal"), json=row, timeout=60)
+        if r.status_code not in (200, 201, 204):
+            raise RuntimeError(f"insert {table} {r.status_code} {r.text[:200]}")
+
+    def patch(self, table, params, row):
+        r = requests.patch(self.base + table, params=params, headers=dict(self.h, Prefer="return=minimal"),
+                           json=row, timeout=60)
+        if r.status_code not in (200, 204):
+            raise RuntimeError(f"patch {table} {r.status_code} {r.text[:200]}")
+
+
+def now():
+    return datetime.now(timezone.utc)
+
+
+def readiness(db, latest):
+    """최신 회차 준비 여부와 미준비 사유"""
+    why = []
+    rcs = db.get("round_crawl_status", {"select": "stores_status", "lottery_type": "eq.lotto", "round": f"eq.{latest}"})
+    if not rcs or rcs[0].get("stores_status") != "success":
+        why.append(f"판매점 크롤링 완료 표시 없음({rcs[0].get('stores_status') if rcs else '행 없음'})")
+    first = db.count("winning_history", {"lottery_type": "eq.lotto", "round": f"eq.{latest}", "prize_tier": "eq.first"})
+    second = db.count("winning_history", {"lottery_type": "eq.lotto", "round": f"eq.{latest}", "prize_tier": "eq.second"})
+    p = db.get("research_prize_stats", {"select": "rank1_winners", "round": f"eq.{latest}"})
+    p1 = p[0].get("rank1_winners") if p else None
+    if second == 0:
+        why.append("2등 판매점 기록 없음")
+    if first == 0 and p1 != 0:
+        why.append("1등 판매점 기록 없음")
+    elif p1 and first < 0.8 * p1:
+        why.append(f"1등 판매점 기록 부족 {first}/{p1}")
+    return why
+
+
+def output(**kv):
+    path = os.environ.get("GITHUB_OUTPUT")
+    lines = [f"{k}={v}" for k, v in kv.items()]
+    print("\n".join(lines))
+    if path:
+        with open(path, "a", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+
+
+def main():
+    url, key = os.environ.get("SUPABASE_URL", ""), os.environ.get("SUPABASE_KEY", "")
+    if not url or not key:
+        print("SUPABASE_URL / SUPABASE_KEY 환경변수 필요")
+        sys.exit(1)
+    db = Db(url, key)
+
+    # 오래된 running 정리 (실행 중 중단된 기록이 다음 실행을 막지 않게)
+    cutoff = (now() - timedelta(hours=STALE_HOURS)).isoformat()
+    db.patch("research_pipeline_runs",
+             {"pipeline_version": f"eq.{PIPELINE_VERSION}", "status": "eq.running", "started_at": f"lt.{cutoff}"},
+             {"status": "failed", "error": f"{STALE_HOURS}시간 초과 — 중단된 실행으로 정리", "finished_at": now().isoformat()})
+
+    nums = db.get("lotto_winning_numbers", {"select": "round", "order": "round.desc", "limit": "1"})
+    if not nums:
+        print("당첨번호 데이터 없음")
+        output(run="false", latest=0, target=0)
+        return
+    latest = int(nums[0]["round"])
+    target = latest + 1
+
+    done = db.get("research_pipeline_runs", {"select": "id", "pipeline_version": f"eq.{PIPELINE_VERSION}",
+                                             "target_round": f"eq.{target}", "status": "eq.success", "limit": "1"})
+    if done:
+        print(f"{target}회 파이프라인 이미 성공 ({done[0]['id']}) — 중복 실행하지 않음")
+        output(run="false", latest=latest, target=target)
+        return
+
+    running = db.get("research_pipeline_runs", {"select": "id,started_at", "pipeline_version": f"eq.{PIPELINE_VERSION}",
+                                                "status": "eq.running", "limit": "1"})
+    if running:
+        print(f"다른 실행이 진행 중 ({running[0]['id']}, {running[0]['started_at']}) — 이번에는 건너뜀")
+        output(run="false", latest=latest, target=target)
+        return
+
+    why = readiness(db, latest)
+    if why:
+        print(f"{latest}회 데이터 준비 안 됨 — 대기: {', '.join(why)}")
+        prev = db.get("research_pipeline_runs", {"select": "id,status", "pipeline_version": f"eq.{PIPELINE_VERSION}",
+                                                 "target_round": f"eq.{target}", "order": "started_at.desc", "limit": "1"})
+        note = "데이터 준비 대기: " + ", ".join(why)
+        if prev and prev[0]["status"] == "waiting":
+            db.patch("research_pipeline_runs", {"id": f"eq.{prev[0]['id']}"}, {"error": note, "finished_at": now().isoformat()})
+        else:
+            db.post("research_pipeline_runs", {"pipeline_version": PIPELINE_VERSION, "latest_round": latest,
+                                               "target_round": target, "status": "waiting", "error": note,
+                                               "trigger": os.environ.get("GITHUB_EVENT_NAME"),
+                                               "runner": os.environ.get("GITHUB_RUN_ID"), "finished_at": now().isoformat()})
+        output(run="false", latest=latest, target=target)
+        return
+
+    print(f"{latest}회 데이터 준비 완료 → {target}회 파이프라인 실행")
+    output(run="true", latest=latest, target=target)
+
+
+if __name__ == "__main__":
+    main()

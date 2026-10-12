@@ -27,6 +27,7 @@ import '../../models/lotto_winning_number.dart';
 import '../rpa_store_engine.dart' show StoreWinRecord;
 import 'prize_stats_service.dart';
 import 'research_core.dart';
+import 'research_runtime.dart';
 
 // pp-0.3: 4등 당첨자 수 기반 번호 인기도 모델(조합 특징 10 + 번호별 효과 45, 릿지)로 순위 결정.
 //         시간 순 80/20 분할 검증(H1·H2) 통과 시에만 번호 제공, 실패 시 휴리스틱으로 대체하지 않고 미제공.
@@ -45,13 +46,26 @@ const int kGateMinTrain = 2000;
 const int kGateMinTest = 500;
 const int kBootstrapReps = 200;
 
+double _d(dynamic v) => v is num ? v.toDouble() : double.nan;
+int _i(dynamic v) => v is num ? v.toInt() : 0;
+List<int> _ints(dynamic v) => v is List ? [for (final x in v) if (x is num) x.toInt()] : const [];
+List<double> _dbls(dynamic v) => v is List ? [for (final x in v) _d(x)] : const [];
+(int, int) _pair(dynamic v) {
+  final l = _ints(v);
+  return l.length == 2 ? (l[0], l[1]) : (0, 0);
+}
+
 class FeatureCoef {
   final String key, name;
   final double coef, se, z, p, pHolm;
   const FeatureCoef(this.key, this.name, this.coef, this.se, this.z, this.p, this.pHolm);
   Map<String, dynamic> toJson() => {'key': key, 'name': name, 'coef': jsonNum(coef), 'se': jsonNum(se),
         'z': jsonNum(z), 'p': jsonNum(p), 'p_holm': jsonNum(pHolm)};
+  factory FeatureCoef.fromJson(Map j) =>
+      FeatureCoef('${j['key']}', '${j['name']}', _d(j['coef']), _d(j['se']), _d(j['z']), _d(j['p']), _d(j['p_holm']));
 }
+
+List<FeatureCoef> _coefs(dynamic v) => v is List ? [for (final c in v) if (c is Map) FeatureCoef.fromJson(c)] : const [];
 
 class EmpiricalModelReport {
   final bool available;
@@ -87,6 +101,23 @@ class EmpiricalModelReport {
         'gate_pass': gatePass, 'gate_reason': gateReason,
         'test_coefs': testCoefs.map((c) => c.toJson()).toList(), 'replicated_keys': replicatedKeys,
       };
+
+  /// 저장된 결과 → 보고서 (적합 모델 fit 은 저장하지 않으므로 null)
+  factory EmpiricalModelReport.fromJson(Map j) {
+    final (trF, trT) = _pair(j['train_rounds']);
+    final (teF, teT) = _pair(j['test_rounds']);
+    final ci = _dbls(j['improvement_ci']);
+    return EmpiricalModelReport(
+      available: j['available'] == true, nTrain: _i(j['n_train']), nTest: _i(j['n_test']),
+      trainRoundFrom: trF, trainRoundTo: trT, testRoundFrom: teF, testRoundTo: teT,
+      manualShareTrain: _d(j['manual_share_train']), manualShareTest: _d(j['manual_share_test']),
+      coefs: _coefs(j['coefs']), trainLogLoss: _d(j['train_log_loss']), testLogLoss: _d(j['test_log_loss']),
+      baselineLogLoss: _d(j['baseline_log_loss']), improvement: _d(j['improvement']),
+      improvementCi: ci.isEmpty ? const [double.nan, double.nan] : ci,
+      gatePass: j['gate_pass'] == true, gateReason: '${j['gate_reason'] ?? ''}',
+      testCoefs: _coefs(j['test_coefs']), replicatedKeys: List<String>.from(j['replicated_keys'] as List? ?? const []),
+    );
+  }
 }
 
 class PurchaseRecommendation {
@@ -113,6 +144,19 @@ class PurchaseRecommendation {
         'popularity_index': jsonNum(popularityIndex ?? double.nan), 'extrapolated': extrapolated,
         'reasons': reasons, 'features': features.toJson(),
       };
+
+  /// 저장된 결과 → 추천 (특징은 번호로 다시 계산 — 결정적)
+  factory PurchaseRecommendation.fromJson(Map j) {
+    final nums = _ints(j['numbers']);
+    double? opt(dynamic v) => v is num ? v.toDouble() : null;
+    return PurchaseRecommendation(
+      numbers: nums, heuristicScore: _d(j['heuristic_score']), heuristicIndex: _d(j['heuristic_index']),
+      empiricalManualOdds: opt(j['empirical_manual_odds']), volumeRatio: opt(j['volume_ratio']),
+      expectedCoWinners: opt(j['expected_co_winners']), popularityIndex: opt(j['popularity_index']),
+      extrapolated: j['extrapolated'] == true, reasons: List<String>.from(j['reasons'] as List? ?? const []),
+      features: ComboFeatures.of(nums),
+    );
+  }
 }
 
 /// 판매량 보정 포아송 모델 보고 (y = 1등 당첨자 수, offset = log(판매 게임수/C))
@@ -145,6 +189,21 @@ class VolumeModelReport {
         'improvement_ci': improvementCi.map(jsonNum).toList(), 'mean_ratio': jsonNum(meanRatio),
         'gate_pass': gatePass, 'gate_reason': gateReason,
       };
+
+  factory VolumeModelReport.fromJson(Map j) {
+    final (trF, trT) = _pair(j['train_rounds']);
+    final (teF, teT) = _pair(j['test_rounds']);
+    final ci = _dbls(j['improvement_ci']);
+    return VolumeModelReport(
+      available: j['available'] == true, nTrain: _i(j['n_train']), nTest: _i(j['n_test']),
+      trainRoundFrom: trF, trainRoundTo: trT, testRoundFrom: teF, testRoundTo: teT,
+      coefs: _coefs(j['coefs']), testCoefs: _coefs(j['test_coefs']),
+      replicatedKeys: List<String>.from(j['replicated_keys'] as List? ?? const []),
+      testDeviance: _d(j['test_deviance']), baselineDeviance: _d(j['baseline_deviance']),
+      improvement: _d(j['improvement']), improvementCi: ci.isEmpty ? const [double.nan, double.nan] : ci,
+      meanRatio: _d(j['mean_ratio']), gatePass: j['gate_pass'] == true, gateReason: '${j['gate_reason'] ?? ''}',
+    );
+  }
 }
 
 class PurchaseModelReport {
@@ -177,6 +236,21 @@ class PurchaseModelReport {
         'recommendations': recommendations.map((r) => r.toJson()).toList(),
         'data_gaps': dataGaps, 'candidate_median_score': candidateMedianScore,
       };
+
+  /// 서버가 저장한 결과(research_results.payload) → 보고서. 앱은 이 경로로만 구매예측을 본다.
+  factory PurchaseModelReport.fromJson(Map j) => PurchaseModelReport(
+        trainingEnd: _i(j['training_end']), targetRound: _i(j['target_round']),
+        empirical: EmpiricalModelReport.fromJson(j['empirical'] as Map? ?? const {}),
+        volume: VolumeModelReport.fromJson(j['volume'] as Map? ?? const {}),
+        popularity: PopularityModelReport.fromJson(j['popularity'] as Map? ?? const {}),
+        validationStatus: '${j['validation_status'] ?? ''}', rankingSource: '${j['ranking_source'] ?? ''}',
+        featureInsights: [for (final m in (j['feature_insights'] as List? ?? const [])) Map<String, dynamic>.from(m as Map)],
+        recommendations: [
+          for (final r in (j['recommendations'] as List? ?? const [])) PurchaseRecommendation.fromJson(r as Map),
+        ],
+        dataGaps: List<String>.from(j['data_gaps'] as List? ?? const []),
+        candidateMedianScore: _d(j['candidate_median_score']), prizeStatsRounds: _i(j['prize_stats_rounds']),
+      );
 }
 
 // 판매량 보정 모델 게이트 (평가 시작 전 고정)
@@ -218,6 +292,21 @@ class PopularityModelReport {
         'test_pred_range': [jsonNum(testPredMin), jsonNum(testPredMax)],
         'least_popular_numbers': leastPopularNumbers, 'most_popular_numbers': mostPopularNumbers,
       };
+
+  /// 저장된 결과 → 보고서 (실전 점수용 계수 coef 는 저장하지 않으므로 null)
+  factory PopularityModelReport.fromJson(Map j) {
+    final (trF, trT) = _pair(j['train_rounds']);
+    final (teF, teT) = _pair(j['test_rounds']);
+    final range = _dbls(j['test_pred_range']);
+    return PopularityModelReport(
+      available: j['available'] == true, gatePass: j['gate_pass'] == true, gateReason: '${j['gate_reason'] ?? ''}',
+      nTrain: _i(j['n_train']), nTest: _i(j['n_test']), trainFrom: trF, trainTo: trT, testFrom: teF, testTo: teT,
+      h1Corr: _d(j['h1_corr']), h1P: _d(j['h1_p']), h1R2: _d(j['h1_r2']), h2Coef: _d(j['h2_coef']), h2P: _d(j['h2_p']),
+      lowCoWinRatio: _d(j['low_cowin_ratio']), highCoWinRatio: _d(j['high_cowin_ratio']),
+      testPredMin: range.isNotEmpty ? range[0] : double.nan, testPredMax: range.length > 1 ? range[1] : double.nan,
+      leastPopularNumbers: _ints(j['least_popular_numbers']), mostPopularNumbers: _ints(j['most_popular_numbers']),
+    );
+  }
 }
 
 List<double> popularityVector(List<int> numbers) {
@@ -608,7 +697,6 @@ class PurchasePredictionEngine {
       candidateMedianScore: median, prizeStatsRounds: prizeStats.length,
     );
     _cache[targetRound] = report;
-    _persist(report);
     return report;
   }
 
@@ -633,15 +721,28 @@ class PurchasePredictionEngine {
     return r;
   }
 
-  Future<void> _persist(PurchaseModelReport r) async {
+  /// 서버 파이프라인만 저장. 같은 (버전·학습 회차·목표 회차) 행이 있으면 덮어쓰지 않는다.
+  Future<void> persist(PurchaseModelReport r) async {
+    if (!ResearchRuntime.serverWriter) return;
     try {
       await _db.from('research_results').upsert({
         'research_type': 'purchase_model', 'model_version': kPurchaseModelVersion,
         'training_end_round': r.trainingEnd, 'target_round': r.targetRound, 'payload': r.toJson(),
-      }, onConflict: 'research_type,model_version,training_end_round,target_round');
+      }, onConflict: 'research_type,model_version,training_end_round,target_round', ignoreDuplicates: true);
     } catch (e) {
       debugPrint('[Purchase] persist skipped: $e');
     }
+  }
+
+  /// 서버가 저장한 목표 회차 보고서 (가장 최근 학습 회차). 없으면 null.
+  Future<PurchaseModelReport?> loadStoredReport(int targetRound) async {
+    final r = await _db.from('research_results')
+        .select('payload,training_end_round')
+        .eq('research_type', 'purchase_model').eq('model_version', kPurchaseModelVersion)
+        .eq('target_round', targetRound).order('training_end_round', ascending: false).limit(1);
+    final list = List<Map<String, dynamic>>.from(r as List);
+    if (list.isEmpty) return null;
+    return PurchaseModelReport.fromJson(list.first['payload'] as Map);
   }
 
   /// DB에 저장된 같은 회차 결과가 있으면 그 추천 세트를 반환 (기기 간 일관성)

@@ -42,7 +42,7 @@ class _PurchasePredictionContentState extends State<PurchasePredictionContent> {
             return const Center(child: CircularProgressIndicator());
           }
           final r = snap.data;
-          if (r == null) return const Center(child: Text('데이터를 불러오지 못했습니다.'));
+          if (r == null) return const Center(child: Text('서버가 이번 회차 구매예측을 아직 저장하지 않았습니다 (서버 연구 대기).'));
           return SingleChildScrollView(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 24),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

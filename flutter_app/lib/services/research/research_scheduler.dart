@@ -1,8 +1,9 @@
 // ══════════════════════════════════════════════════════════════
-// 연구 스케줄러 — 앱 실행 시 기존 DB(읽기 전용)로 연구·등록·채점을 자동 수행
+// 연구 스케줄러 — 서버 파이프라인(GitHub Actions, tool/server/research_pipeline_test.dart)에서만 실행
 //
 // 1. 새 회차 확인 → 2. 미채점 예측 채점 → 3. 다음 회차 예측 등록(잠금)
 // 4. 번호 빈도·WF 대조군·구매예측 모델 갱신 → 5. 결과 누적 저장(research_results)
+// 앱(관리자·일반)은 실행하지 않고 저장된 결과만 읽는다 (ResearchRuntime.serverWriter = false).
 // 크롤러·스케줄러·기존 엔진은 호출하지 않는다.
 // ══════════════════════════════════════════════════════════════
 
@@ -23,6 +24,10 @@ import 'hypothesis_replay_engine.dart';
 import 'prediction_registry.dart';
 import 'prize_stats_service.dart';
 import 'purchase_prediction_engine.dart';
+import 'research_runtime.dart';
+
+/// 서버 파이프라인 단계 기록 (error == null 이면 성공)
+typedef ResearchStepRecorder = void Function(String step, Object? error);
 
 class ResearchData {
   final List<LottoWinningNumber> allData;
@@ -87,10 +92,10 @@ class ResearchScheduler {
         } catch (e) {
           debugPrint('[Research] history load error: $e');
         }
-        // 판매액·등수별 당첨자 수 (테이블 없으면 빈 맵) + 최신 회차 누락 시 공개 JSON 1페이지 동기화
+        // 판매액·등수별 당첨자 수 (테이블 없으면 빈 맵). 수집은 서버 research_prize_stats_collector.py 가 담당하며
+        // 앱·Dart 파이프라인은 외부 사이트에 접속하지 않는다.
         Map<int, PrizeStats> stats = {};
         try {
-          await PrizeStatsService.instance.syncLatest(latest.round);
           stats = await PrizeStatsService.instance.loadAll();
         } catch (e) {
           debugPrint('[Research] prize stats: $e');
@@ -107,9 +112,21 @@ class ResearchScheduler {
     return _loading!;
   }
 
-  /// 앱 세션 중 최신 회차당 1회 실행. force=true면 즉시 재실행.
-  Future<void> runIfNeeded({bool force = false}) async {
+  /// 서버 파이프라인 전용 (앱에서는 아무것도 하지 않음). force=true면 즉시 재실행.
+  /// [onStep] 단계별 성공·실패 기록 — 실패를 삼키지 않고 서버 실행 기록에 남긴다.
+  Future<void> runIfNeeded({bool force = false, ResearchStepRecorder? onStep}) async {
+    if (!ResearchRuntime.serverWriter) return;
     if (_running) return;
+    Future<void> step(String name, Future<void> Function() body) async {
+      try {
+        await body();
+        onStep?.call(name, null);
+      } catch (e) {
+        debugPrint('[Research] $name: $e');
+        onStep?.call(name, e);
+      }
+    }
+
     if (status.value.phase == ResearchPhase.idle) {
       _setStatus(ResearchPhase.researching, 0, '당첨번호·당첨 기록 로드 중');
     }
@@ -130,73 +147,76 @@ class ResearchScheduler {
       final target = d.targetRound;
       _setStatus(ResearchPhase.researching, target, '${d.latestRound}회 결과로 이전 예측 채점 중');
       // 2. 채점
-      try { await reg.verifyPending(d.allData); } catch (e) { debugPrint('[Research] verify: $e'); }
+      await step('registry_verify', () => reg.verifyPending(d.allData));
 
       // 3. 다음 회차 예측 등록
       _setStatus(ResearchPhase.researching, target, '$target회 예측 생성·등록 중 (번호예측·구매예측·무작위 대조군)');
       final deadline = PredictionRegistry.deadlineFor(target, d.latest);
-      try {
+      await step('register_number_engine', () async {
         final live = await RpaLiveNumbers.load(target);
         if (live.trainingEndRound == d.latestRound && live.baseSets.isNotEmpty) {
           await reg.register(algorithm: PredictionRegistry.algoNumberEngine, version: kRpaActiveModelVersion,
               targetRound: target, dataEndRound: d.latestRound, sets: live.baseSets, deadline: deadline);
         }
-      } catch (e) { debugPrint('[Research] number_engine register: $e'); }
-      try {
-        final report = PurchasePredictionEngine.instance.buildReport(
+      });
+      await step('purchase_model', () async {
+        final pe = PurchasePredictionEngine.instance;
+        final report = pe.buildReport(
             allData: d.allData, history: d.history, targetRound: target, trainingEnd: d.latestRound, prizeStats: d.prizeStats);
+        await pe.persist(report); // 같은 (버전·학습·목표) 행이 있으면 덮어쓰지 않음
         await reg.register(algorithm: PredictionRegistry.algoPurchase, version: kPurchaseModelVersion,
             targetRound: target, dataEndRound: d.latestRound,
             sets: report.recommendations.map((r) => r.numbers).toList(), deadline: deadline);
-      } catch (e) { debugPrint('[Research] purchase register: $e'); }
-      try {
-        await reg.register(algorithm: PredictionRegistry.algoRandom, version: 'r1', targetRound: target,
-            dataEndRound: d.latestRound, sets: reg.randomControlSets(target), deadline: deadline);
-      } catch (e) { debugPrint('[Research] random register: $e'); }
+      });
+      await step('register_random', () => reg.register(algorithm: PredictionRegistry.algoRandom, version: 'r1',
+          targetRound: target, dataEndRound: d.latestRound, sets: reg.randomControlSets(target), deadline: deadline));
       _setStatus(ResearchPhase.predicted, target, '$target회 예측 등록 완료 · 번호 빈도·WF 대조군 연구 갱신 중');
 
       // 4. 연구 갱신 (누적 저장)
       final dr = DrawResearchEngine.instance;
-      try { await dr.persistNumberFrequency(dr.analyzeNumberFrequency(d.allData)); } catch (e) { debugPrint('[Research] freq: $e'); }
-      try { await dr.evaluateEngineNumberWf(d.allData); } catch (e) { debugPrint('[Research] wf control: $e'); }
-      try { dr.evaluateRegionWfControl(d.history, d.allData); } catch (e) { debugPrint('[Research] region control: $e'); }
+      await step('number_frequency', () => dr.persistNumberFrequency(dr.analyzeNumberFrequency(d.allData)));
+      await step('engine_wf_control', () => dr.evaluateEngineNumberWf(d.allData));
+      await step('region_wf_control', () async => dr.evaluateRegionWfControl(d.history, d.allData));
       // 5. 가설 순차 재현 (500회 가설 → 501회 보정 → … → 최신) — isolate
       _setStatus(ResearchPhase.predicted, target, '$target회 예측 등록 완료 · 가설 순차 재현($kHypothesisReplayStart→${d.latestRound}회) 실행 중');
-      try { await HypothesisReplayEngine.instance.runAndPersist(d.allData); } catch (e) { debugPrint('[Research] hyp replay: $e'); }
+      await step('hypothesis_replay', () => HypothesisReplayEngine.instance.runAndPersist(d.allData));
       // 6. Monte Carlo: 기준값 생성 + 미검증 가설 Random Control (화면 진입과 무관하게 엔진 내에서 실행)
       _setStatus(ResearchPhase.predicted, target, '$target회 예측 등록 완료 · Monte Carlo 기준값·가설 Random Control 실행 중');
-      try {
+      await step('monte_carlo', () async {
         await MonteCarloEngine.instance.scheduleUnverifiedHypotheses();
         await MonteCarloEngine.instance.processQueueBatch(maxJobs: 30);
-      } catch (e) { debugPrint('[Research] monte carlo: $e'); }
+      });
       // 7. 명당연구소 공간 밀집·신흥 명당 회차별 백필 (1200→최신, 누락 회차만)
       if (d.history.isNotEmpty) {
-        try {
-          await MndEngine.instance.runSpatialEmergingBackfill(d.history,
-              onStatus: (m) => _setStatus(ResearchPhase.predicted, target, '$target회 예측 등록 완료 · $m'));
-        } catch (e) { debugPrint('[Research] mnd backfill: $e'); }
+        await step('mnd_backfill', () => MndEngine.instance.runSpatialEmergingBackfill(d.history,
+            onStatus: (m) => _setStatus(ResearchPhase.predicted, target, '$target회 예측 등록 완료 · $m')));
         // 7b. 명당 가설 WF 재평가 — 발견 회차 이후(out-of-sample)만 집계, 판매량 미보정 유형은 pass 금지
         _setStatus(ResearchPhase.predicted, target, '$target회 예측 등록 완료 · 명당 가설 Walk-Forward 재평가 중');
-        try { await MndEngine.instance.runIncrementalWalkForward(d.history, d.latestRound, 60); }
-        catch (e) { debugPrint('[Research] mnd wf: $e'); }
+        await step('mnd_walk_forward', () => MndEngine.instance.runIncrementalWalkForward(d.history, d.latestRound, 60));
       }
       // 8. 최종 추천번호 (목표 회차별, 저장된 결과는 덮어쓰지 않음)
       _setStatus(ResearchPhase.predicted, target, '$target회 예측 등록 완료 · 최종 추천번호 생성 중');
       for (int t = target; t < target + 6; t++) {
-        try { await FinalRecommendationEngine.instance.ensureStored(t); } catch (e) { debugPrint('[Research] final rec $t: $e'); }
+        await step('final_recommendation_$t', () => FinalRecommendationEngine.instance.ensureStored(t));
       }
 
       _lastRunLatest = d.latestRound;
       _setStatus(ResearchPhase.done, target, '완료 · $target회 예측 등록 · 연구 결과 저장 (${d.latestRound}회까지 데이터)');
     } catch (e) {
       _setStatus(ResearchPhase.done, d.targetRound, '완료(일부 오류): $e');
+      onStep?.call('research_scheduler', e);
     } finally {
       _running = false;
     }
   }
 
-  /// 구매예측 보고서 (대상 회차 기본 = 최신+1)
+  /// 구매예측 보고서 (대상 회차 기본 = 최신+1).
+  /// 앱: 서버가 저장한 보고서만 읽는다 (없으면 null = 서버 연구 대기). 서버: 계산.
   Future<PurchaseModelReport?> purchaseReport({int? targetRound}) async {
+    if (!ResearchRuntime.serverWriter) {
+      final t = targetRound ?? ((await SupabaseService.getRecentWinningNumbers(1)).firstOrNull?.round ?? 0) + 1;
+      return PurchasePredictionEngine.instance.loadStoredReport(t);
+    }
     final d = await load();
     if (d == null) return null;
     final t = targetRound ?? d.targetRound;

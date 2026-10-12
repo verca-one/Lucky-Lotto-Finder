@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../models/lotto_winning_number.dart';
 import '../services/lotto_winning_service.dart';
-import '../services/rpa_engine.dart';
 import '../services/supabase_service.dart';
 
 class AdminLottoRoundScreen extends StatefulWidget {
@@ -169,29 +168,15 @@ class _AdminLottoRoundScreenState extends State<AdminLottoRoundScreen> {
     _showSnack('로또 ${item.round}회 당첨번호가 저장되었습니다');
   }
 
-  // 랜덤확률분석엔진 자동 처리 — 저장과 독립 실행 (실패해도 저장에 영향 없음)
+  // 랜덤확률분석엔진 처리는 서버 파이프라인이 한다 (당첨번호·1등 판매점 준비 후 자동 실행)
   void _triggerRpaProcess(LottoWinningNumber item) {
-    Future.microtask(() async {
-      try {
-        final allData = await SupabaseService.getAllWinningNumbers();
-        final result = await RpaEngine.instance.processNewRound(
-          newRound: item,
-          allData: allData,
-        );
-        if (result.waitingForStore && mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('${item.round}회 당첨번호 등록 완료. '
-                  '1등 당첨판매점 크롤링 완료 후 랜덤확률분석엔진이 자동 실행됩니다.'),
-              duration: const Duration(seconds: 6),
-              backgroundColor: Colors.orange[700],
-            ),
-          );
-        }
-      } catch (_) {
-        // Silent fail — RPA 오류가 당첨회차 저장을 방해하지 않음
-      }
-    });
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('${item.round}회 당첨번호 저장 완료. 1등 판매점 데이터가 준비되면 서버가 엔진을 자동 실행합니다.'),
+        duration: const Duration(seconds: 5),
+      ),
+    );
   }
 
   Future<void> _deleteRound(LottoWinningNumber item) async {

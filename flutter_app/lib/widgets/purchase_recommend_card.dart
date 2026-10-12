@@ -53,7 +53,7 @@ class PurchaseRecommendCard extends StatelessWidget {
         }
         final r = snap.data;
         if (r == null) {
-          return Text('구매예측 데이터를 불러오지 못했습니다.', style: TextStyle(fontSize: 12, color: Colors.grey.shade600));
+          return Text('서버가 이번 회차 구매예측을 아직 저장하지 않았습니다 (서버 연구 대기).', style: TextStyle(fontSize: 12, color: Colors.grey.shade600));
         }
         return _body(r);
       },

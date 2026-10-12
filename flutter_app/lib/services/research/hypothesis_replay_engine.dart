@@ -25,6 +25,7 @@ import '../../models/lotto_winning_number.dart';
 import '../rpa_hypothesis_engine.dart' show SequentialPatternFinder;
 import '../rpa_number_core.dart' show rpaActualIndicatorValues, rpaIndicatorBaselines, rpaIndicatorIds, rpaIndicatorLabels;
 import 'research_core.dart';
+import 'research_runtime.dart';
 
 const String kHypothesisReplayVersion = 'hr-1.0';
 const int kHypothesisReplayStart = 500;
@@ -217,9 +218,9 @@ class HypothesisReplayEngine {
   Map<String, dynamic>? _cache;
   int _cacheEnd = 0;
 
-  Future<Map<String, dynamic>> run(List<LottoWinningNumber> allData, {int start = kHypothesisReplayStart}) async {
+  Future<Map<String, dynamic>> run(List<LottoWinningNumber> allData, {int start = kHypothesisReplayStart, bool force = false}) async {
     final end = allData.map((d) => d.round).fold<int>(0, (a, b) => a > b ? a : b);
-    if (_cache != null && _cacheEnd == end) return _cache!;
+    if (!force && _cache != null && _cacheEnd == end) return _cache!;
     final ser = allData.map((d) => {'r': d.round, 'd': d.drawDate, 'n': d.numbers, 'b': d.bonusNumber}).toList();
     final res = await compute(_replayIsolate, {'data': ser, 'start': start});
     _cache = res; _cacheEnd = end;
@@ -227,6 +228,9 @@ class HypothesisReplayEngine {
   }
 
   Future<Map<String, dynamic>> runAndPersist(List<LottoWinningNumber> allData) async {
+    if (!ResearchRuntime.serverWriter) {
+      throw StateError('가설 순차 재현은 서버 파이프라인에서만 실행됩니다');
+    }
     final res = await run(allData);
     final logs = List<Map<String, dynamic>>.from(res['round_logs'] as List? ?? []);
     final summary = Map<String, dynamic>.from(res)..remove('round_logs');

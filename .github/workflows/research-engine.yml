@@ -1,0 +1,85 @@
+name: Research Engine
+
+# 관리자 앱 없이 서버에서 모든 엔진·연구를 실행하고(기존 Dart 엔진 헤드리스 실행), 일반 공개용 요약까지 저장한다.
+#   gate    : 최신 회차 데이터(당첨번호·1·2등 판매점·크롤링 완료) 준비 + 중복 실행 여부 판단 (research_pipeline_gate.py)
+#   engine  : flutter_app/tool/server/research_pipeline_test.dart — 단계별 성공·실패를 research_pipeline_runs 에 기록
+#   publish : research_public_worker.py — 관리자 5세트 중 상위 3세트·공개 연구 1개 저장 (매 실행 동기화)
+# 쓰기는 SUPABASE_SERVICE_KEY(GitHub Secrets)로만 한다. 기존 크롤링 워크플로는 수정하지 않는다.
+# 연구 Dart 파이프라인은 외부 사이트에 접속하지 않는다 (판매액 수집은 Research Worker 의 research_prize_stats_collector.py).
+on:
+  workflow_run:
+    workflows: ["Research Worker"]   # 크롤링 직후 지방장·지역 연구가 끝나면 이어서 실행
+    types: [completed]
+  schedule:
+    - cron: '20 */2 * * *'          # 2시간마다 확인 (준비 안 됐거나 이미 성공했으면 gate 에서 바로 종료)
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'research_pipeline_gate.py'
+      - 'research_public_worker.py'
+      - 'flutter_app/tool/server/**'
+      - '.github/workflows/research-engine.yml'
+
+concurrency:
+  group: research-engine
+  cancel-in-progress: false
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      run: ${{ steps.gate.outputs.run }}
+      target: ${{ steps.gate.outputs.target }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: Readiness gate
+        id: gate
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python research_pipeline_gate.py
+
+  engine:
+    needs: gate
+    if: ${{ needs.gate.outputs.run == 'true' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 175
+    defaults:
+      run:
+        working-directory: flutter_app
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.41.4'
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - name: Server research pipeline (target ${{ needs.gate.outputs.target }})
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: flutter test tool/server/research_pipeline_test.dart --reporter expanded --timeout none
+
+  publish:
+    needs: [gate, engine]
+    if: ${{ !cancelled() && needs.gate.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: Publish public summary (3 sets + public study)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python research_public_worker.py --record-run

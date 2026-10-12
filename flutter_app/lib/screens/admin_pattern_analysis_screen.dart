@@ -92,7 +92,7 @@ class _AdminPatternAnalysisScreenState extends State<AdminPatternAnalysisScreen>
   // 데이터 로드
   // ══════════════════════════════════════════════════════════
 
-  Future<void> _load({bool autoEnsure = true}) async {
+  Future<void> _load() async {
     setState(() { _isLoading = _data.isEmpty; _error = null; });
     try {
       final rounds = await SupabaseService.getAllWinningNumbers();
@@ -126,27 +126,14 @@ class _AdminPatternAnalysisScreenState extends State<AdminPatternAnalysisScreen>
       // 활성 버전 결과가 DB에 없으면 자동 생성 (버튼 없이)
       final complete = view.activeSnapshots.length >= 6 &&
           view.results.values.where((m) => m.length >= RpaPredictionType.all.length).length >= 6;
-      if (autoEnsure && !complete) _runEnsure(rounds);
+      // 결과가 없으면 앱에서 만들지 않는다 — 서버 파이프라인이 생성 (화면은 대기 안내만)
+      if (!complete && mounted) {
+        setState(() => _ensureMessage = '활성 엔진 결과를 서버가 생성하는 중입니다 (앱에서는 계산하지 않음)');
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() { _error = e.toString(); _isLoading = false; });
     }
-  }
-
-  Future<void> _runEnsure(List<LottoWinningNumber> rounds) async {
-    if (_ensureRunning) return;
-    setState(() { _ensureRunning = true; _ensureMessage = '활성 엔진 결과 확인 중...'; });
-    final r = await RpaEngine.instance.ensureActiveVersionPredictions(
-      rounds,
-      onStatus: (m) { if (mounted) setState(() => _ensureMessage = m); },
-    );
-    if (!mounted) return;
-    setState(() {
-      _ensureRunning = false;
-      _ensureStatus = r.status;
-      _ensureMessage = r.message;
-    });
-    if (r.status == RpaEnsureStatus.generated) await _load(autoEnsure: false);
   }
 
   /// DB 결과가 있으면 사용, 없으면 같은 엔진 코드로 앱 내 계산
