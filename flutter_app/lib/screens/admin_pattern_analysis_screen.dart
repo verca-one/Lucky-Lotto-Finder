@@ -11,6 +11,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/lotto_winning_number.dart';
+import '../services/admin_gate.dart';
 import '../services/rpa_engine.dart';
 import '../services/rpa_joint_engine.dart';
 import '../services/rpa_number_core.dart';
@@ -46,7 +47,11 @@ class AdminPatternAnalysisScreen extends StatefulWidget {
 
 class _AdminPatternAnalysisScreenState extends State<AdminPatternAnalysisScreen>
     with SingleTickerProviderStateMixin {
-  late final TabController _tabController;
+  /// 관리자 여부 확인 후 생성 (관리자: 엔진 · 패턴 도구 / 비관리자: 패턴 도구만)
+  TabController? _tabController;
+
+  /// 안전장치: 비관리자가 열면 '엔진' 탭과 연구 상세(버전·Gate·가설)를 숨긴다
+  bool _isAdmin = false;
 
   bool _isLoading = true;
   String? _error;
@@ -67,13 +72,19 @@ class _AdminPatternAnalysisScreenState extends State<AdminPatternAnalysisScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    AdminGate.isAdmin().then((admin) {
+      if (!mounted) return;
+      setState(() {
+        _isAdmin = admin;
+        _tabController = TabController(length: admin ? 2 : 1, vsync: this);
+      });
+    });
     _load();
   }
 
   @override
   void dispose() {
-    _tabController.dispose();
+    _tabController?.dispose();
     super.dispose();
   }
 
@@ -234,6 +245,7 @@ class _AdminPatternAnalysisScreenState extends State<AdminPatternAnalysisScreen>
 
   @override
   Widget build(BuildContext context) {
+    final tc = _tabController;
     return Scaffold(
       backgroundColor: const Color(0xFFF2F4F8),
       appBar: AppBar(
@@ -241,7 +253,7 @@ class _AdminPatternAnalysisScreenState extends State<AdminPatternAnalysisScreen>
           const Text('패턴분석',
               style: TextStyle(fontWeight: FontWeight.w800, color: Colors.white)),
           const SizedBox(width: 8),
-          Container(
+          if (_isAdmin) Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
               color: Colors.amber.withValues(alpha: 0.25),
@@ -256,15 +268,19 @@ class _AdminPatternAnalysisScreenState extends State<AdminPatternAnalysisScreen>
         foregroundColor: Colors.white,
         iconTheme: const IconThemeData(color: Colors.white),
         elevation: 0,
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: Colors.amber,
-          indicatorWeight: 3,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white54,
-          labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-          tabs: const [Tab(text: '엔진'), Tab(text: '패턴 도구')],
-        ),
+        bottom: tc == null
+            ? null
+            : TabBar(
+                controller: tc,
+                indicatorColor: Colors.amber,
+                indicatorWeight: 3,
+                labelColor: Colors.white,
+                unselectedLabelColor: Colors.white54,
+                labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                tabs: _isAdmin
+                    ? const [Tab(text: '엔진'), Tab(text: '패턴 도구')]
+                    : const [Tab(text: '패턴 도구')],
+              ),
         actions: [
           IconButton(
               icon: const Icon(Icons.refresh_rounded, color: Colors.white),
@@ -272,7 +288,7 @@ class _AdminPatternAnalysisScreenState extends State<AdminPatternAnalysisScreen>
           const SizedBox(width: 4),
         ],
       ),
-      body: _isLoading
+      body: _isLoading || tc == null
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? _buildError()
@@ -280,8 +296,10 @@ class _AdminPatternAnalysisScreenState extends State<AdminPatternAnalysisScreen>
                   _buildContextBar(),
                   Expanded(
                     child: TabBarView(
-                      controller: _tabController,
-                      children: [_buildEngineTab(), _buildPatternToolTab()],
+                      controller: tc,
+                      children: _isAdmin
+                          ? [_buildEngineTab(), _buildPatternToolTab()]
+                          : [_buildPatternToolTab()],
                     ),
                   ),
                 ]),
@@ -304,6 +322,14 @@ class _AdminPatternAnalysisScreenState extends State<AdminPatternAnalysisScreen>
 
   // ── 두 탭 공통: 회차 · 버전 · 상태 · 회차 선택 ──────────────
   Widget _buildContextBar() {
+    // 비관리자: 회차 선택만 (버전·Gate·생성 상태 등 연구 상세 숨김)
+    if (!_isAdmin) {
+      return Container(
+        color: Colors.white,
+        padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
+        child: _buildHorizonSelector(),
+      );
+    }
     final d = _cur;
     final nb = d?[RpaPredictionType.numberBase];
     final hyp = d?[RpaPredictionType.hypothesis];
@@ -955,12 +981,14 @@ class _AdminPatternAnalysisScreenState extends State<AdminPatternAnalysisScreen>
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Row(children: [
           _subTabBtn('자리별 · 대안 · 제외', 0),
-          const SizedBox(width: 10),
-          _subTabBtn('가설', 1),
+          if (_isAdmin) ...[
+            const SizedBox(width: 10),
+            _subTabBtn('가설', 1),
+          ],
         ]),
       ),
       Expanded(child: IndexedStack(
-        index: _patternSubTab,
+        index: _isAdmin ? _patternSubTab : 0,
         children: [_buildPositionalTab(), _buildHypothesisTab()],
       )),
     ]);

@@ -7,12 +7,29 @@ import 'number_meaning_screen.dart';
 import 'ac_value_screen.dart';
 import 'zone_balance_screen.dart';
 import 'tax_calculator_screen.dart';
-import 'admin_pattern_analysis_screen.dart';
-import 'purchase_prediction_screen.dart';
 import 'recommend_numbers_content.dart';
 import '../models/lotto_winning_number.dart';
 import '../services/research/research_scheduler.dart';
 import '../services/supabase_service.dart';
+
+/// 추천 탭 '번호 추천' 메뉴 항목
+class RecommendMenuItem {
+  final String sub; // _currentSub 값
+  final IconData icon;
+  final Color iconColor;
+  final String title;
+  final String subtitle;
+  const RecommendMenuItem(this.sub, this.icon, this.iconColor, this.title, this.subtitle);
+}
+
+/// 추천 탭 '번호 추천' 메뉴 — 일반·관리자 모드 동일.
+/// '자리별 패턴 분석'·'구매예측'은 추천 탭에 두지 않는다 (관리자 메뉴의 '패턴 분석'·'예측 연구 현황'에만 있음).
+const List<RecommendMenuItem> kRecommendNumberMenu = [
+  RecommendMenuItem('ai_sub', Icons.auto_awesome, Colors.purple, 'AI 조합번호 생성', 'AI 법칙 기반 번호 추천'),
+  RecommendMenuItem('random', Icons.casino, Colors.orange, '나만의 번호 생성', '주사위를 굴려 랜덤 번호 조합'),
+  RecommendMenuItem('numbers', Icons.confirmation_number_rounded, Colors.deepPurple, '추천번호', '이번 회차 최종 추천번호'),
+  RecommendMenuItem('meaning', Icons.menu_book, Colors.teal, '번호별 의미', '1~45 각 번호의 상징과 법칙 연계'),
+];
 
 class RecommendScreen extends StatefulWidget {
   const RecommendScreen({super.key});
@@ -80,9 +97,6 @@ class RecommendScreenState extends State<RecommendScreen> {
     if (_currentSub == 'numbers') {
       return _wrapWithBack(const RecommendNumbersContent(), '번호 추천', null);
     }
-    if (_currentSub == 'purchase') {
-      return _wrapWithBack(const PurchasePredictionContent(), '번호 추천', null);
-    }
     if (_currentSub == 'ai_sub') {
       return _buildAiSubMenu();
     }
@@ -126,7 +140,7 @@ class RecommendScreenState extends State<RecommendScreen> {
   /// 메인 메뉴: 세금계산기 / 번호 추천
   Widget _buildMenu() {
     return Container(
-      color: const Color(0xFFF2F4F8),
+      color: Colors.transparent, // 홈 화면 배경 이미지가 추천 탭에서도 보이도록
       child: SingleChildScrollView(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -170,70 +184,18 @@ class RecommendScreenState extends State<RecommendScreen> {
                   const SizedBox(height: 20),
                   _buildSectionLabel('번호 추천'),
                   const SizedBox(height: 10),
-                  _buildMenuCard(
-                    icon: Icons.auto_awesome,
-                    iconColor: Colors.purple,
-                    bgColor: Colors.white,
-                    borderColor: const Color(0xFFE8EDF5),
-                    title: 'AI 조합번호 생성',
-                    subtitle: 'AI 법칙 기반 번호 추천',
-                    onTap: () => setState(() => _currentSub = 'ai_sub'),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildMenuCard(
-                    icon: Icons.casino,
-                    iconColor: Colors.orange,
-                    bgColor: Colors.white,
-                    borderColor: const Color(0xFFE8EDF5),
-                    title: '나만의 번호 생성',
-                    subtitle: '주사위를 굴려 랜덤 번호 조합',
-                    onTap: () => setState(() => _currentSub = 'random'),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildMenuCard(
-                    icon: Icons.analytics_rounded,
-                    iconColor: const Color(0xFF1565C0),
-                    bgColor: const Color(0xFFF0F4FF),
-                    borderColor: const Color(0xFFBBD6F5),
-                    title: '자리별 패턴 분석',
-                    subtitle: '지난 회차 기준 다음 회차 번호 통계 예측',
-                    onTap: () => Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => const AdminPatternAnalysisScreen(),
-                      ),
+                  for (final (i, m) in kRecommendNumberMenu.indexed) ...[
+                    if (i > 0) const SizedBox(height: 12),
+                    _buildMenuCard(
+                      icon: m.icon,
+                      iconColor: m.iconColor,
+                      bgColor: Colors.white,
+                      borderColor: const Color(0xFFE8EDF5),
+                      title: m.title,
+                      subtitle: m.subtitle,
+                      onTap: () => setState(() => _currentSub = m.sub),
                     ),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildMenuCard(
-                    icon: Icons.confirmation_number_rounded,
-                    iconColor: Colors.deepPurple,
-                    bgColor: Colors.white,
-                    borderColor: const Color(0xFFE8EDF5),
-                    title: '추천번호',
-                    subtitle: '기존 번호예측 · 구매예측 추천번호 (엔진별 분리 표시)',
-                    onTap: () => setState(() => _currentSub = 'numbers'),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildMenuCard(
-                    icon: Icons.groups_rounded,
-                    iconColor: const Color(0xFF00897B),
-                    bgColor: const Color(0xFFEFF8F6),
-                    borderColor: const Color(0xFFB2DFDB),
-                    title: '구매예측',
-                    subtitle: '다른 구매자가 고를 가능성이 높은 번호 특성 분석',
-                    onTap: () => setState(() => _currentSub = 'purchase'),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildMenuCard(
-                    icon: Icons.menu_book,
-                    iconColor: Colors.teal,
-                    bgColor: Colors.white,
-                    borderColor: const Color(0xFFE8EDF5),
-                    title: '번호별 의미',
-                    subtitle: '1~45 각 번호의 상징과 법칙 연계',
-                    onTap: () => setState(() => _currentSub = 'meaning'),
-                  ),
+                  ],
                 ],
               ),
             ),

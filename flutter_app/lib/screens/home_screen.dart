@@ -6,6 +6,8 @@ import 'package:url_launcher/url_launcher.dart';
 import '../services/supabase_service.dart';
 import '../services/ad_service.dart';
 import '../services/badge_service.dart';
+import '../services/ranking_extras_service.dart';
+import '../widgets/ranking_store_card.dart';
 import '../widgets/store_detail_popup.dart';
 import 'nearby_screen.dart';
 import 'region_screen.dart';
@@ -373,14 +375,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 if (index == 3 && _selectedBottomTab == 3) {
                   _recommendKey.currentState?.resetToMain();
                 }
-                // 같은 탭 재탭은 카운트 제외
-                if (index != _selectedBottomTab) {
-                  AdService.onMenuUsed(context, onAfter: () {
-                    if (mounted) setState(() => _selectedBottomTab = index);
-                  });
-                } else {
-                  setState(() => _selectedBottomTab = index);
-                }
+                // 탭 전환은 누른 즉시 반영한다. (이전: 전면광고가 닫히거나 표시 실패 콜백이 온 뒤에
+                // 탭을 바꿔, 사용자가 홈에 돌아와 있어도 몇 초~수십 초 뒤 '추천' 등으로 저절로 넘어갔다.)
+                // 광고는 전환 후에 띄우며, 광고 콜백은 화면을 이동시키지 않는다. 같은 탭 재탭은 카운트 제외.
+                final changed = index != _selectedBottomTab;
+                setState(() => _selectedBottomTab = index);
+                if (changed) AdService.onMenuUsed(context, onAfter: () {});
               },
               items: const [
                 BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: '홈'),
@@ -441,8 +441,8 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
   Set<String> _favorites = {};
   // 로그인 여부
   String _userId = '';
-  // 순위 변동 (dhlotteryCode -> 변동값, 양수=상승, 음수=하락, 0=유지)
-  Map<String, int> _rankChanges = {};
+  // 랭킹 카드 부가 정보 (주기 통계 · 관련 가설 수 · 지방장 연구 점수) — 목록 단위 일괄 조회
+  Map<String, RankingStoreExtras> _extras = {};
 
   // 1~3위 카드 빛나기 애니메이션
   late AnimationController _glowController;
@@ -499,7 +499,19 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
     notifyFavoritesChanged();
   }
 
+  Future<void> _loadExtras(List<Map<String, dynamic>> stores, {bool force = false}) async {
+    try {
+      final extras = await RankingExtrasService.load(stores, force: force);
+      if (!mounted) return;
+      setState(() => _extras = extras);
+    } catch (_) {
+      // 부가 정보는 선택 사항 — 실패해도 카드는 기본 정보로 표시
+    }
+  }
+
   Future<void> _loadRanking() async {
+    // 당겨서 새로고침이면 부가 정보 캐시도 무시
+    final isRefresh = _rankedStores.isNotEmpty;
     // 캐시 데이터가 있으면 먼저 표시 (로딩 스켈레톤 없이 즉시 보임)
     if (_rankedStores.isEmpty) {
       setState(() {
@@ -547,19 +559,7 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
       final allCodes = [...codes, ...internetStores.map((s) => s['dhlottery_code'] as String)];
 
       // 2. 순위 변동은 DB의 rank_change / rank_status 값을 그대로 사용
-      //    (recalculate_store_counts.py가 크롤링마다 DB에 저장)
-      final Map<String, int> changes = {};
-      for (final s in allStores) {
-        final code       = s['dhlottery_code'] as String;
-        final rankStatus = s['rank_status'] as String? ?? 'same';
-        final rankChange = (s['rank_change'] as num?)?.toInt() ?? 0;
-        // 홈 UI 호환: 'new' → 99, 'up' → 양수, 'down' → 음수, 'same' → 0
-        if (rankStatus == 'new') {
-          changes[code] = 99;
-        } else {
-          changes[code] = rankChange;
-        }
-      }
+      //    (recalculate_store_counts.py가 크롤링마다 DB에 저장) → RankingCardData.fromStore 에서 해석
 
       // 3. 배지 + 연금 + 크롤링 로그 — 병렬 실행
       List<Map<String, dynamic>> crawlLogs = [];
@@ -579,13 +579,14 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
         _pensionInfo = pensionData;
         _latestLottoRound = latestRound ?? 0;
         _latestPensionRound = latestPension ?? 0;
-        _rankChanges = changes;
         _badgeLoadFailed = BadgeService.loadFailed;
         _recentCrawlLogs = crawlLogs;
         _isLoading = false;
       });
       // 초기 로딩 완료 → 이후 전면광고 허용
       AdService.markInitialLoadComplete();
+      // 카드 부가 정보: 보이는 랭킹 목록 전체를 한 번에 조회 (실패 시 해당 값만 '-')
+      _loadExtras(stores, force: isRefresh);
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -1125,93 +1126,17 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
     }
   }
 
-  Widget _buildRankChange(int change) {
-    if (change == 0) {
-      return Text('─', style: TextStyle(fontSize: 11, color: Colors.grey.shade400));
-    } else if (change == 99) {
-      // 신규 진입
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-        decoration: BoxDecoration(
-          color: Colors.green.shade50,
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: Text(
-          'NEW',
-          style: TextStyle(fontSize: 9, color: Colors.green.shade700, fontWeight: FontWeight.bold),
-        ),
-      );
-    } else if (change > 0) {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.arrow_drop_up, color: Colors.red.shade600, size: 18),
-          Text(
-            '$change',
-            style: TextStyle(fontSize: 11, color: Colors.red.shade600, fontWeight: FontWeight.bold),
-          ),
-        ],
-      );
-    } else {
-      return Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.arrow_drop_down, color: Colors.blue.shade600, size: 18),
-          Text(
-            '${change.abs()}',
-            style: TextStyle(fontSize: 11, color: Colors.blue.shade600, fontWeight: FontWeight.bold),
-          ),
-        ],
-      );
-    }
-  }
-
   Widget _buildRankCard(int index, Map<String, dynamic> store) {
     final rank = index + 1;
-    final storeName = store['store_name'] ?? '';
-    final address = store['address'] ?? '';
-    final region = store['region'] ?? '';
-    final firstCount = store['first_count'] ?? 0;
-    final secondCount = store['second_count'] ?? 0;
-    final latestFirstWin = store['latest_first_win'];
+    final storeName = (store['store_name'] ?? '').toString();
+    final address = (store['address'] ?? '').toString();
     final dhlotteryCode = store['dhlottery_code'] as String;
     final isExpanded = _expandedCards.contains(dhlotteryCode);
 
-    // 배지 가져오기
+    // 배지 가져오기 (store_badges, BadgeService 캐시)
     final badges = BadgeService.getBadges(dhlotteryCode);
 
-    // 연금복권 정보
-    final pension = _pensionInfo[dhlotteryCode];
-    final pensionFirstCount = pension?['first_count'] ?? 0;
-    final pensionSecondCount = pension?['second_count'] ?? 0;
-
-    // 순위별 색상
-    Color rankColor;
-    Color rankBgColor;
-    IconData? medalIcon;
-    if (rank == 1) {
-      rankColor = Colors.white;
-      rankBgColor = const Color(0xFFFFD700);
-      medalIcon = Icons.emoji_events_rounded;
-    } else if (rank == 2) {
-      rankColor = Colors.white;
-      rankBgColor = const Color(0xFFA8A8A8);
-      medalIcon = Icons.emoji_events_rounded;
-    } else if (rank == 3) {
-      rankColor = Colors.white;
-      rankBgColor = const Color(0xFFCD7F32);
-      medalIcon = Icons.emoji_events_rounded;
-    } else {
-      rankColor = Colors.grey.shade700;
-      rankBgColor = Colors.grey.shade200;
-      medalIcon = null;
-    }
-
-    // 1~3위: 순차 빛나기 (각 1초씩 오프셋)
-    final bool isTop3 = rank <= 3;
-    final double glowOffset = rank == 1 ? 0.0 : (rank == 2 ? 0.33 : 0.66);
-
-    // 연속당첨 배지 분리 (지점명 아래 표시)
+    // 연속당첨 배지 분리 (지점명 아래 강조 칩)
     // "이번 달 N회 당첨" 배지가 여러 개면 가장 높은 것만 표시
     final allStreakBadges = badges.where((b) => b.type == StoreBadgeType.streak).toList();
     final monthWinBadges = allStreakBadges.where((b) => b.label.contains('이번 달')).toList();
@@ -1224,276 +1149,112 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
         return (int.tryParse(aNum ?? '0') ?? 0) >= (int.tryParse(bNum ?? '0') ?? 0) ? a : b;
       });
     }
-    final streakBadges = [if (topMonthBadge != null) topMonthBadge!, ...otherStreakBadges];
+    final streakBadges = [?topMonthBadge, ...otherStreakBadges];
     final otherBadges = badges.where((b) => b.type != StoreBadgeType.streak).toList();
 
-    // 금/은/동 카드 그라데이션
-    List<Color>? cardGradient;
-    if (rank == 1) {
-      cardGradient = [const Color(0xFFFFFDF0), const Color(0xFFFFF8E1), const Color(0xFFFFF0C0)];
-    } else if (rank == 2) {
-      cardGradient = [const Color(0xFFFAFAFA), const Color(0xFFF0F0F0), const Color(0xFFE8E8E8)];
-    } else if (rank == 3) {
-      cardGradient = [const Color(0xFFFDF8F4), const Color(0xFFF5EDE6), const Color(0xFFEDE0D4)];
-    }
+    final data = RankingCardData.fromStore(rank, store, pension: _pensionInfo[dhlotteryCode]);
+    final tier = data.tier;
 
-    Widget cardWidget = GestureDetector(
+    final Widget cardWidget = RankingStoreCard(
+      key: ValueKey('ranking_card_$dhlotteryCode'),
+      data: data,
+      extras: _extras[dhlotteryCode],
+      badges: otherBadges,
+      highlightBadges: streakBadges,
+      isFavorite: _favorites.contains(dhlotteryCode),
+      isExpanded: isExpanded,
+      latestRound: _latestLottoRound,
+      glow: _glowController,
       onTap: () => _toggleCard(dhlotteryCode),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        margin: const EdgeInsets.only(bottom: 10),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          gradient: isTop3
-              ? LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: cardGradient!,
-                )
-              : null,
-          color: isTop3 ? null : Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: isTop3
-              ? Border.all(color: rankBgColor.withValues(alpha: 0.5), width: 2)
-              : Border.all(color: isExpanded ? Colors.blue.shade200 : Colors.grey.shade200, width: 1),
-          boxShadow: isTop3
-              ? [
-                  BoxShadow(
-                    color: rankBgColor.withValues(alpha: 0.25),
-                    blurRadius: 14,
-                    spreadRadius: 1,
-                    offset: const Offset(0, 3),
-                  ),
-                ]
-              : [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.04),
-                    blurRadius: 4,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
-        ),
-        child: Column(
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 순위 메달
-                Container(
-                  width: isTop3 ? 42 : 36,
-                  height: isTop3 ? 42 : 36,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    gradient: isTop3
-                        ? LinearGradient(
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                            colors: [
-                              rankBgColor,
-                              rankBgColor.withValues(alpha: 0.7),
-                              rankBgColor,
-                            ],
-                          )
-                        : null,
-                    color: isTop3 ? null : rankBgColor,
-                    shape: BoxShape.circle,
-                    border: isTop3 ? Border.all(color: rankBgColor.withValues(alpha: 0.8), width: 2) : null,
-                    boxShadow: isTop3
-                        ? [BoxShadow(color: rankBgColor.withValues(alpha: 0.4), blurRadius: 6, spreadRadius: 1)]
-                        : null,
-                  ),
-                  child: Text(
-                    '$rank',
-                    style: TextStyle(
-                      color: rankColor,
-                      fontWeight: FontWeight.w900,
-                      fontSize: isTop3 ? 15 : 13,
-                      height: 1,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                // 지점 정보
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        storeName,
-                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (streakBadges.isNotEmpty) ...[
-                        const SizedBox(height: 3),
-                        Wrap(
-                          spacing: 4,
-                          runSpacing: 4,
-                          children: streakBadges.map((b) => _buildStreakBadgeGlow(b)).toList(),
-                        ),
-                      ],
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          if (_latestLottoRound > 0)
-                            Text(
-                              '$_latestLottoRound회 당첨적용',
-                              style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
-                            ),
-                          if (_latestLottoRound > 0) const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: Colors.grey.shade100,
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Text(region, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        address,
-                        style: TextStyle(fontSize: 12, color: Colors.grey.shade500),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      const SizedBox(height: 8),
-                      // 연금복권 배지
-                      if (pensionFirstCount > 0 || pensionSecondCount > 0) ...[
-                        const SizedBox(height: 6),
-                        Row(
-                          children: [
-                            Icon(Icons.monetization_on, size: 14, color: Colors.green.shade600),
-                            const SizedBox(width: 4),
-                            Text('연금복권', style: TextStyle(fontSize: 11, color: Colors.green.shade700, fontWeight: FontWeight.w600)),
-                            const SizedBox(width: 6),
-                            if (pensionFirstCount > 0)
-                              _buildInfoChip('1등 ${pensionFirstCount}회', Colors.green.shade700, Colors.green.shade50),
-                            if (pensionFirstCount > 0 && pensionSecondCount > 0)
-                              const SizedBox(width: 4),
-                            if (pensionSecondCount > 0)
-                              _buildInfoChip('2등 ${pensionSecondCount}회', Colors.teal.shade700, Colors.teal.shade50),
-                          ],
-                        ),
-                      ],
-                      // store_badges 배지 (연속당첨은 지점명 옆에 이미 표시)
-                      if (otherBadges.isNotEmpty) ...[
-                        const SizedBox(height: 6),
-                        Wrap(
-                          spacing: 6,
-                          runSpacing: 4,
-                          children: otherBadges.map((b) => _buildBadgeChip(b)).toList(),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-                // 즐겨찾기 + 순위변동 + 확장 아이콘
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.start,
-                  children: [
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => _toggleFavorite(dhlotteryCode),
-                      child: Padding(
-                        padding: const EdgeInsets.all(6),
-                        child: Icon(
-                          _favorites.contains(dhlotteryCode) ? Icons.star : Icons.star_border,
-                          color: _favorites.contains(dhlotteryCode) ? Colors.amber : Colors.grey.shade400,
-                          size: 28,
-                        ),
-                      ),
-                    ),
-                    if (_rankChanges.containsKey(dhlotteryCode))
-                      _buildRankChange(_rankChanges[dhlotteryCode]!),
-                    const SizedBox(height: 2),
-                    Icon(
-                      isExpanded ? Icons.expand_less : Icons.expand_more,
-                      color: Colors.grey.shade400,
-                      size: 20,
-                    ),
-                  ],
-                ),
-              ],
-            ),
-            // ── 확장 영역 ──
-            if (isExpanded) ...[
-              const SizedBox(height: 12),
-              Divider(height: 1, color: Colors.grey.shade200),
-              const SizedBox(height: 12),
-              // 판매점 평가
-              _InlineReviewSection(dhlotteryCode: dhlotteryCode),
-              const SizedBox(height: 12),
-              // 지도 버튼
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _openMap(mapType: 'naver', storeName: storeName, address: address),
-                      icon: const Icon(Icons.map_outlined, size: 16),
-                      label: const Text('네이버지도', style: TextStyle(fontSize: 13)),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _openMap(mapType: 'kakao', storeName: storeName, address: address),
-                      icon: const Icon(Icons.place_outlined, size: 16),
-                      label: const Text('카카오지도', style: TextStyle(fontSize: 13)),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 10),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              // 당첨 회차 목록
-              _buildWinningHistory(dhlotteryCode),
-            ],
-          ],
-        ),
-      ),
+      onFavoriteTap: () => _toggleFavorite(dhlotteryCode),
+      onMapTap: address.isEmpty
+          ? null
+          : () => _openMap(mapType: 'naver', storeName: storeName, address: address),
+      expandedChild: isExpanded ? _buildExpandedDetail(dhlotteryCode, storeName, address) : null,
+      // 엔진·지방장 연구 정보는 관리자 메뉴 전용 → 홈 랭킹 카드에는 표시하지 않는다
+      showResearch: false,
     );
 
-    // 1~3위: 순차적 빛나기 효과 (shimmer border)
-    if (isTop3) {
-      return AnimatedBuilder(
-        animation: _glowController,
-        builder: (context, child) {
-          // 순차 오프셋: 1위→2위→3위 순서로 빛남
-          final t = (_glowController.value + glowOffset) % 1.0;
-          // 0.0~0.3 구간에서 빛나고 나머지는 안 빛남
-          final glowIntensity = t < 0.3 ? (0.5 + 0.5 * (1 - (t / 0.3 - 0.5).abs() * 2)).clamp(0.0, 1.0) : 0.0;
-
-          return Container(
-            margin: const EdgeInsets.only(bottom: 0),
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(15),
-              boxShadow: glowIntensity > 0.05
-                  ? [
-                      BoxShadow(
-                        color: rankBgColor.withValues(alpha: 0.3 * glowIntensity),
-                        blurRadius: 16 * glowIntensity,
-                        spreadRadius: 2 * glowIntensity,
-                      ),
-                    ]
-                  : null,
-            ),
-            child: child,
-          );
-        },
-        child: cardWidget,
+    // 1~3위: 순차적 빛나기 효과 (각 1초씩 오프셋)
+    if (tier != RankTier.plain) {
+      final double glowOffset = rank == 1 ? 0.0 : (rank == 2 ? 0.33 : 0.66);
+      final Color glowColor = rank == 1
+          ? const Color(0xFFFFD700)
+          : (rank == 2 ? const Color(0xFFA8A8A8) : const Color(0xFFCD7F32));
+      return Padding(
+        padding: const EdgeInsets.only(bottom: 12),
+        child: AnimatedBuilder(
+          animation: _glowController,
+          builder: (context, child) {
+            // 순차 오프셋: 1위→2위→3위 순서로 빛남, 0.0~0.3 구간에서만 빛남
+            final t = (_glowController.value + glowOffset) % 1.0;
+            final glowIntensity = t < 0.3 ? (0.5 + 0.5 * (1 - (t / 0.3 - 0.5).abs() * 2)).clamp(0.0, 1.0) : 0.0;
+            return DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(18),
+                boxShadow: glowIntensity > 0.05
+                    ? [
+                        BoxShadow(
+                          color: glowColor.withValues(alpha: 0.3 * glowIntensity),
+                          blurRadius: 16 * glowIntensity,
+                          spreadRadius: 2 * glowIntensity,
+                        ),
+                      ]
+                    : null,
+              ),
+              child: child,
+            );
+          },
+          child: cardWidget,
+        ),
       );
     }
 
-    return cardWidget;
+    return Padding(padding: const EdgeInsets.only(bottom: 12), child: cardWidget);
+  }
+
+  /// 카드 확장 영역 (기존 기능: 판매점 평가 · 지도 버튼 · 당첨 이력 + 지방장 연구 근거)
+  Widget _buildExpandedDetail(String dhlotteryCode, String storeName, String address) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+
+        // 판매점 평가
+        _InlineReviewSection(dhlotteryCode: dhlotteryCode),
+        const SizedBox(height: 12),
+        // 지도 버튼
+        Row(
+          children: [
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => _openMap(mapType: 'naver', storeName: storeName, address: address),
+                icon: const Icon(Icons.map_outlined, size: 16),
+                label: const Text('네이버지도', style: TextStyle(fontSize: 13)),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: OutlinedButton.icon(
+                onPressed: () => _openMap(mapType: 'kakao', storeName: storeName, address: address),
+                icon: const Icon(Icons.place_outlined, size: 16),
+                label: const Text('카카오지도', style: TextStyle(fontSize: 13)),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 10),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        // 당첨 회차 목록
+        _buildWinningHistory(dhlotteryCode),
+      ],
+    );
   }
 
   Widget _buildInternetSection() {
@@ -1664,69 +1425,6 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
           color: isFirst ? const Color(0xFFB8860B) : Colors.grey.shade600,
         ),
       ),
-    );
-  }
-
-  Widget _buildInfoChip(String text, Color textColor, Color bgColor) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(6),
-      ),
-      child: Text(
-        text,
-        style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: textColor),
-      ),
-    );
-  }
-
-  /// 연속당첨 배지 - 빛나는 특별 효과
-  Widget _buildStreakBadgeGlow(StoreBadge badge) {
-    return AnimatedBuilder(
-      animation: _glowController,
-      builder: (context, child) {
-        final t = (_glowController.value * 2) % 1.0;
-        final glow = (0.4 + 0.6 * (0.5 + 0.5 * (t < 0.5 ? t * 2 : 2 - t * 2))).clamp(0.0, 1.0);
-        return Container(
-          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
-          decoration: BoxDecoration(
-            gradient: LinearGradient(
-              colors: [
-                const Color(0xFFFF6D00).withValues(alpha: 0.15 + 0.1 * glow),
-                const Color(0xFFFFAB00).withValues(alpha: 0.15 + 0.1 * glow),
-              ],
-            ),
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: Color.lerp(const Color(0xFFFF8F00), const Color(0xFFFFD600), glow)!.withValues(alpha: 0.8),
-              width: 1.5,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFFFFAB00).withValues(alpha: 0.3 * glow),
-                blurRadius: 6 * glow,
-                spreadRadius: 1 * glow,
-              ),
-            ],
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.local_fire_department, size: 12, color: Color.lerp(const Color(0xFFD32F2F), const Color(0xFFFF5252), glow)),
-              const SizedBox(width: 2),
-              Text(
-                badge.label,
-                style: const TextStyle(
-                  fontSize: 10,
-                  fontWeight: FontWeight.w800,
-                  color: Color(0xFFE65100),
-                ),
-              ),
-            ],
-          ),
-        );
-      },
     );
   }
 

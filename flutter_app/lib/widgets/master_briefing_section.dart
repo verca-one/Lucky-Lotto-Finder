@@ -4,9 +4,12 @@ import 'package:flutter/material.dart';
 import '../screens/nearby_engine_stores_screen.dart';
 import '../services/research/agent_research_repository.dart' show agentModelLabel;
 import '../services/research/agent_verdicts.dart';
+import '../services/research/final_recommendation_engine.dart';
 import '../services/research/master_briefing_service.dart';
+import '../services/store_map_launcher.dart';
 import 'agent_store_evidence_widgets.dart';
 import 'purchase_recommend_card.dart' show lottoBall, statusChip, popularityValidationLine;
+import 'store_map_buttons.dart';
 
 const _purple = Color(0xFF4527A0);
 
@@ -46,6 +49,10 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
               child: Text('주요 브리핑을 불러오지 못했습니다: ${snap.error}', style: const TextStyle(fontSize: 12))));
         }
         final b = snap.data!;
+        if (b.deniedMessage != null) {
+          return _box(Padding(padding: const EdgeInsets.all(14),
+              child: Text('주요 브리핑: ${b.deniedMessage}', style: const TextStyle(fontSize: 12))));
+        }
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             const Text('주요 브리핑', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: _purple)),
@@ -105,27 +112,74 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
         ]),
       );
 
-  // ① 엔진 추천번호
+  // ① 엔진 추천번호 — 공식 최종 예측 5세트 (패턴 분석·추천번호 화면과 같은 스냅샷)
   Widget _engineCard(MasterBriefing b) {
-    final e = b.engine;
+    final o = b.official;
+    final f = o != null && o.hasSets ? o.rec : null;
     const color = Color(0xFF1565C0);
     return _box(Padding(
       padding: const EdgeInsets.all(14),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         _header('1', '${b.targetRound}회 엔진 추천번호', color,
-            chip: e == null ? null : statusChip(e.baseLive ? 'Number 엔진 · 실전' : '실전 아님', e.baseLive ? color : Colors.grey)),
+            chip: f == null
+                ? null
+                : statusChip(f.verifiedEdge ? '검증 신호 반영' : '검증된 당첨확률 우위 없음',
+                    f.verifiedEdge ? Colors.teal.shade700 : Colors.grey)),
         const SizedBox(height: 4),
-        Text(e?.note ?? '엔진 예측을 불러오지 못했습니다.', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+        if (o != null && f != null)
+          Text(officialProvenanceLine(o),
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: Colors.grey.shade700, height: 1.4)),
+        if (o?.statusNote != null)
+          Text(o!.statusNote!, style: TextStyle(fontSize: 11, color: Colors.orange.shade900, height: 1.4)),
         const SizedBox(height: 8),
-        if (e == null || e.baseSets.isEmpty)
-          Text('${b.targetRound}회 엔진 추천번호가 아직 없습니다. 새 회차 처리 후 자동 생성됩니다.',
+        if (f == null)
+          Text(
+              b.officialError != null
+                  ? '${b.targetRound}회 최종 예측을 불러오지 못했습니다: ${b.officialError}'
+                  : '${b.targetRound}회 $kOfficialPreparingMessage — 다른 회차 번호를 대신 표시하지 않습니다.',
               style: TextStyle(fontSize: 12, color: Colors.orange.shade900))
-        else
-          ...e.baseSets.asMap().entries.map((s) => _setRow(s.key + 1, s.value, color)),
-        Text('마스터, 엔진 번호는 과거 지표 방향으로 고른 조합입니다. 순방향 검증에서 무작위보다 나은 적중은 확인되지 않았습니다.',
-            style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700, height: 1.4)),
+        else ...[
+          ...f.sets.asMap().entries.map((s) => _setRow(s.key + 1, s.value, color)),
+          Text('마스터, ${f.note}', style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700, height: 1.4)),
+        ],
+        const SizedBox(height: 4),
+        _numberBaseResearchTile(b),
       ]),
     ));
+  }
+
+  // ① 아래 — 연구용 Number 엔진 기본 조합 (기본 접힘. 펼쳐도 스크롤 이동 없음)
+  Widget _numberBaseResearchTile(MasterBriefing b) {
+    final e = b.engine;
+    const color = Color(0xFF1565C0);
+    return Theme(
+      data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+      child: ExpansionTile(
+        initiallyExpanded: false,
+        tilePadding: EdgeInsets.zero,
+        childrenPadding: const EdgeInsets.only(bottom: 4),
+        expandedCrossAxisAlignment: CrossAxisAlignment.start,
+        title: Text('연구용 · Number 엔진 기본 조합 (최종 추천 아님)',
+            style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Colors.grey.shade700)),
+        children: [
+          if (e != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: statusChip(e.baseLive ? 'Number 엔진 · 실전' : '실전 아님', e.baseLive ? color : Colors.grey),
+            ),
+          const SizedBox(height: 4),
+          Text(e?.note ?? '엔진 예측을 불러오지 못했습니다.', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+          const SizedBox(height: 8),
+          if (e == null || e.baseSets.isEmpty)
+            Text('${b.targetRound}회 Number 엔진 기본 조합이 아직 없습니다. 새 회차 처리 후 자동 생성됩니다.',
+                style: TextStyle(fontSize: 12, color: Colors.orange.shade900))
+          else
+            ...e.baseSets.asMap().entries.map((s) => _setRow(s.key + 1, s.value, Colors.grey.shade600)),
+          Text('마스터, 엔진 번호는 과거 지표 방향으로 고른 조합입니다. 순방향 검증에서 무작위보다 나은 적중은 확인되지 않았습니다.',
+              style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700, height: 1.4)),
+        ],
+      ),
+    );
   }
 
   // ② 구매예측 번호 — 검증 통과 시에만 표시 (미통과면 카드 자체를 생략)
@@ -234,6 +288,16 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
                     style: TextStyle(fontSize: 9.5, color: Colors.grey.shade600)),
                 const SizedBox(height: 3),
                 AgentEvidenceCompact(evidence: se, item: r),
+                const SizedBox(height: 8),
+                StoreMapButtons(
+                  target: StoreMapTarget(
+                    storeId: r.store.code,
+                    name: r.store.name,
+                    address: r.store.address,
+                    lat: r.store.point?.latitude,
+                    lng: r.store.point?.longitude,
+                  ),
+                ),
               ]),
             );
           }),
@@ -259,7 +323,11 @@ class MasterBriefingCompact extends StatelessWidget {
         }
         final b = snap.data;
         if (b == null) return const SizedBox.shrink();
-        final eng = b.engine?.baseSets.isNotEmpty == true ? b.engine!.baseSets.first : null;
+        if (b.deniedMessage != null) {
+          return Text('주요 브리핑: ${b.deniedMessage}', style: const TextStyle(fontSize: 12, color: Color(0xFF888888)));
+        }
+        // ① 과 같은 공식 최종 예측 1세트
+        final eng = b.official?.hasSets == true ? b.official!.rec!.sets.first : null;
         final pur = b.purchase?.validated == true ? b.purchase!.recommendations.first.numbers : null;
         Widget line(String label, List<int>? nums, Color c) => Padding(
               padding: const EdgeInsets.only(bottom: 4),

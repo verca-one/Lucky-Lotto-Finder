@@ -1,6 +1,9 @@
 // 마스터 주요 브리핑 — 다음 회차 엔진 추천번호 · 구매예측 번호 · 이번 주 엔진 추천 명당
 //
 // 모두 DB 저장 결과와 기존 엔진 계산을 그대로 사용한다(새 계산 규칙 없음).
+// ① 엔진 추천번호 = 공식 최종 예측(OfficialPredictionService, 패턴 분석·추천번호 화면과 같은 스냅샷).
+//   Number 엔진 기본 조합(RpaLiveNumbers)은 연구용으로만 함께 담는다.
+// 관리자 전용: 비관리자는 조회하지 않는다(AdminGate — 앱 내부 확인, DB 수준 강제는 Supabase Auth 필요).
 // 명당 선정 규칙(사전 고정) — 지방장 파이프라인 우선:
 //   1) 최신 live 중앙 엔진(research_agent_central)의 주목 지역 상위 5곳 각각의 지방장 납품 1위
 //      (현재 모델 research_agent_deliveries, rank = 1)
@@ -15,11 +18,13 @@ import 'package:flutter/foundation.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../admin_gate.dart';
 import '../route/region_research_repository.dart';
 import '../rpa_live_numbers.dart';
 import '../supabase_service.dart';
 import 'agent_research_repository.dart';
 import 'agent_store_evidence.dart';
+import 'final_recommendation_engine.dart';
 import 'purchase_prediction_engine.dart';
 import 'research_scheduler.dart';
 
@@ -105,6 +110,12 @@ List<AgentPickCandidate> selectAgentPicks({
 class MasterBriefing {
   final int targetRound;
   final int latestRound;
+
+  /// ① 공식 최종 예측 (조회 실패 시 null → [officialError])
+  final OfficialPrediction? official;
+  final String? officialError;
+
+  /// 연구용 · Number 엔진 기본 조합 (최종 추천 아님)
   final RpaLiveNumbers? engine;
   final PurchaseModelReport? purchase;
   final List<MasterStorePick> stores;
@@ -120,10 +131,13 @@ class MasterBriefing {
 
   /// 명당별 지방장 근거 (조회 실패 시 null)
   final AgentEvidenceBundle? evidence;
+
+  /// 비관리자 요청 → 조회하지 않음 ('관리자 전용')
+  final String? deniedMessage;
   const MasterBriefing({
-    required this.targetRound, required this.latestRound, this.engine, this.purchase,
+    required this.targetRound, required this.latestRound, this.official, this.officialError, this.engine, this.purchase,
     this.stores = const [], this.storeEngineRegions = const [], this.storeEngineTrainingEnd, this.storeError,
-    this.agentRef, this.fallbackReason, this.evidence,
+    this.agentRef, this.fallbackReason, this.evidence, this.deniedMessage,
   });
 
   bool get agentPipeline => agentRef != null && stores.any((s) => s.source != MasterPickSource.legacy);
@@ -145,6 +159,10 @@ class MasterBriefingService {
   DateTime? _cachedAt;
 
   Future<MasterBriefing> load({bool force = false}) async {
+    // 관리자 전용 (캐시보다 먼저 확인)
+    if (!await AdminGate.isAdmin()) {
+      return const MasterBriefing(targetRound: 0, latestRound: 0, deniedMessage: kAdminOnlyMessage);
+    }
     if (!force && _cache != null && _cachedAt != null &&
         DateTime.now().difference(_cachedAt!) < const Duration(minutes: 10)) {
       return _cache!;
@@ -153,6 +171,14 @@ class MasterBriefingService {
     final latest = recent.isEmpty ? 0 : recent.first.round;
     final target = latest + 1;
 
+    OfficialPrediction? official;
+    String? officialError;
+    try {
+      official = await OfficialPredictionService.instance.load(target, force: force);
+    } catch (e) {
+      officialError = '$e';
+      debugPrint('[Master] official: $e');
+    }
     RpaLiveNumbers? engine;
     try { engine = await RpaLiveNumbers.load(target); } catch (e) { debugPrint('[Master] engine: $e'); }
     PurchaseModelReport? purchase;
@@ -205,7 +231,8 @@ class MasterBriefingService {
     }
 
     _cache = MasterBriefing(
-      targetRound: target, latestRound: latest, engine: engine, purchase: purchase,
+      targetRound: target, latestRound: latest, official: official, officialError: officialError,
+      engine: engine, purchase: purchase,
       stores: picks, storeEngineRegions: regions, storeEngineTrainingEnd: storeTe, storeError: storeErr,
       agentRef: agentRef, fallbackReason: fallbackReason, evidence: evidence,
     );

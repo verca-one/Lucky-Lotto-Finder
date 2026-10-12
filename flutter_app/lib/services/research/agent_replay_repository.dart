@@ -13,6 +13,7 @@ import 'dart:math' as math;
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../admin_gate.dart';
 import '../route/region_research_repository.dart'
     show ResearchAvailability, ResearchLoad, RegionResearchRepository, kResearchNoData;
 import 'agent_research_repository.dart'
@@ -891,6 +892,7 @@ class AgentReplayRepository {
   /// research_replay_runs 전체 + 예측 행 존재 여부로 기본 실행을 정한다 ([pickDefaultReplayRun]). 5분 캐시.
   /// 실패해도 'ag-1.1-r1' 을 돌려준다.
   static Future<String> resolveCurrentRunId({SupabaseClient? client, bool force = false}) async {
+    if (!await AdminGate.isAdmin()) return _currentRunId; // 관리자 전용 (조회·캐시하지 않음)
     const key = 'currentRun';
     if (!force) {
       final c = _cached<String>(key);
@@ -946,10 +948,18 @@ class AgentReplayRepository {
       ResearchLoad<T>(empty ? ResearchAvailability.noData : ResearchAvailability.available, data,
           message: empty ? kReplayNoData : null);
 
+  /// 관리자 전용 — 비관리자는 조회하지 않고 '관리자 전용' 상태(빈 값)를 돌려준다. null = 통과.
+  /// 앱 내부 확인일 뿐이다. DB 수준 강제는 Supabase Auth 도입 후 RLS 로만 가능하며 현재 anon RLS 는 읽기를 허용한다.
+  static Future<ResearchLoad<T>?> _adminOnly<T>(T empty) async => await AdminGate.isAdmin()
+      ? null
+      : ResearchLoad<T>(ResearchAvailability.notApplied, empty, message: kAdminOnlyMessage);
+
   // ── 실행 · 회차 목록 ────────────────────────────────────────────────────
 
   /// research_replay_runs 전체 (replay_run_id 오름차순). 5분 캐시.
   Future<ResearchLoad<List<ReplayRun>>> loadRuns({bool force = false}) async {
+    final denied = await _adminOnly<List<ReplayRun>>(const <ReplayRun>[]);
+    if (denied != null) return denied;
     const key = 'runs';
     if (!force) {
       final c = _cached<ResearchLoad<List<ReplayRun>>>(key);
@@ -971,6 +981,7 @@ class AgentReplayRepository {
 
   /// [id] 실행에 동결 예측 행이 있는지 (오류 → false)
   Future<bool> runHasRows(String id) async {
+    if (!await AdminGate.isAdmin()) return false; // 관리자 전용
     try {
       final rows = await _db
           .from('research_replay_predictions')
@@ -984,6 +995,8 @@ class AgentReplayRepository {
   }
 
   Future<ResearchLoad<ReplayRun?>> loadRun() async {
+    final denied = await _adminOnly<ReplayRun?>(null);
+    if (denied != null) return denied;
     try {
       final rows = await _db.from('research_replay_runs').select().eq('replay_run_id', runId).limit(1);
       final l = List<Map<String, dynamic>>.from(rows);
@@ -995,6 +1008,8 @@ class AgentReplayRepository {
 
   /// DB 사용량 (research_replay_runs.stats.usage 만 조회). data null = 측정 전. 5분 캐시.
   Future<ResearchLoad<DbUsage?>> loadDbUsage({bool force = false}) async {
+    final denied = await _adminOnly<DbUsage?>(null);
+    if (denied != null) return denied;
     final key = 'dbUsage_$runId';
     if (!force) {
       final c = _cached<ResearchLoad<DbUsage?>>(key);
@@ -1019,6 +1034,8 @@ class AgentReplayRepository {
 
   /// 회차 목록 (target_round 오름차순, 가벼운 컬럼만). 5분 캐시.
   Future<ResearchLoad<List<ReplayPrediction>>> loadRounds({bool force = false}) async {
+    final denied = await _adminOnly<List<ReplayPrediction>>(const <ReplayPrediction>[]);
+    if (denied != null) return denied;
     final key = 'rounds_$runId';
     if (!force) {
       final c = _cached<ResearchLoad<List<ReplayPrediction>>>(key);
@@ -1053,6 +1070,8 @@ class AgentReplayRepository {
 
   /// 예측(동결) + 실제 결과 + 중앙 검증 + 사전·사후 브리핑
   Future<ResearchLoad<ReplayRoundDetail?>> loadRoundDetail(int target) async {
+    final denied = await _adminOnly<ReplayRoundDetail?>(null);
+    if (denied != null) return denied;
     try {
       final pr = List<Map<String, dynamic>>.from(await _db
           .from('research_replay_predictions')
@@ -1092,6 +1111,8 @@ class AgentReplayRepository {
 
   /// 최신 사후 브리핑 (target_round 내림차순 1건). 5분 캐시.
   Future<ResearchLoad<ReplayBriefing?>> loadLatestPostBriefing({bool force = false}) async {
+    final denied = await _adminOnly<ReplayBriefing?>(null);
+    if (denied != null) return denied;
     final key = 'latestPost_$runId';
     if (!force) {
       final c = _cached<ResearchLoad<ReplayBriefing?>>(key);
@@ -1123,6 +1144,8 @@ class AgentReplayRepository {
   /// 한 지방장의 회차별 동결 납품 + 검증 (최신순, [page] 0부터, [pageSize] 건씩)
   Future<ResearchLoad<List<ReplayAgentRound>>> loadAgentHistory(String agentId,
       {int page = 0, int pageSize = 20}) async {
+    final denied = await _adminOnly<List<ReplayAgentRound>>(const <ReplayAgentRound>[]);
+    if (denied != null) return denied;
     try {
       final from = page * pageSize;
       final preds = List<Map<String, dynamic>>.from(await _db
@@ -1150,6 +1173,8 @@ class AgentReplayRepository {
 
   /// (지방장/지역, 목표 회차) 의 동결 추천 + 검증(있으면)
   Future<ResearchLoad<ReplayAgentRound?>> loadFrozen(String agentId, int target) async {
+    final denied = await _adminOnly<ReplayAgentRound?>(null);
+    if (denied != null) return denied;
     try {
       final preds = List<Map<String, dynamic>>.from(await _db
           .from('research_replay_agent_predictions')
@@ -1175,6 +1200,8 @@ class AgentReplayRepository {
 
   /// 목표 회차의 중앙 예측 (지역 순위 포함, 지역 추천 화면의 '당시 동결' 평가용)
   Future<ResearchLoad<ReplayPrediction?>> loadPredictionWithRegions(int target) async {
+    final denied = await _adminOnly<ReplayPrediction?>(null);
+    if (denied != null) return denied;
     final key = 'predRegions_${runId}_$target';
     final c = _cached<ResearchLoad<ReplayPrediction?>>(key);
     if (c != null) return c;
@@ -1196,6 +1223,8 @@ class AgentReplayRepository {
 
   /// 목표 회차의 실제 결과 (research_replay_results). 없으면 null (= 추첨 결과 반영 전). 5분 캐시.
   Future<ResearchLoad<ReplayResult?>> loadResult(int target) async {
+    final denied = await _adminOnly<ReplayResult?>(null);
+    if (denied != null) return denied;
     final key = 'result_${runId}_$target';
     final c = _cached<ResearchLoad<ReplayResult?>>(key);
     if (c != null) return c;
@@ -1247,6 +1276,8 @@ class AgentReplayRepository {
     bool appliedLiveOnly = false,
     int limit = 300,
   }) async {
+    final denied = await _adminOnly<List<AgentHypothesis>>(const <AgentHypothesis>[]);
+    if (denied != null) return denied;
     try {
       var q = _db.from('research_replay_hypotheses').select().eq('replay_run_id', runId);
       if (status != null) q = q.eq('status', status);
@@ -1264,6 +1295,8 @@ class AgentReplayRepository {
 
   /// 판매점 단위 유형 중 검증 통과(passed/combined) 가설 수 (최대 50까지 셈). 5분 캐시.
   Future<ResearchLoad<int>> countPassedStoreLevel() async {
+    final denied = await _adminOnly<int>(0);
+    if (denied != null) return denied;
     final key = 'passedStore_$runId';
     final c = _cached<ResearchLoad<int>>(key);
     if (c != null) return c;
@@ -1286,6 +1319,8 @@ class AgentReplayRepository {
 
   /// 가설 상태 변화 이력 (round 오름차순)
   Future<ResearchLoad<List<ReplayHypothesisEvent>>> loadHypothesisEvents(String hypothesisId) async {
+    final denied = await _adminOnly<List<ReplayHypothesisEvent>>(const <ReplayHypothesisEvent>[]);
+    if (denied != null) return denied;
     try {
       final rows = await _db
           .from('research_replay_hypothesis_events')
@@ -1305,6 +1340,8 @@ class AgentReplayRepository {
 
   /// 전 회차 중앙 검증 지표 + 사후 브리핑 지방장 합계 → 누적 시계열. 5분 캐시.
   Future<ResearchLoad<ReplayCumulative>> loadCumulative({bool force = false}) async {
+    final denied = await _adminOnly<ReplayCumulative>(const ReplayCumulative());
+    if (denied != null) return denied;
     final key = 'cumulative_$runId';
     if (!force) {
       final c = _cached<ResearchLoad<ReplayCumulative>>(key);
@@ -1363,7 +1400,7 @@ class AgentReplayRepository {
 
 /// 상태 → 문구 (재현 전용)
 String replayStateLabel(ResearchAvailability s, {String? message}) => switch (s) {
-      ResearchAvailability.notApplied => kReplayNotApplied,
+      ResearchAvailability.notApplied => message == kAdminOnlyMessage ? kAdminOnlyMessage : kReplayNotApplied,
       ResearchAvailability.noData => '$kReplayNoData ($kResearchNoData)',
       ResearchAvailability.available => '기록 있음',
       ResearchAvailability.error => '조회 오류${message == null ? '' : ': $message'}',

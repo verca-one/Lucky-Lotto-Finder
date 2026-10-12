@@ -15,6 +15,12 @@
 //   R4 점수 내림차순(동점은 번호 사전순) → 세트 간 중복 번호 ≤ 2 유지하며 5세트 선정 (난수 없음)
 //   R5 결과는 (버전, 학습 회차, 목표 회차)별로 저장하며 덮어쓰지 않음
 // 내부 점수는 당첨확률이 아님. 검증된 당첨확률 우위가 없으면 그 사실을 함께 저장한다.
+//
+// 공식 최종 예측(OfficialPredictionService) — 패턴 분석 · 엔진 브리핑 · 추천번호 화면의 단일 출처:
+//   · 목표 회차의 최신 number_base 학습 회차(latestTrain) 스냅샷이 저장돼 있으면 그것이 공식
+//   · 없고 추첨 전이면 latestTrain 기준으로 새 스냅샷을 만들어 저장(ignoreDuplicates, 기존 행 보존)
+//   · 추첨 후면 다시 만들지 않고 최신 저장본을 '추첨 후 조회 · 재생성 안 함'으로 표시
+//   · 아무것도 없으면 '해당 회차 최종 예측 준비 중' — 다른 회차 번호로 대체하지 않음
 // ══════════════════════════════════════════════════════════════
 
 import 'package:flutter/foundation.dart';
@@ -22,6 +28,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../rpa_number_core.dart' show rpaActualIndicatorValues, rpaIndicatorBaselines;
 import '../rpa_unified_prediction.dart';
+import '../supabase_service.dart';
 import 'research_core.dart';
 
 const String kFinalRecVersion = 'fr-1.0';
@@ -37,10 +44,14 @@ class FinalRecommendation {
   final Map<String, dynamic> signals;
   final bool verifiedEdge; // 검증된 당첨확률 우위 존재 여부 (현재 규칙상 false 가 기본)
   final String note;
+
+  /// research_results.id (저장 행에서 읽었을 때만 채움, payload 에는 넣지 않음)
+  final String? snapshotId;
   const FinalRecommendation({
     required this.targetRound, required this.trainingEndRound, required this.version, required this.baseModelVersion,
     required this.generatedAt, required this.baseGeneratedAt, required this.sets, required this.setScores,
     required this.pool, required this.rules, required this.signals, required this.verifiedEdge, required this.note,
+    this.snapshotId,
   });
 
   Map<String, dynamic> toJson() => {
@@ -51,7 +62,7 @@ class FinalRecommendation {
         'verified_edge': verifiedEdge, 'note': note,
       };
 
-  factory FinalRecommendation.fromJson(Map<String, dynamic> j) => FinalRecommendation(
+  factory FinalRecommendation.fromJson(Map<String, dynamic> j, {String? snapshotId}) => FinalRecommendation(
         targetRound: (j['target_round'] as num).toInt(), trainingEndRound: (j['training_end_round'] as num).toInt(),
         version: '${j['version']}', baseModelVersion: '${j['base_model_version']}',
         generatedAt: DateTime.tryParse('${j['generated_at']}') ?? DateTime.fromMillisecondsSinceEpoch(0),
@@ -62,6 +73,7 @@ class FinalRecommendation {
         rules: List<String>.from(j['rules'] as List? ?? []),
         signals: Map<String, dynamic>.from(j['signals'] as Map? ?? {}),
         verifiedEdge: j['verified_edge'] == true, note: '${j['note'] ?? ''}',
+        snapshotId: snapshotId,
       );
 }
 
@@ -79,24 +91,48 @@ class FinalRecommendationEngine {
     'Store/Spatial/MND 결과는 번호 확률 우위 미검증 → 번호 점수에 미반영',
   ];
 
-  /// 저장된 결과가 있으면 반환, 없으면 기본 후보가 있을 때만 생성·저장 (덮어쓰기 없음)
-  Future<FinalRecommendation?> ensureStored(int targetRound) async {
-    final stored = await loadStored(targetRound);
-    if (stored != null) return stored;
-    return buildAndStore(targetRound);
-  }
+  /// 공식 최종 예측 규칙([OfficialPredictionService])에 따라 저장본 반환 또는 생성·저장 (덮어쓰기 없음).
+  /// 최신 학습 회차 스냅샷이 없으면 추첨 전일 때만 새로 만든다.
+  Future<FinalRecommendation?> ensureStored(int targetRound) async =>
+      (await OfficialPredictionService.instance.load(targetRound)).rec;
 
-  Future<FinalRecommendation?> loadStored(int targetRound) async {
+  /// 저장된 최종 추천 (research_results). [trainingEndRound] 지정 시 그 학습 회차 행만,
+  /// 미지정 시 가장 최근 학습 회차 행. 없거나 조회 실패 = null.
+  Future<FinalRecommendation?> loadStored(int targetRound, {int? trainingEndRound}) async {
     try {
-      final r = await _db.from('research_results').select('payload')
+      var q = _db.from('research_results').select('id,training_end_round,payload')
           .eq('research_type', 'final_recommendation').eq('model_version', kFinalRecVersion)
-          .eq('target_round', targetRound).order('training_end_round', ascending: false).limit(1);
+          .eq('target_round', targetRound);
+      if (trainingEndRound != null) q = q.eq('training_end_round', trainingEndRound);
+      final r = await q.order('training_end_round', ascending: false).limit(1);
       final l = List<Map<String, dynamic>>.from(r as List);
       if (l.isEmpty) return null;
-      return FinalRecommendation.fromJson(Map<String, dynamic>.from(l.first['payload'] as Map));
+      return FinalRecommendation.fromJson(Map<String, dynamic>.from(l.first['payload'] as Map),
+          snapshotId: l.first['id']?.toString());
     } catch (_) {
       return null;
     }
+  }
+
+  /// 목표 회차에 저장된 최종 추천의 학습 회차 목록 (내림차순). 조회 실패는 예외로 전달.
+  Future<List<int>> storedTrainings(int targetRound) async {
+    final r = await _db.from('research_results').select('training_end_round')
+        .eq('research_type', 'final_recommendation').eq('model_version', kFinalRecVersion)
+        .eq('target_round', targetRound).order('training_end_round', ascending: false);
+    return List<Map<String, dynamic>>.from(r as List)
+        .map((m) => (m['training_end_round'] as num?)?.toInt())
+        .whereType<int>()
+        .toList();
+  }
+
+  /// 목표 회차의 활성 버전 number_base 최신 학습 회차 (없으면 null). 조회 실패는 예외로 전달.
+  Future<int?> latestNumberBaseTraining(int targetRound) async {
+    final r = await _db.from('rpa_prediction_results').select('training_end_round')
+        .eq('target_round', targetRound).eq('model_version', kRpaActiveModelVersion)
+        .eq('prediction_type', RpaPredictionType.numberBase)
+        .order('training_end_round', ascending: false).limit(1);
+    final l = List<Map<String, dynamic>>.from(r as List);
+    return l.isEmpty ? null : (l.first['training_end_round'] as num?)?.toInt();
   }
 
   Future<FinalRecommendation?> buildAndStore(int targetRound) async {
@@ -230,6 +266,223 @@ class FinalRecommendationEngine {
     } catch (e) {
       debugPrint('[FinalRec] persist skipped: $e');
     }
-    return (await loadStored(targetRound)) ?? rec;
+    return (await loadStored(targetRound, trainingEndRound: te)) ?? rec;
+  }
+}
+
+// ══════════════════════════════════════════════════════════════
+// 공식 최종 예측 — 단일 출처
+// ══════════════════════════════════════════════════════════════
+
+/// 공식 최종 예측 결정 (순수 함수 결과)
+enum OfficialAction {
+  /// 최신 학습 회차(latestTrain) 스냅샷이 이미 저장됨 → 그대로 사용
+  useStored,
+
+  /// 추첨 전 + latestTrain 스냅샷 없음 → latestTrain 기준 새 스냅샷 생성·저장 (기존 행 보존)
+  buildNew,
+
+  /// 추첨 후(또는 판매 마감 후) + latestTrain 스냅샷 없음 → 재생성 없이 최신 저장본 (postDrawNoRebuild)
+  latestStoredPostDraw,
+
+  /// 기본 후보(number_base) 없음 또는 추첨 여부 미확인 → 재생성 없이 최신 저장본
+  latestStored,
+
+  /// 저장본도 기본 후보도 없음 → '해당 회차 최종 예측 준비 중'
+  preparing,
+}
+
+class OfficialDecision {
+  final OfficialAction action;
+
+  /// 읽을(또는 만들) 학습 회차. preparing 이면 null.
+  final int? training;
+
+  /// 목표 회차가 아직 추첨 전(판매 마감 전)으로 확인된 경우만 true
+  final bool isPreDraw;
+  const OfficialDecision(this.action, this.training, {required this.isPreDraw});
+}
+
+/// 목표 회차 판매 마감 시각(UTC) — 추첨일(토) 20:00 KST = 11:00 UTC.
+/// 기준 회차 [knownRound] 의 추첨일 [knownDrawDate]('YYYY-MM-DD' 또는 'YYYY.MM.DD')에서 주 단위로 계산. 해석 실패 = null.
+DateTime? lottoSalesCloseUtc(int targetRound, {required int knownRound, required String knownDrawDate}) {
+  final d = DateTime.tryParse(knownDrawDate.trim().replaceAll('.', '-'));
+  if (d == null) return null;
+  final day = DateTime.utc(d.year, d.month, d.day).add(Duration(days: 7 * (targetRound - knownRound)));
+  return DateTime.utc(day.year, day.month, day.day, 11);
+}
+
+/// 공식 최종 예측 결정 규칙 (순수 함수, 단위 테스트 대상)
+///   [latestTrain]     목표 회차의 활성 버전 number_base 최신 학습 회차 (없으면 null)
+///   [storedTrainings] 목표 회차에 저장된 fr 스냅샷의 학습 회차들
+///   [latestDrawn]     lotto_winning_numbers 최신 회차 (조회 실패 = null → 추첨 여부 미확인 → 새로 만들지 않음)
+///   [salesCloseUtc]   목표 회차 판매 마감 시각 (모르면 null) — 지났으면 추첨 후로 본다
+OfficialDecision decideOfficialAction({
+  required int targetRound,
+  required int? latestTrain,
+  required List<int> storedTrainings,
+  required int? latestDrawn,
+  DateTime? salesCloseUtc,
+  DateTime? nowUtc,
+}) {
+  final now = (nowUtc ?? DateTime.now()).toUtc();
+  final salesClosed = salesCloseUtc != null && !now.isBefore(salesCloseUtc);
+  final drawn = (latestDrawn != null && targetRound <= latestDrawn) || salesClosed;
+  final preDraw = latestDrawn != null && targetRound > latestDrawn && !salesClosed;
+
+  if (latestTrain != null && storedTrainings.contains(latestTrain)) {
+    return OfficialDecision(OfficialAction.useStored, latestTrain, isPreDraw: preDraw);
+  }
+  if (latestTrain != null && preDraw) {
+    return OfficialDecision(OfficialAction.buildNew, latestTrain, isPreDraw: preDraw);
+  }
+  if (storedTrainings.isEmpty) {
+    return OfficialDecision(OfficialAction.preparing, null, isPreDraw: preDraw);
+  }
+  final latestStored = storedTrainings.reduce((a, b) => a > b ? a : b);
+  return OfficialDecision(drawn ? OfficialAction.latestStoredPostDraw : OfficialAction.latestStored, latestStored,
+      isPreDraw: preDraw);
+}
+
+const String kOfficialStatusOk = 'official';
+const String kOfficialStatusPostDraw = 'post_draw_no_rebuild';
+const String kOfficialStatusStored = 'stored_no_rebuild';
+const String kOfficialStatusPreparing = 'preparing';
+const String kOfficialPreparingMessage = '해당 회차 최종 예측 준비 중';
+
+class OfficialPrediction {
+  /// [kOfficialStatusOk] | [kOfficialStatusPostDraw] | [kOfficialStatusStored] | [kOfficialStatusPreparing]
+  final String status;
+  final OfficialAction action;
+  final FinalRecommendation? rec;
+  final int targetRound;
+
+  /// 목표 회차의 number_base 최신 학습 회차 (없으면 null)
+  final int? latestTrain;
+
+  /// 조회 시점에 목표 회차가 추첨 전(판매 마감 전)으로 확인됐는지
+  final bool isPreDraw;
+  const OfficialPrediction({
+    required this.status,
+    required this.action,
+    required this.targetRound,
+    required this.isPreDraw,
+    this.rec,
+    this.latestTrain,
+  });
+
+  String? get snapshotId => rec?.snapshotId;
+  String get version => rec?.version ?? kFinalRecVersion;
+  int? get trainingEndRound => rec?.trainingEndRound;
+  DateTime? get generatedAt => rec?.generatedAt;
+  bool get hasSets => rec != null && rec!.sets.isNotEmpty;
+  bool get postDrawNoRebuild => status == kOfficialStatusPostDraw;
+
+  /// 스냅샷 표시용 짧은 id (uuid 앞 8자리). 저장되지 않았으면 null.
+  String? get shortSnapshotId {
+    final id = snapshotId;
+    if (id == null || id.isEmpty) return null;
+    return id.length > 8 ? id.substring(0, 8) : id;
+  }
+
+  /// 상태 안내 (정상 공식 예측이면 null)
+  String? get statusNote => switch (status) {
+        kOfficialStatusPreparing => '$targetRound회 $kOfficialPreparingMessage',
+        kOfficialStatusPostDraw => '추첨 후 조회 — 최신 학습 회차(${latestTrain ?? '-'}회) 기준 스냅샷이 없어 '
+            '저장된 ${trainingEndRound ?? '-'}회 기준 스냅샷을 표시합니다 (추첨 후에는 새로 만들지 않음)',
+        kOfficialStatusStored => '최신 학습 기준 스냅샷을 새로 만들지 않아 저장된 ${trainingEndRound ?? '-'}회 기준 스냅샷을 표시합니다',
+        _ => null,
+      };
+}
+
+String _two(int n) => n.toString().padLeft(2, '0');
+
+/// 생성 시각 표시 (기기 시간대)
+String officialTimeLabel(DateTime t) {
+  final l = t.toLocal();
+  return '${l.year}-${_two(l.month)}-${_two(l.day)} ${_two(l.hour)}:${_two(l.minute)}';
+}
+
+/// 관리자용 출처 줄 — 모든 화면 동일
+String officialProvenanceLine(OfficialPrediction p) {
+  final snap = p.shortSnapshotId == null ? '스냅샷 미저장' : '스냅샷 #${p.shortSnapshotId}';
+  final gen = p.generatedAt == null ? '-' : officialTimeLabel(p.generatedAt!);
+  return '공식 최종 추천번호 · ${p.version} · ${p.trainingEndRound ?? '-'}회까지 학습 → ${p.targetRound}회 · $snap · 생성 $gen';
+}
+
+/// 일반 사용자용 출처 줄 (엔진 내부 정보 없음)
+String officialPublicLine(OfficialPrediction p) => '${p.targetRound}회 · ${p.trainingEndRound ?? '-'}회까지 반영';
+
+class OfficialPredictionService {
+  OfficialPredictionService._();
+  static final instance = OfficialPredictionService._();
+
+  static const Duration _ttl = Duration(minutes: 10);
+  final Map<int, (DateTime, Future<OfficialPrediction>)> _cache = {};
+
+  void clearCache() => _cache.clear();
+
+  /// 목표 회차의 공식 최종 예측. 화면 간 10분 메모리 캐시 공유(진행 중 요청도 공유),
+  /// [force] 이면 캐시를 비우고 다시 조회한다 (새로고침 버튼).
+  Future<OfficialPrediction> load(int targetRound, {bool force = false}) {
+    if (force) _cache.clear();
+    final hit = _cache[targetRound];
+    if (hit != null && DateTime.now().difference(hit.$1) < _ttl) return hit.$2;
+    final f = _resolve(targetRound);
+    _cache[targetRound] = (DateTime.now(), f);
+    // 실패는 캐시하지 않음 (호출자는 원래 Future 의 오류를 그대로 받는다)
+    f.then((_) {}, onError: (Object _) {
+      if (identical(_cache[targetRound]?.$2, f)) _cache.remove(targetRound);
+    });
+    return f;
+  }
+
+  Future<OfficialPrediction> _resolve(int targetRound) async {
+    final engine = FinalRecommendationEngine.instance;
+    final latestTrain = await engine.latestNumberBaseTraining(targetRound);
+    final stored = await engine.storedTrainings(targetRound);
+    final recent = await SupabaseService.getRecentWinningNumbers(1);
+    final latestDrawn = recent.isEmpty ? null : recent.first.round;
+    final close = recent.isEmpty
+        ? null
+        : lottoSalesCloseUtc(targetRound, knownRound: recent.first.round, knownDrawDate: recent.first.drawDate);
+    final d = decideOfficialAction(
+      targetRound: targetRound,
+      latestTrain: latestTrain,
+      storedTrainings: stored,
+      latestDrawn: latestDrawn,
+      salesCloseUtc: close,
+    );
+
+    OfficialPrediction out(String status, OfficialAction action, FinalRecommendation? rec) => OfficialPrediction(
+        status: status, action: action, rec: rec, targetRound: targetRound, latestTrain: latestTrain,
+        isPreDraw: d.isPreDraw);
+
+    Future<OfficialPrediction> latestStoredOr(String status, OfficialAction action) async {
+      if (stored.isEmpty) return out(kOfficialStatusPreparing, OfficialAction.preparing, null);
+      final rec = await engine.loadStored(targetRound, trainingEndRound: stored.reduce((a, b) => a > b ? a : b));
+      return rec == null ? out(kOfficialStatusPreparing, OfficialAction.preparing, null) : out(status, action, rec);
+    }
+
+    switch (d.action) {
+      case OfficialAction.useStored:
+        final rec = await engine.loadStored(targetRound, trainingEndRound: d.training);
+        if (rec != null) return out(kOfficialStatusOk, d.action, rec);
+        return out(kOfficialStatusPreparing, OfficialAction.preparing, null);
+      case OfficialAction.buildNew:
+        // buildAndStore 는 목표 회차의 최신 학습 회차 number_base 행으로 만든다 (= latestTrain)
+        final built = await engine.buildAndStore(targetRound);
+        if (built != null && built.trainingEndRound == latestTrain && built.sets.isNotEmpty) {
+          return out(kOfficialStatusOk, d.action, built);
+        }
+        // 생성 불가 → 재생성 없이 최신 저장본 (없으면 준비 중)
+        return latestStoredOr(kOfficialStatusStored, OfficialAction.latestStored);
+      case OfficialAction.latestStoredPostDraw:
+        return latestStoredOr(kOfficialStatusPostDraw, d.action);
+      case OfficialAction.latestStored:
+        return latestStoredOr(kOfficialStatusStored, d.action);
+      case OfficialAction.preparing:
+        return out(kOfficialStatusPreparing, OfficialAction.preparing, null);
+    }
   }
 }

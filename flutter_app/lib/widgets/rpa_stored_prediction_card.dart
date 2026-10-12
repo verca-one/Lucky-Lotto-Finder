@@ -1,6 +1,6 @@
 // 랜덤확률분석엔진 추천번호 — 최종 결과 카드
 //
-// ① 최종 구매예측 추천번호: research_results(final_recommendation)에 목표 회차별로 저장된 결과
+// ① 최종 구매예측 추천번호: 공식 최종 예측(OfficialPredictionService — 엔진 브리핑·추천번호 화면과 같은 스냅샷)
 // ② Number 엔진 기본 조합: rpa_prediction_results(number_base)에 저장된 행
 // 둘 다 선택한 목표 회차(target_round)의 행만 조회한다. 다른 회차 행을 재사용하거나
 // 앱 내 계산으로 대체하지 않으며, 없으면 '저장 없음'을 그대로 보여준다.
@@ -77,9 +77,9 @@ class RpaStoredPrediction {
 
 class _CardData {
   final RpaStoredPrediction? base;
-  final FinalRecommendation? finalRec;
+  final OfficialPrediction official;
   final PrizeStats? prevStats; // 직전 회차 판매액·1등 당첨자 수 (이월 판정)
-  const _CardData(this.base, this.finalRec, this.prevStats);
+  const _CardData(this.base, this.official, this.prevStats);
 }
 
 class RpaStoredPredictionCard extends StatefulWidget {
@@ -92,14 +92,13 @@ class RpaStoredPredictionCard extends StatefulWidget {
 class _RpaStoredPredictionCardState extends State<RpaStoredPredictionCard> {
   late Future<_CardData> _future;
 
-  Future<_CardData> _load(int t) async {
+  Future<_CardData> _load(int t, {bool force = false}) async {
     final base = await RpaStoredPrediction.load(t);
-    // 최종 결과: 저장본 우선, 없고 기본 후보가 있으면 사전 고정 규칙으로 생성·저장 (덮어쓰기 없음)
-    final fin = base == null ? await FinalRecommendationEngine.instance.loadStored(t)
-                             : await FinalRecommendationEngine.instance.ensureStored(t);
+    // 최종 결과: 공식 최종 예측 (선택한 목표 회차 그대로, 다른 회차 스냅샷으로 대체하지 않음)
+    final official = await OfficialPredictionService.instance.load(t, force: force);
     PrizeStats? prev;
     try { await PrizeStatsService.instance.loadAll(); prev = PrizeStatsService.instance.get(t - 1); } catch (_) {}
-    return _CardData(base, fin, prev);
+    return _CardData(base, official, prev);
   }
 
   @override
@@ -136,6 +135,11 @@ class _RpaStoredPredictionCardState extends State<RpaStoredPredictionCard> {
             Expanded(child: Text('랜덤확률분석엔진 추천번호 · ${widget.targetRound}회',
                 style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: _blue))),
             statusChip('DB 저장 결과', _blue),
+            IconButton(
+              visualDensity: VisualDensity.compact, iconSize: 18, tooltip: '새로고침',
+              icon: const Icon(Icons.refresh, color: _blue),
+              onPressed: () => setState(() => _future = _load(widget.targetRound, force: true)),
+            ),
           ]);
           if (snap.connectionState != ConnectionState.done) {
             return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -153,7 +157,7 @@ class _RpaStoredPredictionCardState extends State<RpaStoredPredictionCard> {
           return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             header,
             const SizedBox(height: 10),
-            _finalSection(data.finalRec),
+            _finalSection(data.official),
             if (data.prevStats != null) ...[
               const SizedBox(height: 6),
               _kv('직전 ${data.prevStats!.round}회 1등', data.prevStats!.rank1Winners == 0
@@ -170,7 +174,8 @@ class _RpaStoredPredictionCardState extends State<RpaStoredPredictionCard> {
   }
 
   // ── ① 최종 구매예측 추천번호 ─────────────────────────────────
-  Widget _finalSection(FinalRecommendation? f) {
+  Widget _finalSection(OfficialPrediction o) {
+    final f = o.hasSets ? o.rec : null;
     final title = Row(children: [
       const Icon(Icons.verified_rounded, size: 15, color: _gold),
       const SizedBox(width: 5),
@@ -181,7 +186,7 @@ class _RpaStoredPredictionCardState extends State<RpaStoredPredictionCard> {
     if (f == null) {
       return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         title, const SizedBox(height: 6),
-        Text('${widget.targetRound}회 최종 결과가 저장돼 있지 않습니다(기본 후보 미생성). 다른 회차 번호를 대신 표시하지 않습니다.',
+        Text('${o.statusNote ?? '${widget.targetRound}회 $kOfficialPreparingMessage'} — 다른 회차 번호를 대신 표시하지 않습니다.',
             style: TextStyle(fontSize: 11, color: Colors.orange.shade900, height: 1.4)),
       ]);
     }
@@ -191,6 +196,10 @@ class _RpaStoredPredictionCardState extends State<RpaStoredPredictionCard> {
     final joint = Map<String, dynamic>.from(sig['joint'] as Map? ?? {});
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       title,
+      const SizedBox(height: 4),
+      Text(officialProvenanceLine(o), style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: _gold, height: 1.4)),
+      if (o.statusNote != null)
+        Text(o.statusNote!, style: TextStyle(fontSize: 10.5, color: Colors.orange.shade900, height: 1.4)),
       const SizedBox(height: 6),
       _kv('목표 회차', '${f.targetRound}회'),
       _kv('학습 기준 회차', '${f.trainingEndRound}회까지 (Number 엔진 v${f.baseModelVersion})'),

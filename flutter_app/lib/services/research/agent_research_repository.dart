@@ -23,6 +23,7 @@ import 'dart:math' as math;
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../admin_gate.dart';
 import '../route/region_research_repository.dart'
     show ResearchAvailability, ResearchLoad, RegionResearchRepository, kResearchNotApplied, kResearchNoData;
 
@@ -1107,6 +1108,12 @@ class AgentResearchRepository {
       ResearchLoad<T>(empty ? ResearchAvailability.noData : ResearchAvailability.available, data,
           message: empty ? kResearchNoData : null);
 
+  /// 관리자 전용 — 비관리자는 조회하지 않고 '관리자 전용' 상태(빈 값)를 돌려준다. null = 통과.
+  /// 앱 내부 확인일 뿐이다. DB 수준 강제는 Supabase Auth 도입 후 RLS 로만 가능하며 현재 anon RLS 는 읽기를 허용한다.
+  static Future<ResearchLoad<T>?> _adminOnly<T>(T empty) async => await AdminGate.isAdmin()
+      ? null
+      : ResearchLoad<T>(ResearchAvailability.notApplied, empty, message: kAdminOnlyMessage);
+
   static List<List<String>> _chunks(List<String> l) {
     final out = <List<String>>[];
     for (var i = 0; i < l.length; i += _chunk) {
@@ -1119,6 +1126,8 @@ class AgentResearchRepository {
 
   /// 최신 실전 기준 (모델 + 목표 회차). [model] 미지정 = ag-1.1 live → 없으면 ag-1.0. 5분 캐시.
   Future<ResearchLoad<AgentLiveRef?>> latestLive({bool force = false, String? model}) async {
+    final denied = await _adminOnly<AgentLiveRef?>(null);
+    if (denied != null) return denied;
     final key = 'latestLive_${model ?? 'auto'}';
     if (!force) {
       final c = _cached<ResearchLoad<AgentLiveRef?>>(key);
@@ -1159,6 +1168,8 @@ class AgentResearchRepository {
 
   /// 목표 회차의 중앙 엔진 결과 (live 우선, 없으면 backtest). 5분 캐시.
   Future<ResearchLoad<AgentCentral?>> loadCentral(int target, {bool force = false, String? model}) async {
+    final denied = await _adminOnly<AgentCentral?>(null);
+    if (denied != null) return denied;
     final m = model ?? _liveModel;
     final key = 'central_${m}_$target';
     if (!force) {
@@ -1199,6 +1210,8 @@ class AgentResearchRepository {
   /// 목표 회차 live 납품 (지방장 지정 시 해당 지방장만). rank 오름차순.
   Future<ResearchLoad<List<AgentDelivery>>> loadDeliveries(
       {String? agentId, required int target, String? model}) async {
+    final denied = await _adminOnly<List<AgentDelivery>>(const <AgentDelivery>[]);
+    if (denied != null) return denied;
     try {
       var q = _db
           .from('research_agent_deliveries')
@@ -1222,6 +1235,8 @@ class AgentResearchRepository {
   /// 판매점 코드별 납품 (목표 회차 live)
   Future<ResearchLoad<List<AgentDelivery>>> loadDeliveriesForStore(String code,
       {required int target, String? model}) async {
+    final denied = await _adminOnly<List<AgentDelivery>>(const <AgentDelivery>[]);
+    if (denied != null) return denied;
     try {
       final rows = await _db
           .from('research_agent_deliveries')
@@ -1314,6 +1329,8 @@ class AgentResearchRepository {
   /// [agentIds] = 해당 판매점들의 지방장 id(= RegionStore.regionId). 모든 판매점의 지방장을 알 때만 넘긴다.
   Future<ResearchLoad<Map<String, AgentStoreScore>>> loadStoreScores(List<String> codes, int target,
       {String? model, Set<String>? agentIds}) async {
+    final denied = await _adminOnly<Map<String, AgentStoreScore>>(const <String, AgentStoreScore>{});
+    if (denied != null) return denied;
     final out = <String, AgentStoreScore>{};
     if (codes.isEmpty) return _ok(out, true);
     final m = model ?? _liveModel;
@@ -1365,6 +1382,8 @@ class AgentResearchRepository {
   // ── 지방장 ─────────────────────────────────────────────────────────────
 
   Future<ResearchLoad<List<AgentInfo>>> loadAgents({String? model}) async {
+    final denied = await _adminOnly<List<AgentInfo>>(const <AgentInfo>[]);
+    if (denied != null) return denied;
     try {
       final m = await _resolveModel(model);
       final rows = await _db
@@ -1381,6 +1400,8 @@ class AgentResearchRepository {
   }
 
   Future<ResearchLoad<AgentInfo?>> loadAgent(String id, {String? model}) async {
+    final denied = await _adminOnly<AgentInfo?>(null);
+    if (denied != null) return denied;
     try {
       final m = await _resolveModel(model);
       final rows = await _db
@@ -1460,6 +1481,8 @@ class AgentResearchRepository {
 
   /// related_stores 에 [code] 가 포함된 가설 (현재 재현 실행 우선, 없으면 ag-1.0)
   Future<ResearchLoad<List<AgentHypothesis>>> loadHypothesesForStore(String code, {String? model}) async {
+    final denied = await _adminOnly<List<AgentHypothesis>>(const <AgentHypothesis>[]);
+    if (denied != null) return denied;
     try {
       final run = await hypothesisRunId(model: model);
       final rows = await _hypBase(run).contains('related_stores', [code]).range(0, 499);
@@ -1473,6 +1496,8 @@ class AgentResearchRepository {
   /// 지방장 소유(agent_id) 또는 관련 지역(related_regions)에 [id] 가 포함된 가설 (중복 제거)
   Future<ResearchLoad<List<AgentHypothesis>>> loadHypothesesForAgent(String id,
       {String? status, int limit = 100, String? model}) async {
+    final denied = await _adminOnly<List<AgentHypothesis>>(const <AgentHypothesis>[]);
+    if (denied != null) return denied;
     try {
       final run = await hypothesisRunId(model: model);
       final byId = <String, AgentHypothesis>{};
@@ -1498,6 +1523,8 @@ class AgentResearchRepository {
   /// 가설 저장소 (kind / status 필터). 재현 가설 우선, 없으면 ag-1.0.
   Future<ResearchLoad<List<AgentHypothesis>>> loadHypotheses(
       {String? kind, String? status, int limit = 200, String? model}) async {
+    final denied = await _adminOnly<List<AgentHypothesis>>(const <AgentHypothesis>[]);
+    if (denied != null) return denied;
     try {
       final run = await hypothesisRunId(model: model);
       var q = _hypBase(run);
@@ -1516,6 +1543,8 @@ class AgentResearchRepository {
   /// 결과 맵에는 요청한 모든 코드가 들어간다 (가설 없음 = 빈 목록).
   Future<ResearchLoad<Map<String, List<AgentHypothesis>>>> loadHypothesesForStores(List<String> codes,
       {String? runId, String? model}) async {
+    final denied = await _adminOnly<Map<String, List<AgentHypothesis>>>(const <String, List<AgentHypothesis>>{});
+    if (denied != null) return denied;
     final want = codes.where((c) => c.isNotEmpty).toSet().toList()..sort();
     final out = <String, List<AgentHypothesis>>{for (final c in want) c: <AgentHypothesis>[]};
     if (want.isEmpty) return _ok(out, true);
@@ -1544,6 +1573,8 @@ class AgentResearchRepository {
 
   /// 지방장 여러 명 (research_agents, [model]) — agent_id → 정보
   Future<ResearchLoad<Map<String, AgentInfo>>> loadAgentsByIds(Iterable<String> ids, {required String model}) async {
+    final denied = await _adminOnly<Map<String, AgentInfo>>(const <String, AgentInfo>{});
+    if (denied != null) return denied;
     final want = ids.where((c) => c.isNotEmpty).toSet().toList()..sort();
     final out = <String, AgentInfo>{};
     if (want.isEmpty) return _ok(out, true);
@@ -1564,6 +1595,8 @@ class AgentResearchRepository {
   /// 여러 지방장의 목표 회차 live 납품 (선택: [rank] 지정 시 그 순위만). rank 오름차순.
   Future<ResearchLoad<List<AgentDelivery>>> loadDeliveriesForAgents(Iterable<String> agentIds,
       {required int target, required String model, int? rank}) async {
+    final denied = await _adminOnly<List<AgentDelivery>>(const <AgentDelivery>[]);
+    if (denied != null) return denied;
     final want = agentIds.where((c) => c.isNotEmpty).toSet().toList()..sort();
     if (want.isEmpty) return _ok(const <AgentDelivery>[], true);
     try {
@@ -1596,6 +1629,8 @@ class AgentResearchRepository {
 
   /// src_id 또는 dst_id 가 [code] 인 관계 — 최신 training_end_round 만, p 오름차순 상위 [limit]
   Future<ResearchLoad<List<AgentRelation>>> loadRelationsForStore(String code, {int limit = 20}) async {
+    final denied = await _adminOnly<List<AgentRelation>>(const <AgentRelation>[]);
+    if (denied != null) return denied;
     try {
       final all = <AgentRelation>[];
       for (final col in const ['src_id', 'dst_id']) {
@@ -1633,6 +1668,8 @@ class AgentResearchRepository {
   /// ag-1.1 은 이 테이블에 쓰지 않으므로 기본은 ag-1.0 (ag-1.1 이력은 AgentReplayRepository).
   Future<ResearchLoad<AgentRoundEvalSummary>> loadEvalSummary(String agentId,
       {String model = kAgentModelLegacy}) async {
+    final denied = await _adminOnly<AgentRoundEvalSummary>(AgentRoundEvalSummary(agentId: agentId));
+    if (denied != null) return denied;
     try {
       final rows = <Map<String, dynamic>>[];
       var off = 0;
@@ -1672,6 +1709,8 @@ class AgentResearchRepository {
 
   /// 최신 브리핑 (target_round → training_end_round 내림차순). [model] 미지정 시 ag-1.1 → 없으면 ag-1.0. 5분 캐시.
   Future<ResearchLoad<AgentBriefing?>> loadBriefing({bool force = false, String? model}) async {
+    final denied = await _adminOnly<AgentBriefing?>(null);
+    if (denied != null) return denied;
     final key = 'briefing_${model ?? 'auto'}';
     if (!force) {
       final c = _cached<ResearchLoad<AgentBriefing?>>(key);
