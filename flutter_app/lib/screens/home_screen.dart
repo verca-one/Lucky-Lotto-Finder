@@ -7,6 +7,7 @@ import '../services/supabase_service.dart';
 import '../services/ad_service.dart';
 import '../services/badge_service.dart';
 import '../services/ranking_extras_service.dart';
+import '../widgets/home_round_header.dart';
 import '../widgets/ranking_store_card.dart';
 import '../widgets/store_detail_popup.dart';
 import 'nearby_screen.dart';
@@ -427,6 +428,8 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
   Map<String, Map<String, dynamic>> _pensionInfo = {};
   int _latestLottoRound = 0;
   int _latestPensionRound = 0;
+  DateTime? _lottoDrawDate; // DB 추첨일 (없으면 회차로 계산)
+  DateTime? _pensionDrawDate;
   bool _isLoading = true;
   String? _error;
   bool _badgeLoadFailed = false;
@@ -567,6 +570,12 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
         BadgeService.loadBadges(allCodes),
         SupabaseService.getPensionInfoForStores(allCodes),
         SupabaseService.getRecentSuccessLogs(hours: 168).catchError((_) => <Map<String, dynamic>>[]),
+        latestRound != null && latestRound > 0
+            ? SupabaseService.getWinningNumbersForRound(latestRound).then((w) => parseDrawDate(w?.drawDate))
+            : Future<DateTime?>.value(null),
+        latestPension != null && latestPension > 0
+            ? SupabaseService.getPensionWinningForRound(latestPension).then((w) => parseDrawDate(w?.drawDate))
+            : Future<DateTime?>.value(null),
       ]);
 
       final pensionData = secondResults[1] as Map<String, Map<String, dynamic>>;
@@ -579,6 +588,8 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
         _pensionInfo = pensionData;
         _latestLottoRound = latestRound ?? 0;
         _latestPensionRound = latestPension ?? 0;
+        _lottoDrawDate = secondResults[3] as DateTime?;
+        _pensionDrawDate = secondResults[4] as DateTime?;
         _badgeLoadFailed = BadgeService.loadFailed;
         _recentCrawlLogs = crawlLogs;
         _isLoading = false;
@@ -905,192 +916,13 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
   }
 
   Widget _buildHeader() {
-    return Container(
-      width: double.infinity,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0x881565C0), Color(0x881E88E5)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.only(
-          bottomLeft: Radius.circular(32),
-          bottomRight: Radius.circular(32),
-        ),
-      ),
-      padding: const EdgeInsets.fromLTRB(24, 20, 24, 28),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      '실제 당첨 이력을 분석한 통계입니다.',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white.withValues(alpha: 0.95),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      '당첨주기 예상은 예측이 아닌 참고 정보입니다.',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: Colors.white.withValues(alpha: 0.7),
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Container(
-                      margin: const EdgeInsets.only(top: 8),
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withValues(alpha: 0.15),
-                        borderRadius: BorderRadius.circular(6),
-                        border: Border.all(color: Colors.white.withValues(alpha: 0.3), width: 1),
-                      ),
-                      child: const Text(
-                        '⚠️ 복권명당 찾기 앱은 당첨을 보장하지 않습니다.',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w700,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              Container(
-                width: 72,
-                height: 72,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.15),
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(Icons.emoji_events_rounded, color: Colors.white, size: 38),
-              ),
-            ],
-          ),
-          if (_latestLottoRound > 0) ...[
-            const SizedBox(height: 18),
-            Row(
-              children: [
-                _buildHeaderChip('로또 $_latestLottoRound회'),
-                const SizedBox(width: 8),
-                _buildHeaderChip('연금 $_latestPensionRound회'),
-                const SizedBox(width: 8),
-                Text('기준', style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.5))),
-              ],
-            ),
-          ],
-          ..._buildCrawlNotices(),
-        ],
-      ),
+    return HomeRoundHeader(
+      lottoRound: _latestLottoRound,
+      pensionRound: _latestPensionRound,
+      lottoDrawDate: _lottoDrawDate,
+      pensionDrawDate: _pensionDrawDate,
+      updates: latestUpdateTimes(_recentCrawlLogs),
     );
-  }
-
-  Widget _buildHeaderChip(String label) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.18),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.25), width: 1),
-      ),
-      child: Text(label, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white)),
-    );
-  }
-
-  /// 크롤링 안내문 목록 생성
-  List<Widget> _buildCrawlNotices() {
-    if (_recentCrawlLogs.isEmpty) return [];
-
-    // 타입별 최신 로그 1건씩 추출
-    final latestByType = <String, Map<String, dynamic>>{};
-    for (final log in _recentCrawlLogs) {
-      final type = log['lottery_type'] as String? ?? '';
-      if (type.isEmpty) continue;
-      if (!latestByType.containsKey(type)) latestByType[type] = log;
-    }
-    if (latestByType.isEmpty) return [];
-
-    // 표시 순서: 로또 → 연금 → 스피또
-    const order = ['lotto', 'pension', 'speeto'];
-    final lines = <String>[];
-    final now = DateTime.now();
-
-    for (final type in order) {
-      final log = latestByType[type];
-      if (log == null) continue;
-      final completedAtRaw = log['completed_at'] as String?;
-      if (completedAtRaw == null) continue;
-
-      // UTC → KST (+9시간)
-      final utc = DateTime.tryParse(completedAtRaw);
-      if (utc == null) continue;
-      final kst = utc.toLocal(); // 기기 타임존 = KST 가정
-      final hh = kst.hour.toString().padLeft(2, '0');
-      final mm = kst.minute.toString().padLeft(2, '0');
-
-      // 오늘이 아니면 날짜도 표시
-      final isToday = kst.year == now.year && kst.month == now.month && kst.day == now.day;
-      final timeStr = isToday ? '$hh:$mm' : '${kst.month}/${kst.day} $hh:$mm';
-
-      String label;
-      switch (type) {
-        case 'lotto':
-          label = _latestLottoRound > 0 ? '로또(${_latestLottoRound}회)' : '로또';
-          break;
-        case 'pension':
-          label = _latestPensionRound > 0 ? '연금(${_latestPensionRound}회)' : '연금';
-          break;
-        case 'speeto':
-          label = '스피또';
-          break;
-        default:
-          label = type;
-      }
-      lines.add('$label가 ${timeStr}에 업데이트 되었습니다.');
-    }
-
-    if (lines.isEmpty) return [];
-
-    return [
-      const SizedBox(height: 10),
-      Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.15),
-          borderRadius: BorderRadius.circular(10),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: lines.map((line) => Padding(
-            padding: EdgeInsets.only(bottom: line == lines.last ? 0 : 4),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Icon(Icons.check_circle_outline, color: Colors.lightGreenAccent, size: 14),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text(
-                    line,
-                    style: const TextStyle(fontSize: 12, color: Colors.white, fontWeight: FontWeight.w500),
-                  ),
-                ),
-              ],
-            ),
-          )).toList(),
-        ),
-      ),
-    ];
   }
 
   void _toggleCard(String code) async {
