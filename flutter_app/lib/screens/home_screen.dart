@@ -7,7 +7,9 @@ import '../services/supabase_service.dart';
 import '../services/ad_service.dart';
 import '../services/badge_service.dart';
 import '../services/ranking_extras_service.dart';
+import '../services/round_status_service.dart';
 import '../widgets/home_round_header.dart';
+import 'round_result_screen.dart';
 import '../widgets/ranking_store_card.dart';
 import '../widgets/store_detail_popup.dart';
 import 'nearby_screen.dart';
@@ -427,9 +429,9 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
   List<Map<String, dynamic>> _internetStores = []; // 인터넷구매 지점 (별도 표시)
   Map<String, Map<String, dynamic>> _pensionInfo = {};
   int _latestLottoRound = 0;
-  int _latestPensionRound = 0;
-  DateTime? _lottoDrawDate; // DB 추첨일 (없으면 회차로 계산)
-  DateTime? _pensionDrawDate;
+  // 홈 '최신 당첨 회차' 겹침 카드 데이터 — 로또·연금 독립 조회 (null = 불러오는 중)
+  GameRoundData? _lottoRounds;
+  GameRoundData? _pensionRounds;
   bool _isLoading = true;
   String? _error;
   bool _badgeLoadFailed = false;
@@ -525,6 +527,7 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
       });
     }
 
+    _loadRoundCards();
     try {
       // 1. home_stats(1건) + TOP 20 — 병렬 실행
       final results = await Future.wait([
@@ -536,9 +539,6 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
       final int? latestRound = homeStats != null
           ? (homeStats['lotto_latest_round'] as num?)?.toInt()
           : await SupabaseService.getLatestRound('lotto');
-      final int? latestPension = homeStats != null
-          ? (homeStats['pension_latest_round'] as num?)?.toInt()
-          : await SupabaseService.getLatestRound('pension');
       final allStores = results[1] as List<Map<String, dynamic>>;
 
       if (allStores.isEmpty) {
@@ -572,12 +572,6 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
         BadgeService.loadBadges(allCodes),
         SupabaseService.getPensionInfoForStores(allCodes),
         SupabaseService.getRecentSuccessLogs(hours: 168).catchError((_) => <Map<String, dynamic>>[]),
-        latestRound != null && latestRound > 0
-            ? SupabaseService.getWinningNumbersForRound(latestRound).then((w) => parseDrawDate(w?.drawDate))
-            : Future<DateTime?>.value(null),
-        latestPension != null && latestPension > 0
-            ? SupabaseService.getPensionWinningForRound(latestPension).then((w) => parseDrawDate(w?.drawDate))
-            : Future<DateTime?>.value(null),
       ]);
 
       final pensionData = secondResults[1] as Map<String, Map<String, dynamic>>;
@@ -589,9 +583,6 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
         _internetStores = internetStores;
         _pensionInfo = pensionData;
         _latestLottoRound = latestRound ?? 0;
-        _latestPensionRound = latestPension ?? 0;
-        _lottoDrawDate = secondResults[3] as DateTime?;
-        _pensionDrawDate = secondResults[4] as DateTime?;
         _badgeLoadFailed = BadgeService.loadFailed;
         _recentCrawlLogs = crawlLogs;
         _isLoading = false;
@@ -917,13 +908,33 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
     );
   }
 
+  /// 로또·연금 회차 카드 데이터 — 게임별 독립 조회, 실패해도 다른 게임·랭킹에 영향 없음
+  Future<void> _loadRoundCards() async {
+    final runs = await SupabaseService.getRecentCrawlRuns();
+    Future<void> one(String type) async {
+      try {
+        final d = await RoundStatusService.load(type, crawlLogs: runs);
+        if (!mounted) return;
+        setState(() => type == 'pension' ? _pensionRounds = d : _lottoRounds = d);
+      } catch (_) {
+        if (!mounted) return;
+        // 조회 실패: 회차를 만들어 내지 않고 '불러오지 못함' 표시
+        setState(() => type == 'pension'
+            ? _pensionRounds = const GameRoundData(type: 'pension')
+            : _lottoRounds = const GameRoundData(type: 'lotto'));
+      }
+    }
+
+    await Future.wait([one('lotto'), one('pension')]);
+  }
+
   Widget _buildHeader() {
     return HomeRoundHeader(
-      lottoRound: _latestLottoRound,
-      pensionRound: _latestPensionRound,
-      lottoDrawDate: _lottoDrawDate,
-      pensionDrawDate: _pensionDrawDate,
-      updates: latestUpdateTimes(_recentCrawlLogs),
+      lotto: _lottoRounds,
+      pension: _pensionRounds,
+      speetoUpdatedAt: latestUpdateTimes(_recentCrawlLogs)['speeto'],
+      // 수동 탭으로만 이동 (헤더가 상세 화면이 닫힐 때까지 중복 탭을 막는다)
+      onOpen: (card) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => RoundResultScreen(card: card))),
     );
   }
 

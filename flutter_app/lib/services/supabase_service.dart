@@ -1174,6 +1174,79 @@ class SupabaseService {
     }
   }
 
+  /// 최근 크롤링 로그 (성공·실패 모두, 홈 회차 상태 판단용) — 기본 14일
+  static Future<List<Map<String, dynamic>>> getRecentCrawlRuns({int hours = 336}) async {
+    try {
+      final since = DateTime.now().subtract(Duration(hours: hours)).toUtc().toIso8601String();
+      final response = await _supabase
+          .from('crawl_logs')
+          .select('lottery_type, status, started_at, completed_at')
+          .gte('started_at', since)
+          .order('started_at', ascending: false)
+          .limit(100);
+      return (response as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      print('크롤링 실행 로그 조회 오류: $e');
+      return [];
+    }
+  }
+
+  /// 회차별 수집 상태 (round_crawl_status, 최근 회차부터)
+  static Future<List<Map<String, dynamic>>> getRoundCrawlStatus(String lotteryType, {int limit = 6}) async {
+    try {
+      final response = await _supabase
+          .from('round_crawl_status')
+          .select('round, stores_status, stores_crawled_at')
+          .eq('lottery_type', lotteryType)
+          .order('round', ascending: false)
+          .limit(limit);
+      return (response as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      print('회차 수집 상태 조회 오류: $e');
+      return [];
+    }
+  }
+
+  /// 주어진 회차 중 당첨 판매점 기록(winning_history)이 있는 회차
+  static Future<Set<int>> getRoundsWithWinners(String lotteryType, List<int> rounds) async {
+    if (rounds.isEmpty) return {};
+    try {
+      final out = <int>{};
+      // 회차마다 1건만 확인 (당첨 기록 수와 무관하게 가볍게)
+      await Future.wait(rounds.toSet().map((r) async {
+        final resp = await _supabase
+            .from('winning_history')
+            .select('round')
+            .eq('lottery_type', lotteryType)
+            .eq('round', r)
+            .limit(1);
+        if ((resp as List).isNotEmpty) out.add(r);
+      }));
+      return out;
+    } catch (e) {
+      print('회차 당첨 기록 조회 오류: $e');
+      return {};
+    }
+  }
+
+  /// 회차별 DB 추첨일 (lotto_winning_numbers / pension_winning_numbers)
+  static Future<Map<int, String>> getDrawDates(String lotteryType, List<int> rounds) async {
+    if (rounds.isEmpty) return {};
+    try {
+      final response = await _supabase
+          .from(lotteryType == 'pension' ? 'pension_winning_numbers' : 'lotto_winning_numbers')
+          .select('round, draw_date')
+          .inFilter('round', rounds.toSet().toList());
+      return {
+        for (final r in (response as List))
+          if (r['draw_date'] != null) (r['round'] as num).toInt(): r['draw_date'].toString(),
+      };
+    } catch (e) {
+      print('추첨일 조회 오류: $e');
+      return {};
+    }
+  }
+
   /// 홈 요약 통계 조회 (home_stats 테이블)
   static Future<Map<String, dynamic>?> getHomeStats() async {
     try {
