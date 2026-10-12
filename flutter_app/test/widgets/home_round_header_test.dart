@@ -148,9 +148,9 @@ void main() {
       expect(find.descendant(of: front, matching: find.text('2026.10.10 (토) 추첨')), findsOneWidget);
       expect(find.descendant(of: front, matching: find.text('업데이트 완료')), findsOneWidget);
       expect(find.descendant(of: front, matching: find.text('${formatUpdateTime(t1245)} 수집')), findsOneWidget);
-      expect(find.text('이전 1244회 · ${formatUpdateTime(t1244)} 업데이트'), findsOneWidget);
+      expect(find.text('로또 1244회 · ${formatUpdateTime(t1244)} 업데이트'), findsOneWidget);
       expect(find.byKey(const ValueKey('header_pension_front_336_complete')), findsOneWidget);
-      expect(find.text('이전 335회 · ${formatUpdateTime(t335)} 업데이트'), findsOneWidget);
+      expect(find.text('연금 335회 · ${formatUpdateTime(t335)} 업데이트'), findsOneWidget);
       expect(find.byKey(const ValueKey('header_speeto')), findsOneWidget);
     });
 
@@ -160,7 +160,7 @@ void main() {
       expect(find.descendant(of: front, matching: find.text('결과 대기')), findsOneWidget);
       // 연금 337회(목 추첨)도 수집 전이면 독립적으로 결과 대기
       expect(find.byKey(const ValueKey('header_pension_front_337_awaiting')), findsOneWidget);
-      expect(find.text('이전 1245회 · ${formatUpdateTime(t1245)} 업데이트'), findsOneWidget);
+      expect(find.text('로또 1245회 · ${formatUpdateTime(t1245)} 업데이트'), findsOneWidget);
     });
 
     testWidgets('앞 카드·뒤 카드 탭은 각 회차로, 열려 있는 동안 중복 이동 없음', (tester) async {
@@ -190,6 +190,77 @@ void main() {
       expect(opened, [1245, 1244]);
       pending.complete();
       await tester.pump();
+    });
+
+    Color? colorOf(WidgetTester tester, Finder scope, String text) =>
+        tester.widget<Text>(find.descendant(of: scope, matching: find.text(text))).style?.color;
+
+    testWidgets('신규 회차 대기 카드: 흰 배경, 글자·상태 모두 옅은 회색, 완료 표시 없음, 뒤 카드는 테마색 유지', (tester) async {
+      for (final (now, key, label) in [
+        (kst(2026, 10, 17, 10), 'header_lotto_front_1246_scheduled', '추첨 예정'),
+        (kst(2026, 10, 17, 21), 'header_lotto_front_1246_awaiting', '결과 대기'),
+      ]) {
+        await tester.pumpWidget(app(HomeRoundHeader(lotto: lotto(), pension: pension(), clock: () => now)));
+        await tester.pumpAndSettle();
+        final front = find.byKey(ValueKey(key));
+        expect(front, findsOneWidget);
+        for (final t in ['로또 6/45', '1246', '회', '2026.10.17 (토) 추첨', label]) {
+          expect(colorOf(tester, front, t), kPendingText, reason: t);
+        }
+        expect(find.descendant(of: front, matching: find.text('업데이트 완료')), findsNothing);
+        expect(find.descendant(of: front, matching: find.byIcon(Icons.check_circle_rounded)), findsNothing);
+        for (final icon in tester.widgetList<Icon>(find.descendant(of: front, matching: find.byType(Icon)))) {
+          expect([kPendingText, kPendingSubText], contains(icon.color));
+        }
+        // 카드 전체 투명도는 쓰지 않는다 (전환이 끝난 뒤 불투명)
+        final fades = tester.widgetList<FadeTransition>(find.ancestor(of: front, matching: find.byType(FadeTransition)));
+        expect(fades.every((f) => f.opacity.value == 1.0), isTrue);
+        // 뒤 카드(직전 완료 회차)는 로또 금색 테마 그대로
+        final back = find.byKey(const ValueKey('header_lotto_back'));
+        expect(colorOf(tester, back, '로또 1245회 · ${formatUpdateTime(t1245)} 업데이트'), const Color(0xFF8A6100));
+      }
+    });
+
+    testWidgets('완료 카드는 선명한 색 + 초록 체크·업데이트 완료·실제 수집 시각', (tester) async {
+      await tester.pumpWidget(app(HomeRoundHeader(lotto: lotto(), pension: pension(), clock: () => kst(2026, 10, 12, 16))));
+      final lf = find.byKey(const ValueKey('header_lotto_front_1245_complete'));
+      expect(colorOf(tester, lf, '1245'), const Color(0xFF14213D));
+      expect(colorOf(tester, lf, '로또 6/45'), const Color(0xFF8A6100));
+      expect(colorOf(tester, lf, '업데이트 완료'), const Color(0xFF1E7D4C));
+      expect(find.descendant(of: lf, matching: find.byIcon(Icons.check_circle_rounded)), findsOneWidget);
+      final pf = find.byKey(const ValueKey('header_pension_front_336_complete'));
+      expect(colorOf(tester, pf, '연금복권720+'), const Color(0xFF1C7A49));
+    });
+
+    testWidgets('대기 → 완료 전환: 같은 자리에서 색만 바뀌고 스크롤 위치 그대로', (tester) async {
+      final now = kst(2026, 10, 18, 9);
+      final scroll = ScrollController();
+      Widget build(GameRoundData l) => MaterialApp(
+            home: Scaffold(
+              body: SingleChildScrollView(
+                controller: scroll,
+                child: Column(children: [
+                  HomeRoundHeader(lotto: l, pension: pension(), clock: () => now),
+                  const SizedBox(height: 2000),
+                ]),
+              ),
+            ),
+          );
+      await tester.pumpWidget(build(lotto()));
+      scroll.jumpTo(120);
+      await tester.pump();
+      expect(find.byKey(const ValueKey('header_lotto_front_1246_awaiting')), findsOneWidget);
+
+      final t1246 = DateTime.utc(2026, 10, 17, 17, 40);
+      await tester.pumpWidget(build(lotto(extra: [RoundCrawlRow(1246, 'success', t1246)], winners: {1246})));
+      await tester.pump(const Duration(milliseconds: 200)); // 전환 중
+      await tester.pumpAndSettle();
+      final front = find.byKey(const ValueKey('header_lotto_front_1246_complete'));
+      expect(front, findsOneWidget);
+      expect(find.byKey(const ValueKey('header_lotto_front_1246_awaiting')), findsNothing);
+      expect(colorOf(tester, front, '1246'), const Color(0xFF14213D));
+      expect(find.descendant(of: front, matching: find.text('${formatUpdateTime(t1246)} 수집')), findsOneWidget);
+      expect(scroll.offset, 120);
     });
 
     testWidgets('작은 화면(320)·큰 글씨에서도 오버플로 없음', (tester) async {

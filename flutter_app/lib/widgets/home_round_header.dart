@@ -48,13 +48,19 @@ Map<String, DateTime> latestUpdateTimes(List<Map<String, dynamic>> logs) {
 
 class _Theme {
   final String label;
+  final String short;
   final Color accent;
   final Color ink;
-  const _Theme(this.label, this.accent, this.ink);
+  const _Theme(this.label, this.short, this.accent, this.ink);
   static _Theme of(String type) => type == 'pension'
-      ? const _Theme('연금복권720+', Color(0xFF2EAD6B), Color(0xFF1C7A49))
-      : const _Theme('로또 6/45', Color(0xFFE0A100), Color(0xFF8A6100));
+      ? const _Theme('연금복권720+', '연금', Color(0xFF2EAD6B), Color(0xFF1C7A49))
+      : const _Theme('로또 6/45', '로또', Color(0xFFE0A100), Color(0xFF8A6100));
 }
+
+/// 신규 회차 대기 카드(완료 전) 색 — 흰 배경 위 옅은 회색. 카드 투명도는 쓰지 않는다.
+const kPendingText = Color(0xFFB0B5BD);
+const kPendingSubText = Color(0xFFC0C4CB);
+const kPendingLine = Color(0xFFE4E7EB);
 
 /// 뒤 카드가 앞 카드 위로 드러나는 높이
 const double kBackCardPeek = 20;
@@ -223,7 +229,7 @@ class _GameStack extends StatelessWidget {
         Padding(
           padding: const EdgeInsets.only(top: kBackCardPeek),
           child: AnimatedSwitcher(
-            duration: const Duration(milliseconds: 260),
+            duration: const Duration(milliseconds: 450),
             switchInCurve: Curves.easeOut,
             transitionBuilder: (child, anim) => FadeTransition(
               opacity: anim,
@@ -249,10 +255,10 @@ class _GameStack extends StatelessWidget {
   }
 }
 
-BoxDecoration _frontDecoration(_Theme t) => BoxDecoration(
+BoxDecoration _frontDecoration(_Theme t, {bool pending = false}) => BoxDecoration(
       color: Colors.white,
       borderRadius: BorderRadius.circular(16),
-      border: Border.all(color: t.accent.withValues(alpha: 0.45), width: 1.2),
+      border: Border.all(color: pending ? kPendingLine : t.accent.withValues(alpha: 0.45), width: 1.2),
       boxShadow: [
         BoxShadow(color: Colors.black.withValues(alpha: 0.14), blurRadius: 10, offset: const Offset(0, 3)),
       ],
@@ -280,26 +286,34 @@ class _FrontCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    const ink = Color(0xFF14213D);
+    // 수집·검증 완료 전(추첨 예정·결과 대기·데이터 오류)에는 모든 글자·아이콘·선이 옅은 회색
+    final pending = card.status != RoundStatus.complete;
+    final ink = pending ? kPendingText : const Color(0xFF14213D);
+    final dot = pending ? kPendingSubText : theme.accent;
+    final label = pending ? kPendingText : theme.ink;
+    final date = pending ? kPendingText : const Color(0xFF1565C0);
+    final sub = pending ? kPendingSubText : Colors.grey.shade700;
+    final chevron = pending ? kPendingSubText : Colors.grey.shade400;
+    final line = pending ? kPendingLine : Colors.grey.shade200;
     return Material(
       type: MaterialType.transparency,
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
         onTap: onTap,
         child: Ink(
-          decoration: _frontDecoration(theme),
+          decoration: _frontDecoration(theme, pending: pending),
           padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Row(children: [
-              Container(width: 8, height: 8, decoration: BoxDecoration(color: theme.accent, shape: BoxShape.circle)),
+              Container(width: 8, height: 8, decoration: BoxDecoration(color: dot, shape: BoxShape.circle)),
               const SizedBox(width: 6),
               Expanded(
                 child: Text(theme.label,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: theme.ink)),
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: label)),
               ),
-              Icon(Icons.chevron_right_rounded, size: 16, color: Colors.grey.shade400),
+              Icon(Icons.chevron_right_rounded, size: 16, color: chevron),
             ]),
             const SizedBox(height: 2),
             FittedBox(
@@ -307,9 +321,9 @@ class _FrontCard extends StatelessWidget {
               alignment: Alignment.centerLeft,
               child: Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
                 Text('${card.round}',
-                    style: const TextStyle(fontSize: 30, height: 1.1, fontWeight: FontWeight.w900, color: ink)),
+                    style: TextStyle(fontSize: 30, height: 1.1, fontWeight: FontWeight.w900, color: ink)),
                 const SizedBox(width: 2),
-                const Text('회', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: ink)),
+                Text('회', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: ink)),
               ]),
             ),
             const SizedBox(height: 3),
@@ -317,17 +331,17 @@ class _FrontCard extends StatelessWidget {
               fit: BoxFit.scaleDown,
               alignment: Alignment.centerLeft,
               child: Text('${formatDrawDate(card.drawDate)} 추첨',
-                  style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF1565C0))),
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: date)),
             ),
             const SizedBox(height: 8),
-            Divider(height: 1, color: Colors.grey.shade200),
+            Divider(height: 1, color: line),
             const SizedBox(height: 7),
-            RoundStatusPill(status: card.status),
+            RoundStatusPill(status: card.status, muted: pending),
             const SizedBox(height: 4),
             Text(_detail,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
+                style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: sub)),
           ]),
         ),
       ),
@@ -364,7 +378,7 @@ class _BackCard extends StatelessWidget {
               child: FittedBox(
                 fit: BoxFit.scaleDown,
                 alignment: Alignment.centerLeft,
-                child: Text('이전 ${card.round}회 · $time',
+                child: Text('${theme.short} ${card.round}회 · $time',
                     style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: theme.ink)),
               ),
             ),
@@ -398,16 +412,20 @@ class _FrontPlaceholder extends StatelessWidget {
 /// 회차 상태 표시 (추첨 예정 / 결과 대기 / 업데이트 완료 / 데이터 오류)
 class RoundStatusPill extends StatelessWidget {
   final RoundStatus status;
-  const RoundStatusPill({super.key, required this.status});
+
+  /// 완료 전 대기 카드용 옅은 회색 표시
+  final bool muted;
+  const RoundStatusPill({super.key, required this.status, this.muted = false});
 
   @override
   Widget build(BuildContext context) {
-    final (fg, bg, icon) = switch (status) {
+    var (fg, bg, icon) = switch (status) {
       RoundStatus.scheduled => (const Color(0xFF1565C0), const Color(0xFFE3F0FF), Icons.event_rounded),
       RoundStatus.awaiting => (const Color(0xFFB45309), const Color(0xFFFFF1DC), Icons.hourglass_top_rounded),
       RoundStatus.complete => (const Color(0xFF1E7D4C), const Color(0xFFE3F6EA), Icons.check_circle_rounded),
       RoundStatus.error => (const Color(0xFFC62828), const Color(0xFFFDE4E4), Icons.error_outline_rounded),
     };
+    if (muted) (fg, bg) = (kPendingText, const Color(0xFFF4F5F7));
     return FittedBox(
       fit: BoxFit.scaleDown,
       alignment: Alignment.centerLeft,
