@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/admin_gate.dart';
 import 'random_number_screen.dart';
 import 'ai_number_screen.dart';
 import 'golden_wave_screen.dart';
@@ -24,12 +25,21 @@ class RecommendMenuItem {
 
 /// 추천 탭 '번호 추천' 메뉴 — 일반·관리자 모드 동일.
 /// '자리별 패턴 분석'·'구매예측'은 추천 탭에 두지 않는다 (관리자 메뉴의 '패턴 분석'·'예측 연구 현황'에만 있음).
+/// 일반 모드 '번호 추천' — 엔진 도입 이전 버전 그대로 (엔진 개입 없음)
 const List<RecommendMenuItem> kRecommendNumberMenu = [
   RecommendMenuItem('ai_sub', Icons.auto_awesome, Colors.purple, 'AI 조합번호 생성', 'AI 법칙 기반 번호 추천'),
   RecommendMenuItem('random', Icons.casino, Colors.orange, '나만의 번호 생성', '주사위를 굴려 랜덤 번호 조합'),
-  RecommendMenuItem('numbers', Icons.confirmation_number_rounded, Colors.deepPurple, '추천번호', '이번 회차 최종 추천번호'),
   RecommendMenuItem('meaning', Icons.menu_book, Colors.teal, '번호별 의미', '1~45 각 번호의 상징과 법칙 연계'),
 ];
+
+/// 관리자 모드(프리미엄) 전용 — 랜덤확률분석엔진 최종 추천번호
+const RecommendMenuItem kEngineNumberMenuItem =
+    RecommendMenuItem('numbers', Icons.confirmation_number_rounded, Colors.deepPurple, '추천번호', '이번 회차 최종 추천번호 (관리자)');
+
+/// 모드별 '번호 추천' 메뉴. 일반 모드에는 엔진 추천번호를 넣지 않는다.
+List<RecommendMenuItem> recommendNumberMenuFor({required bool admin}) => admin
+    ? [kRecommendNumberMenu[0], kRecommendNumberMenu[1], kEngineNumberMenuItem, kRecommendNumberMenu[2]]
+    : kRecommendNumberMenu;
 
 class RecommendScreen extends StatefulWidget {
   const RecommendScreen({super.key});
@@ -45,10 +55,27 @@ class RecommendScreenState extends State<RecommendScreen> {
   LottoWinningNumber? _latestRound;
   DateTime?           _loadedAt;
 
+  /// 관리자 모드(프리미엄) 여부 — 탭을 다시 열 때마다 갱신
+  bool _isAdmin = false;
+
   @override
   void initState() {
     super.initState();
     _loadLatestRound();
+    _refreshAdmin();
+  }
+
+  @override
+  void didUpdateWidget(covariant RecommendScreen oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    _refreshAdmin();
+  }
+
+  Future<void> _refreshAdmin() async {
+    final v = await AdminGate.isAdmin();
+    if (!mounted) return;
+    if (v != _isAdmin) setState(() => _isAdmin = v);
+    if (!v && _currentSub == 'numbers') setState(() => _currentSub = null);
   }
 
   Future<void> _loadLatestRound() async {
@@ -94,7 +121,7 @@ class RecommendScreenState extends State<RecommendScreen> {
     if (_currentSub == 'meaning') {
       return _wrapWithBack(const NumberMeaningContent(), '번호 추천', null);
     }
-    if (_currentSub == 'numbers') {
+    if (_currentSub == 'numbers' && _isAdmin) {
       return _wrapWithBack(const RecommendNumbersContent(), '번호 추천', null);
     }
     if (_currentSub == 'ai_sub') {
@@ -184,7 +211,7 @@ class RecommendScreenState extends State<RecommendScreen> {
                   const SizedBox(height: 20),
                   _buildSectionLabel('번호 추천'),
                   const SizedBox(height: 10),
-                  for (final (i, m) in kRecommendNumberMenu.indexed) ...[
+                  for (final (i, m) in recommendNumberMenuFor(admin: _isAdmin).indexed) ...[
                     if (i > 0) const SizedBox(height: 12),
                     _buildMenuCard(
                       icon: m.icon,
