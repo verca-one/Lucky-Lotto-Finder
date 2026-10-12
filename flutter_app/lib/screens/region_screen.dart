@@ -1306,13 +1306,9 @@ class _RegionScreenState extends State<RegionScreen> {
         showResearch: false,
         showMedal: homeRank != null,
         onTap: () {
+          // 펼침/접힘만 — 다른 카드를 자동으로 접지 않는다 (위 카드가 줄어 화면이 밀리지 않게)
           setState(() {
-            if (isExpanded) {
-              _expandedCards.remove(store.dhlotteryCode);
-            } else {
-              _expandedCards.clear();
-              _expandedCards.add(store.dhlotteryCode);
-            }
+            if (!_expandedCards.remove(store.dhlotteryCode)) _expandedCards.add(store.dhlotteryCode);
           });
         },
         onFavoriteTap: () => _toggleFavorite(store.dhlotteryCode),

@@ -751,18 +751,10 @@ class _NearbyScreenState extends State<NearbyScreen> {
         );
       } catch (_) {}
     }
+    // 카드 펼침/접힘만 — 목록 자동 스크롤·다른 카드 자동 접힘 없음 (화면이 저절로 움직이지 않게)
     setState(() {
       _selectedMarkerIndex = index;
-      if (_expandedStoreIndices.contains(index)) {
-        _expandedStoreIndices.remove(index);
-      } else {
-        _expandedStoreIndices.clear();
-        _expandedStoreIndices.add(index);
-      }
-    });
-    // 리스트에서 해당 카드가 보이도록 스크롤
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _scrollListToIndex(index);
+      if (!_expandedStoreIndices.remove(index)) _expandedStoreIndices.add(index);
     });
   }
 
