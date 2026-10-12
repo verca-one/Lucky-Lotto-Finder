@@ -12,6 +12,7 @@
 """
 
 import os
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 
@@ -83,12 +84,38 @@ def output(**kv):
             f.write("\n".join(lines) + "\n")
 
 
+def record_failure(db, log_path):
+    """엔진 단계가 실행 기록을 남기기 전에 죽은 경우(컴파일·초기화 오류 등) 로그 끝부분을 failed 로 남긴다."""
+    try:
+        lines = open(log_path, encoding="utf-8", errors="replace").read().splitlines()
+    except OSError:
+        lines = ["(로그 파일 없음)"]
+    tail = "\n".join(lines[-60:])
+    tail = re.sub(r"sb_(secret|publishable)_[A-Za-z0-9_\-]+", "sb_***", tail)
+    tail = re.sub(r"eyJ[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+\.[A-Za-z0-9_\-]+", "jwt_***", tail)
+    nums = db.get("lotto_winning_numbers", {"select": "round", "order": "round.desc", "limit": "1"})
+    latest = int(nums[0]["round"]) if nums else 0
+    running = db.get("research_pipeline_runs", {"select": "id", "pipeline_version": f"eq.{PIPELINE_VERSION}",
+                                                "status": "eq.running", "limit": "1"})
+    row = {"status": "failed", "error": tail[-4000:], "finished_at": now().isoformat()}
+    if running:   # 실행 기록을 만든 뒤 프로세스가 죽은 경우
+        db.patch("research_pipeline_runs", {"id": f"eq.{running[0]['id']}"}, row)
+    else:
+        db.post("research_pipeline_runs", dict(row, pipeline_version=PIPELINE_VERSION, latest_round=latest,
+                                               target_round=latest + 1, trigger=os.environ.get("GITHUB_EVENT_NAME"),
+                                               runner=os.environ.get("GITHUB_RUN_ID")))
+    print("엔진 실패 기록 저장")
+
+
 def main():
     url, key = os.environ.get("SUPABASE_URL", ""), os.environ.get("SUPABASE_KEY", "")
     if not url or not key:
         print("SUPABASE_URL / SUPABASE_KEY 환경변수 필요")
         sys.exit(1)
     db = Db(url, key)
+    if len(sys.argv) > 2 and sys.argv[1] == "--record-failure":
+        record_failure(db, sys.argv[2])
+        return
 
     # 오래된 running 정리 (실행 중 중단된 기록이 다음 실행을 막지 않게)
     cutoff = (now() - timedelta(hours=STALE_HOURS)).isoformat()

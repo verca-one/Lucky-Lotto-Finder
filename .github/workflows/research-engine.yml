@@ -65,7 +65,18 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-        run: flutter test tool/server/research_pipeline_test.dart --reporter expanded --timeout none
+        run: |
+          set -o pipefail
+          flutter test tool/server/research_pipeline_test.dart --reporter expanded --timeout none 2>&1 | tee /tmp/pipeline.log
+      - name: Record engine failure (로그 끝부분을 실행 기록에 저장, 비밀키 마스킹)
+        if: ${{ failure() }}
+        working-directory: .
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: |
+          pip install requests
+          python research_pipeline_gate.py --record-failure /tmp/pipeline.log
 
   publish:
     needs: [gate, engine]
