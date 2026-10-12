@@ -438,6 +438,8 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
 
   // 확장된 카드 관리
   final Set<String> _expandedCards = {};
+  // 카드 안 '당첨 이력' 펼침 여부 — 기본은 접힘
+  final Set<String> _historyOpen = {};
   // 당첨 이력 캐시
   final Map<String, List<Map<String, dynamic>>> _historyCache = {};
   // 즐겨찾기
@@ -929,6 +931,7 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
     setState(() {
       if (_expandedCards.contains(code)) {
         _expandedCards.remove(code);
+        _historyOpen.remove(code); // 다시 펼치면 당첨 이력은 접힌 상태로
       } else {
         _expandedCards.add(code);
       }
@@ -1205,30 +1208,51 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
     final lottoHistory = history.where((h) => h['lottery_type'] == 'lotto').toList();
     final pensionHistory = history.where((h) => h['lottery_type'] == 'pension').toList();
 
+    final open = _historyOpen.contains(dhlotteryCode);
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('당첨 이력', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.grey.shade700)),
-        const SizedBox(height: 8),
-        if (lottoHistory.isNotEmpty) ...[
-          Text('로또', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.blue.shade700)),
-          const SizedBox(height: 6),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: lottoHistory.map((h) => _buildRoundChip(h)).toList(),
+        InkWell(
+          key: ValueKey('history_toggle_$dhlotteryCode'),
+          borderRadius: BorderRadius.circular(8),
+          onTap: () => setState(() {
+            if (!_historyOpen.remove(dhlotteryCode)) _historyOpen.add(dhlotteryCode);
+          }),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(
+              children: [
+                Text('당첨 이력', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Colors.grey.shade700)),
+                const Spacer(),
+                Text(open ? '접기' : '펼치기', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                Icon(open ? Icons.expand_less : Icons.expand_more, size: 18, color: Colors.grey.shade600),
+              ],
+            ),
           ),
-        ],
-        if (lottoHistory.isNotEmpty && pensionHistory.isNotEmpty)
-          const SizedBox(height: 10),
-        if (pensionHistory.isNotEmpty) ...[
-          Text('연금복권', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.green.shade700)),
-          const SizedBox(height: 6),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: pensionHistory.map((h) => _buildRoundChip(h)).toList(),
-          ),
+        ),
+        if (open) ...[
+          const SizedBox(height: 4),
+          if (lottoHistory.isNotEmpty) ...[
+            Text('로또', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.blue.shade700)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: lottoHistory.map((h) => _buildRoundChip(h)).toList(),
+            ),
+          ],
+          if (lottoHistory.isNotEmpty && pensionHistory.isNotEmpty)
+            const SizedBox(height: 10),
+          if (pensionHistory.isNotEmpty) ...[
+            Text('연금복권', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.green.shade700)),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: pensionHistory.map((h) => _buildRoundChip(h)).toList(),
+            ),
+          ],
         ],
       ],
     );
