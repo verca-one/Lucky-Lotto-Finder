@@ -5,6 +5,8 @@ import 'package:geolocator/geolocator.dart';
 import '../models/lottery_store.dart';
 import '../services/supabase_service.dart';
 import '../services/badge_service.dart';
+import '../services/ranking_extras_service.dart';
+import '../widgets/ranking_store_card.dart';
 import '../widgets/store_detail_popup.dart';
 import '../services/favorites_notifier.dart';
 
@@ -49,7 +51,34 @@ class _RegionScreenState extends State<RegionScreen> {
     _loadTop30Ranks();
     _loadStores();
     _loadUserId();
+    SupabaseService.getLatestRound('lotto').then((r) {
+      if (mounted && r != null) setState(() => _latestRound = r);
+    });
     favoritesNotifier.addListener(_onFavoritesChanged);
+  }
+
+  // ── 카드 하단 통계(평균 간격 등): 화면에 그려진 카드의 코드를 모아 한 번에 조회 ──
+  int _latestRound = 0;
+  final Map<String, RankingStoreExtras> _extras = {};
+  final Set<String> _extrasPending = {};
+  final Set<String> _extrasRequested = {};
+  bool _extrasScheduled = false;
+
+  void _requestExtras(String code) {
+    if (_extras.containsKey(code) || _extrasRequested.contains(code)) return;
+    _extrasPending.add(code);
+    if (_extrasScheduled) return;
+    _extrasScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      _extrasScheduled = false;
+      final codes = _extrasPending.toList();
+      _extrasPending.clear();
+      _extrasRequested.addAll(codes);
+      try {
+        final x = await RankingExtrasService.load(codes.map((c) => <String, dynamic>{'dhlottery_code': c}).toList());
+        if (mounted) setState(() => _extras.addAll(x));
+      } catch (_) {}
+    });
   }
 
   @override
@@ -1253,138 +1282,58 @@ class _RegionScreenState extends State<RegionScreen> {
   Widget _buildStoreCard(LotteryStore store, int rank) {
     final isFav = _favorites.contains(store.dhlotteryCode);
     final isExpanded = _expandedCards.contains(store.dhlotteryCode);
+    final (highlight, others) = splitStoreBadges(BadgeService.getBadges(store.dhlotteryCode));
+    _requestExtras(store.dhlotteryCode);
 
-    return GestureDetector(
-      onTap: () {
-        setState(() {
-          if (isExpanded) {
-            _expandedCards.remove(store.dhlotteryCode);
-          } else {
-            _expandedCards.clear();
-            _expandedCards.add(store.dhlotteryCode);
-          }
-        });
-      },
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: isExpanded ? const Color(0xFFF0F7FF) : Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: isExpanded ? const Color(0xFF90CAF9) : const Color(0xFFEEEEEE),
-            width: isExpanded ? 1.5 : 1,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 헤더: 이름 + 즐겨찾기
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    store.storeName,
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF1A1A1A)),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => _toggleFavorite(store.dhlotteryCode),
-                  child: Padding(
-                    padding: const EdgeInsets.all(4),
-                    child: Icon(
-                      isFav ? Icons.star_rounded : Icons.star_border_rounded,
-                      color: isFav ? Colors.amber : Colors.grey.shade300,
-                      size: 24,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Icon(Icons.place_outlined, size: 12, color: Colors.grey.shade400),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    store.address,
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            // 배지
-            Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: [
-                if (_top30Ranks.containsKey(store.dhlotteryCode))
-                  _buildTop30Badge(_top30Ranks[store.dhlotteryCode]!),
-                ...BadgeService.getBadges(store.dhlotteryCode).map((badge) {
-                  return _buildBadgeChip(badge);
-                }),
-              ],
-            ),
-            // ── 확장 영역 ──
-            if (isExpanded) ...[
-              const SizedBox(height: 12),
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: const Color(0xFFE0E0E0)),
-                ),
-                child: Column(
-                  children: [
-                    // 지도 버튼
-                    Row(
-                      children: [
-                        Expanded(
-                          child: _buildMapButton('네이버지도', Icons.map_outlined, () => _openMap('naver', store)),
-                        ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: _buildMapButton('카카오지도', Icons.place_outlined, () => _openMap('kakao', store)),
-                        ),
-                      ],
-                    ),
-                    if ((store.firstCount ?? 0) > 0 || (store.secondCount ?? 0) > 0) ...[
-                      const SizedBox(height: 10),
-                      Row(
-                        children: [
-                          if ((store.firstCount ?? 0) > 0)
-                            _buildInfoChip('1등 ${store.firstCount}회', const Color(0xFFD32F2F), const Color(0xFFFFEBEE)),
-                          if ((store.firstCount ?? 0) > 0) const SizedBox(width: 6),
-                          if ((store.secondCount ?? 0) > 0)
-                            _buildInfoChip('2등 ${store.secondCount}회', const Color(0xFFE65100), const Color(0xFFFFF3E0)),
-                        ],
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: RankingStoreCard(
+        key: ValueKey('region_card_${store.dhlotteryCode}_$rank'),
+        // rank > 0: 지역 TOP 목록(메달 표시) · 0: 검색·지역 목록(순위 없음)
+        data: RankingCardData.fromLotteryStore(store, rank: rank),
+        extras: _extras[store.dhlotteryCode],
+        badges: others,
+        highlightBadges: highlight,
+        isFavorite: isFav,
+        isExpanded: isExpanded,
+        latestRound: _latestRound,
+        showResearch: false,
+        showMedal: rank > 0,
+        extraChips: [
+          if (_top30Ranks.containsKey(store.dhlotteryCode)) _buildTop30Badge(_top30Ranks[store.dhlotteryCode]!),
+        ],
+        onTap: () {
+          setState(() {
+            if (isExpanded) {
+              _expandedCards.remove(store.dhlotteryCode);
+            } else {
+              _expandedCards.clear();
+              _expandedCards.add(store.dhlotteryCode);
+            }
+          });
+        },
+        onFavoriteTap: () => _toggleFavorite(store.dhlotteryCode),
+        expandedChild: isExpanded
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: _buildMapButton('네이버지도', Icons.map_outlined, () => _openMap('naver', store)),
+                      ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: _buildMapButton('카카오지도', Icons.place_outlined, () => _openMap('kakao', store)),
                       ),
                     ],
-                  ],
-                ),
-              ),
-              const SizedBox(height: 10),
-              // 판매점 평가
-              _InlineReviewSection(dhlotteryCode: store.dhlotteryCode),
-            ],
-            // 확장 아이콘
-            if (!isExpanded)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Center(
-                  child: Icon(Icons.keyboard_arrow_down_rounded, color: Colors.grey.shade300, size: 20),
-                ),
-              ),
-          ],
-        ),
+                  ),
+                  const SizedBox(height: 10),
+                  // 판매점 평가
+                  _InlineReviewSection(dhlotteryCode: store.dhlotteryCode),
+                ],
+              )
+            : null,
       ),
     );
   }
@@ -1411,17 +1360,6 @@ class _RegionScreenState extends State<RegionScreen> {
     );
   }
 
-  Widget _buildInfoChip(String label, Color textColor, Color bgColor) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(10),
-      ),
-      child: Text(label, style: TextStyle(fontSize: 11, color: textColor, fontWeight: FontWeight.w600)),
-    );
-  }
-
   Widget _buildTop30Badge(int rank) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
@@ -1436,60 +1374,6 @@ class _RegionScreenState extends State<RegionScreen> {
           fontSize: 10,
           color: Colors.amber.shade800,
           fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBadgeChip(StoreBadge badge) {
-    Color color;
-    switch (badge.type) {
-      case StoreBadgeType.hot:
-        color = Colors.red;
-        break;
-      case StoreBadgeType.myeongdang:
-        color = Colors.amber.shade800;
-        break;
-      case StoreBadgeType.matjip:
-        color = Colors.deepOrange;
-        break;
-      case StoreBadgeType.first:
-        color = Colors.red.shade700;
-        break;
-      case StoreBadgeType.second:
-        color = Colors.orange;
-        break;
-      case StoreBadgeType.regional:
-        color = Colors.purple;
-        break;
-      case StoreBadgeType.streak:
-        color = Colors.blue;
-        break;
-      case StoreBadgeType.rank:
-        color = Colors.teal;
-        break;
-      case StoreBadgeType.pattern:
-        color = Colors.grey.shade700;
-        break;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: badge.type == StoreBadgeType.hot
-            ? color.withValues(alpha: 0.15)
-            : color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: badge.type == StoreBadgeType.hot
-            ? Border.all(color: color.withValues(alpha: 0.5), width: 1)
-            : null,
-      ),
-      child: Text(
-        badge.label,
-        style: TextStyle(
-          fontSize: 10,
-          color: color,
-          fontWeight: badge.type == StoreBadgeType.hot ? FontWeight.bold : FontWeight.w600,
         ),
       ),
     );

@@ -9,6 +9,9 @@ import 'dart:math' as math;
 import '../models/lottery_store.dart';
 import '../services/supabase_service.dart';
 import '../services/badge_service.dart';
+import '../services/admin_gate.dart';
+import '../services/ranking_extras_service.dart';
+import '../widgets/ranking_store_card.dart';
 import '../widgets/store_detail_popup.dart';
 import '../services/favorites_notifier.dart';
 import '../services/rpa_joint_engine.dart';
@@ -53,6 +56,12 @@ class _NearbyScreenState extends State<NearbyScreen> {
 
   bool _mapReady = false; // flutter_map 컨트롤러 attach 완료 여부
 
+  /// 엔진 관련 표시(회차 분석·목록 분석·유력 지역·엔진추천)는 관리자 모드에서만
+  bool _isAdmin = false;
+
+  /// 카드 하단 통계(평균 간격 등) — 목록 단위 일괄 조회
+  Map<String, RankingStoreExtras> _extras = {};
+
   @override
   void initState() {
     super.initState();
@@ -62,7 +71,16 @@ class _NearbyScreenState extends State<NearbyScreen> {
     _loadUserId();
     _getCurrentLocation();
     _loadLatestRound();
+    AdminGate.isAdmin().then((v) { if (mounted) setState(() => _isAdmin = v); });
     favoritesNotifier.addListener(_onFavoritesChanged);
+  }
+
+  Future<void> _loadExtras(List<LotteryStore> stores) async {
+    try {
+      final x = await RankingExtrasService.load(
+          stores.map((s) => <String, dynamic>{'dhlottery_code': s.dhlotteryCode}).toList());
+      if (mounted) setState(() => _extras = x);
+    } catch (_) {}
   }
 
   void _safeMapMove(double lat, double lng, double zoom) {
@@ -91,8 +109,8 @@ class _NearbyScreenState extends State<NearbyScreen> {
 
       // Joint Model 예측에서 유력 지역 로드
       final preds = await JointModelEngine.instance.loadRecentPredictions(limit: 6);
-      final targetPred = preds.where((p) => p['target_round'] == round).firstOrNull
-          ?? (preds.isNotEmpty ? preds.first : null);
+      // 해당 회차 예측만 사용 (다른 회차 예측으로 대체하지 않음)
+      final targetPred = preds.where((p) => p['target_round'] == round).firstOrNull;
 
       List<String> candidates = [];
       if (targetPred != null) {
@@ -258,6 +276,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
       BadgeService.clearCache();
       final codes = stores.map((s) => s.dhlotteryCode).toSet().toList();
       await BadgeService.loadBadges(codes);
+      _loadExtras(stores);
       setState(() {
         _nearbyStores = stores;
         _isSearching = false;
@@ -345,6 +364,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
       BadgeService.clearCache();
       final codes = stores.map((s) => s.dhlotteryCode).toSet().toList();
       await BadgeService.loadBadges(codes);
+      _loadExtras(stores);
 
       setState(() {
         _nearbyStores = stores;
@@ -680,8 +700,8 @@ class _NearbyScreenState extends State<NearbyScreen> {
                   ),
                   // GPS 정확도 상태 바
                   _buildGpsStatusBar(),
-                  // ── 이번 회차 분석 버튼 (5-8, 5-9) ──────────────
-                  if (_latestRound > 0)
+                  // ── 이번 회차 분석 버튼 (5-8, 5-9) — 관리자 모드 전용 ──────────────
+                  if (_isAdmin && _latestRound > 0)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
                       child: Row(children: [
@@ -726,8 +746,8 @@ class _NearbyScreenState extends State<NearbyScreen> {
                         ),
                       ]),
                     ),
-                  // 엔진 추천 지역 배지
-                  if (_engineCandidateRegions.isNotEmpty)
+                  // 엔진 추천 지역 배지 — 관리자 모드 전용
+                  if (_isAdmin && _engineCandidateRegions.isNotEmpty)
                     Padding(
                       padding: const EdgeInsets.fromLTRB(12, 2, 12, 4),
                       child: Wrap(spacing: 4, runSpacing: 2, children: [
@@ -987,132 +1007,44 @@ class _NearbyScreenState extends State<NearbyScreen> {
     );
     final isFav = _favorites.contains(store.dhlotteryCode);
     final isExpanded = _expandedStoreIndices.contains(index);
+    final (highlight, others) = splitStoreBadges(BadgeService.getBadges(store.dhlotteryCode));
+    final endorsed = _isAdmin && _engineEndorsed[store.dhlotteryCode] == true;
 
-    return GestureDetector(
-      onTap: () => _onCardTap(store, index),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 200),
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: _selectedMarkerIndex == index ? const Color(0xFFF0F7FF) : Colors.white,
-          borderRadius: BorderRadius.circular(14),
-          border: Border.all(
-            color: _selectedMarkerIndex == index ? const Color(0xFF90CAF9) : const Color(0xFFEEEEEE),
-            width: _selectedMarkerIndex == index ? 1.5 : 1,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // 헤더: 이름 + 거리 + [엔진추천] + 즐겨찾기
-            Row(
-              children: [
-                Expanded(
-                  child: Row(children: [
-                    Flexible(
-                      child: Text(
-                        store.storeName,
-                        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14, color: Color(0xFF1A1A1A)),
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ),
-                    if (_engineEndorsed[store.dhlotteryCode] == true) ...[
-                      const SizedBox(width: 5),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFEDE7F6),
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: const Color(0xFF7E57C2), width: 0.5),
-                        ),
-                        child: const Text('엔진추천',
-                            style: TextStyle(fontSize: 9, color: Color(0xFF5E35B1),
-                                fontWeight: FontWeight.w700)),
-                      ),
-                    ],
-                  ]),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFE8F5E9),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.near_me_rounded, size: 11, color: const Color(0xFF2E7D32)),
-                      const SizedBox(width: 3),
-                      Text(
-                        '${distance.toStringAsFixed(2)}km',
-                        style: const TextStyle(color: Color(0xFF2E7D32), fontSize: 11, fontWeight: FontWeight.w700),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 6),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => _toggleFavorite(store.dhlotteryCode),
-                  child: Padding(
-                    padding: const EdgeInsets.all(4),
-                    child: Icon(
-                      isFav ? Icons.star_rounded : Icons.star_border_rounded,
-                      color: isFav ? Colors.amber : Colors.grey.shade300,
-                      size: 24,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                Icon(Icons.place_outlined, size: 12, color: Colors.grey.shade400),
-                const SizedBox(width: 4),
-                Expanded(
-                  child: Text(
-                    store.address,
-                    style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            // 배지
-            Wrap(
-              spacing: 6,
-              runSpacing: 4,
-              children: [
-                if (_top30Ranks.containsKey(store.dhlotteryCode))
-                  _buildTop30Badge(_top30Ranks[store.dhlotteryCode]!),
-                ...BadgeService.getBadges(store.dhlotteryCode).map((badge) {
-                  return _buildBadgeChip(badge);
-                }),
-              ],
-            ),
-            // 엔진추천 판매점 → 추천 구매시점 표시
-            if (_engineEndorsed[store.dhlotteryCode] == true) ...[
-              const SizedBox(height: 8),
-              _buildTemporalCard(store),
-            ],
-            // 펼침 토글 아이콘
-            Center(
-              child: Icon(
-                isExpanded ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
-                color: Colors.grey.shade400,
-                size: 22,
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: RankingStoreCard(
+        key: ValueKey('nearby_card_${store.dhlotteryCode}'),
+        data: RankingCardData.fromLotteryStore(store),
+        extras: _extras[store.dhlotteryCode],
+        badges: others,
+        highlightBadges: highlight,
+        isFavorite: isFav,
+        isExpanded: isExpanded,
+        latestRound: _latestRound,
+        showResearch: false,
+        showMedal: false,
+        selected: _selectedMarkerIndex == index,
+        trailing: DistanceTag(km: distance),
+        extraChips: [
+          if (_top30Ranks.containsKey(store.dhlotteryCode)) _buildTop30Badge(_top30Ranks[store.dhlotteryCode]!),
+          if (endorsed)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: const Color(0xFFEDE7F6),
+                borderRadius: BorderRadius.circular(6),
+                border: Border.all(color: const Color(0xFF7E57C2), width: 0.5),
               ),
+              child: const Text('엔진추천',
+                  style: TextStyle(fontSize: 10, color: Color(0xFF5E35B1), fontWeight: FontWeight.w700)),
             ),
-            // ── 인라인 펼침 섹션 ──
-            if (isExpanded) ...[
-              const SizedBox(height: 10),
-              Divider(height: 1, color: Colors.grey.shade200),
-              const SizedBox(height: 12),
-              Row(
+        ],
+        // 엔진추천 판매점 → 추천 구매시점 (관리자 모드 전용)
+        extraBody: endorsed ? _buildTemporalCard(store) : null,
+        onTap: () => _onCardTap(store, index),
+        onFavoriteTap: () => _toggleFavorite(store.dhlotteryCode),
+        expandedChild: isExpanded
+            ? Row(
                 children: [
                   Expanded(
                     child: OutlinedButton.icon(
@@ -1140,10 +1072,8 @@ class _NearbyScreenState extends State<NearbyScreen> {
                     ),
                   ),
                 ],
-              ),
-            ],
-          ],
-        ),
+              )
+            : null,
       ),
     );
   }
@@ -1323,60 +1253,6 @@ class _NearbyScreenState extends State<NearbyScreen> {
     );
   }
 
-  Widget _buildBadgeChip(StoreBadge badge) {
-    Color color;
-    switch (badge.type) {
-      case StoreBadgeType.hot:
-        color = Colors.red;
-        break;
-      case StoreBadgeType.myeongdang:
-        color = Colors.amber.shade800;
-        break;
-      case StoreBadgeType.matjip:
-        color = Colors.deepOrange;
-        break;
-      case StoreBadgeType.first:
-        color = Colors.red.shade700;
-        break;
-      case StoreBadgeType.second:
-        color = Colors.orange;
-        break;
-      case StoreBadgeType.regional:
-        color = Colors.purple;
-        break;
-      case StoreBadgeType.streak:
-        color = Colors.blue;
-        break;
-      case StoreBadgeType.rank:
-        color = Colors.teal;
-        break;
-      case StoreBadgeType.pattern:
-        color = Colors.grey.shade700;
-        break;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: badge.type == StoreBadgeType.hot
-            ? color.withValues(alpha: 0.15)
-            : color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: badge.type == StoreBadgeType.hot
-            ? Border.all(color: color.withValues(alpha: 0.5), width: 1)
-            : null,
-      ),
-      child: Text(
-        badge.label,
-        style: TextStyle(
-          fontSize: 10,
-          color: color,
-          fontWeight: badge.type == StoreBadgeType.hot ? FontWeight.bold : FontWeight.w600,
-        ),
-      ),
-    );
-  }
-
   List<Marker> _buildMapMarkers() {
     List<Marker> markers = [];
 
@@ -1549,6 +1425,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
       BadgeService.clearCache();
       final codes = stores.map((s) => s.dhlotteryCode).toSet().toList();
       await BadgeService.loadBadges(codes);
+      _loadExtras(stores);
 
       setState(() {
         _nearbyStores = stores;

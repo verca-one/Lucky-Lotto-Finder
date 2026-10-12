@@ -12,6 +12,8 @@ class LotteryStore {
   final int? secondCount;
   final int? totalCount;
   final String? purchaseMethod;
+  final int? latestFirstWin;
+  final int? latestSecondWin;
 
   // 랭킹 필드 (recalculate_store_counts.py가 DB에 저장한 값)
   final int? currentRank;
@@ -43,6 +45,8 @@ class LotteryStore {
     this.secondCount,
     this.totalCount,
     this.purchaseMethod,
+    this.latestFirstWin,
+    this.latestSecondWin,
     this.currentRank,
     this.previousRank,
     this.rankChange,
@@ -81,6 +85,8 @@ class LotteryStore {
       secondCount: json['second_count'],
       totalCount: json['total_count'],
       purchaseMethod: json['purchase_method'],
+      latestFirstWin: (json['latest_first_win'] as num?)?.toInt(),
+      latestSecondWin: (json['latest_second_win'] as num?)?.toInt(),
       currentRank: json['current_rank'],
       previousRank: json['previous_rank'],
       rankChange: json['rank_change'],
@@ -111,6 +117,8 @@ class LotteryStore {
       'second_count': secondCount,
       'total_count': totalCount,
       'purchase_method': purchaseMethod,
+      'latest_first_win': latestFirstWin,
+      'latest_second_win': latestSecondWin,
       'game_store_id': gameStoreId,
       'method': method,
       'latitude': latitude,

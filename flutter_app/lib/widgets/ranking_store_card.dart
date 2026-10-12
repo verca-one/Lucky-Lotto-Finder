@@ -11,6 +11,7 @@
 // 이 위젯은 네트워크를 호출하지 않는다. 모든 데이터는 화면(목록)에서 일괄 조회해 넘긴다.
 import 'package:flutter/material.dart';
 
+import '../models/lottery_store.dart';
 import '../services/badge_service.dart';
 import '../services/ranking_extras_service.dart';
 import '../services/research/agent_research_repository.dart' show AgentStoreScore, agentLabel;
@@ -99,6 +100,27 @@ class RankingCardData {
         pensionFirst: _i(pension?['first_count']) ?? 0,
         pensionSecond: _i(pension?['second_count']) ?? 0,
       );
+
+  /// 주변·지역 목록의 LotteryStore → 카드 데이터. rank 0 = 순위 없는 목록(메달·순위 테마 없음)
+  factory RankingCardData.fromLotteryStore(LotteryStore s, {int rank = 0}) {
+    int? latest(int? v, List<int>? wins) {
+      if (v != null && v > 0) return v;
+      final w = (wins ?? const <int>[]).where((x) => x > 0);
+      return w.isEmpty ? null : w.reduce((a, b) => a > b ? a : b);
+    }
+    return RankingCardData(
+      rank: rank,
+      code: s.dhlotteryCode,
+      name: s.storeName,
+      address: s.address,
+      region: s.region,
+      firstCount: s.firstCount ?? 0,
+      secondCount: s.secondCount ?? 0,
+      latestFirstWin: latest(s.latestFirstWin, s.firstWins),
+      latestSecondWin: latest(s.latestSecondWin, s.secondWins),
+      rankChange: RankChangeInfo.fromData(s.rankStatus, s.rankChange),
+    );
+  }
 
   RankTier get tier => rankTierOf(rank);
 
@@ -220,6 +242,21 @@ class RankingStoreCard extends StatelessWidget {
   /// 엔진·지방장 연구 정보(연구 점수 칸, 주요 가설 칸) 표시 여부 — 관리자 모드 전용
   final bool showResearch;
 
+  /// 순위 메달·금은동 테마 표시 (주변 목록처럼 순위가 아닌 목록은 false)
+  final bool showMedal;
+
+  /// 오른쪽(즐겨찾기 아래)에 크게 보일 표시. 예: 주변 목록의 거리. 없으면 순위 변동(▲▼)
+  final Widget? trailing;
+
+  /// 지역 칩 줄에 덧붙일 칩 (예: 전국 TOP 순위)
+  final List<Widget> extraChips;
+
+  /// 배지 줄 아래에 붙는 추가 영역
+  final Widget? extraBody;
+
+  /// 지도 마커 선택 등으로 강조
+  final bool selected;
+
   static const int maxBadges = 4;
 
   const RankingStoreCard({
@@ -237,14 +274,20 @@ class RankingStoreCard extends StatelessWidget {
     this.glow,
     this.expandedChild,
     this.showResearch = true,
+    this.showMedal = true,
+    this.trailing,
+    this.extraChips = const [],
+    this.extraBody,
+    this.selected = false,
   });
 
   @override
   Widget build(BuildContext context) {
-    final tier = data.tier;
+    final tier = showMedal ? data.tier : RankTier.plain;
     final theme = _RankTheme.of(tier);
     final plain = tier == RankTier.plain;
     final radius = BorderRadius.circular(18);
+    final highlight = plain && (isExpanded || selected);
 
     return Container(
       decoration: BoxDecoration(
@@ -254,8 +297,8 @@ class RankingStoreCard extends StatelessWidget {
             : LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight, colors: theme.background!),
         borderRadius: radius,
         border: Border.all(
-          color: plain && isExpanded ? Colors.blue.shade200 : theme.border,
-          width: plain ? 1 : 1.6,
+          color: highlight ? Colors.blue.shade200 : theme.border,
+          width: plain ? (selected ? 1.5 : 1) : 1.6,
         ),
         boxShadow: [
           BoxShadow(color: theme.shadow, blurRadius: plain ? 8 : 14, offset: const Offset(0, 3)),
@@ -277,6 +320,10 @@ class RankingStoreCard extends StatelessWidget {
                 if (badges.isNotEmpty) ...[
                   const SizedBox(height: 10),
                   _BadgeRow(badges: badges, max: maxBadges),
+                ],
+                if (extraBody != null) ...[
+                  const SizedBox(height: 10),
+                  extraBody!,
                 ],
                 const SizedBox(height: 10),
                 _BottomStatBar(data: data, extras: extras, latestRound: latestRound, showResearch: showResearch),
@@ -302,11 +349,13 @@ class RankingStoreCard extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding: const EdgeInsets.only(top: 2),
-          child: RankMedal(rank: data.rank, size: medalSize),
-        ),
-        const SizedBox(width: 12),
+        if (showMedal && data.rank > 0) ...[
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: RankMedal(rank: data.rank, size: medalSize),
+          ),
+          const SizedBox(width: 12),
+        ],
         Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -354,6 +403,7 @@ class RankingStoreCard extends StatelessWidget {
                 crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   if (data.region.isNotEmpty) _RegionChip(data.region),
+                  ...extraChips,
                   for (final b in highlightBadges) _HighlightChip(badge: b, glow: glow),
                   if (data.pensionFirst > 0 || data.pensionSecond > 0)
                     _PensionChip(first: data.pensionFirst, second: data.pensionSecond),
@@ -368,7 +418,10 @@ class RankingStoreCard extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             _FavoriteButton(isFavorite: isFavorite, onTap: onFavoriteTap),
-            if (data.rankChange != null) ...[
+            if (trailing != null) ...[
+              const SizedBox(height: 6),
+              trailing!,
+            ] else if (data.rankChange != null) ...[
               const SizedBox(height: 6),
               RankChangeTag(info: data.rankChange!, large: true),
             ],
@@ -1005,6 +1058,41 @@ class _BarCell extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+
+/// 배지를 강조 칩(연속 당첨·이번 달 N회 — 가장 높은 것 하나)과 일반 배지로 나눈다. 홈·주변·지역 공통.
+(List<StoreBadge>, List<StoreBadge>) splitStoreBadges(List<StoreBadge> badges) {
+  final streak = badges.where((b) => b.type == StoreBadgeType.streak).toList();
+  final month = streak.where((b) => b.label.contains('이번 달')).toList();
+  final otherStreak = streak.where((b) => !b.label.contains('이번 달')).toList();
+  StoreBadge? topMonth;
+  if (month.isNotEmpty) {
+    int n(StoreBadge b) => int.tryParse(RegExp(r'(\d+)회').firstMatch(b.label)?.group(1) ?? '0') ?? 0;
+    topMonth = month.reduce((a, b) => n(a) >= n(b) ? a : b);
+  }
+  return ([?topMonth, ...otherStreak], badges.where((b) => b.type != StoreBadgeType.streak).toList());
+}
+
+/// 주변 목록의 거리 표시 (오른쪽, 크게)
+class DistanceTag extends StatelessWidget {
+  final double km;
+  const DistanceTag({super.key, required this.km});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      key: const Key('distance_tag'),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(color: const Color(0xFFE8F5E9), borderRadius: BorderRadius.circular(9)),
+      child: Row(mainAxisSize: MainAxisSize.min, children: [
+        const Icon(Icons.near_me_rounded, size: 14, color: Color(0xFF2E7D32)),
+        const SizedBox(width: 3),
+        Text(km < 1 ? '${(km * 1000).round()}m' : '${km.toStringAsFixed(km < 10 ? 2 : 1)}km',
+            style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: Color(0xFF2E7D32), height: 1.15)),
+      ]),
     );
   }
 }
