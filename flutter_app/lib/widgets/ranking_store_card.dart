@@ -421,7 +421,7 @@ class RankingStoreCard extends StatelessWidget {
             if (trailing != null) ...[
               const SizedBox(height: 6),
               trailing!,
-            ] else if (data.rankChange != null) ...[
+            ] else if (showMedal && data.rankChange != null) ...[
               const SizedBox(height: 6),
               RankChangeTag(info: data.rankChange!, large: true),
             ],

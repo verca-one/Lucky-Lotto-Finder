@@ -506,7 +506,7 @@ class _AdminPatternAnalysisScreenState extends State<AdminPatternAnalysisScreen>
             ),
           if (d.fromDb) const SizedBox(height: 12),
           // 최종 결과 카드 하나로 통합: 기존 '추천 조합' 카드는 중복이라 제거하고,
-          // DB에 실제 저장된 활성 엔진 예측 + 최종 구매예측 추천번호를 이 카드에서 표시 (해당 회차 행만)
+          // DB에 실제 저장된 활성 엔진 예측 + 최종 추천번호를 이 카드에서 표시 (해당 회차 행만)
           RpaStoredPredictionCard(targetRound: _targetRound),
           const SizedBox(height: 12),
           if (d.legacy != null) ...[

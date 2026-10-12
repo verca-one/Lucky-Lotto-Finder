@@ -1,6 +1,6 @@
 // 랜덤확률분석엔진 추천번호 — 최종 결과 카드
 //
-// ① 최종 구매예측 추천번호: 공식 최종 예측(OfficialPredictionService — 엔진 브리핑·추천번호 화면과 같은 스냅샷)
+// ① 최종 추천번호: 공식 최종 예측(OfficialPredictionService — 엔진 브리핑·추천번호 화면과 같은 스냅샷)
 // ② Number 엔진 기본 조합: rpa_prediction_results(number_base)에 저장된 행
 // 둘 다 선택한 목표 회차(target_round)의 행만 조회한다. 다른 회차 행을 재사용하거나
 // 앱 내 계산으로 대체하지 않으며, 없으면 '저장 없음'을 그대로 보여준다.
@@ -173,13 +173,13 @@ class _RpaStoredPredictionCardState extends State<RpaStoredPredictionCard> {
     );
   }
 
-  // ── ① 최종 구매예측 추천번호 ─────────────────────────────────
+  // ── ① 최종 추천번호 ─────────────────────────────────
   Widget _finalSection(OfficialPrediction o) {
     final f = o.hasSets ? o.rec : null;
     final title = Row(children: [
       const Icon(Icons.verified_rounded, size: 15, color: _gold),
       const SizedBox(width: 5),
-      const Expanded(child: Text('최종 구매예측 추천번호', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: _gold))),
+      const Expanded(child: Text('최종 추천번호', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: _gold))),
       if (f != null)
         statusChip(f.verifiedEdge ? '검증 신호 반영' : '검증된 당첨확률 우위 없음', f.verifiedEdge ? Colors.teal.shade700 : Colors.grey.shade700),
     ]);

@@ -180,8 +180,8 @@ class ResearchScheduler {
         try { await MndEngine.instance.runIncrementalWalkForward(d.history, d.latestRound, 60); }
         catch (e) { debugPrint('[Research] mnd wf: $e'); }
       }
-      // 8. 최종 구매예측 추천번호 (목표 회차별, 저장된 결과는 덮어쓰지 않음)
-      _setStatus(ResearchPhase.predicted, target, '$target회 예측 등록 완료 · 최종 구매예측 추천번호 생성 중');
+      // 8. 최종 추천번호 (목표 회차별, 저장된 결과는 덮어쓰지 않음)
+      _setStatus(ResearchPhase.predicted, target, '$target회 예측 등록 완료 · 최종 추천번호 생성 중');
       for (int t = target; t < target + 6; t++) {
         try { await FinalRecommendationEngine.instance.ensureStored(t); } catch (e) { debugPrint('[Research] final rec $t: $e'); }
       }

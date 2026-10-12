@@ -24,7 +24,6 @@ class _RegionScreenState extends State<RegionScreen> {
 
   // 판매점 즐겨찾기
   Set<String> _favorites = {};
-  Map<String, int> _top30Ranks = {};
   String _userId = '';
 
   // 지역 즐겨찾기
@@ -48,17 +47,33 @@ class _RegionScreenState extends State<RegionScreen> {
     super.initState();
     _loadFavorites();
     _loadFavoriteRegions();
-    _loadTop30Ranks();
     _loadStores();
     _loadUserId();
     SupabaseService.getLatestRound('lotto').then((r) {
       if (mounted && r != null) setState(() => _latestRound = r);
     });
+    _loadHomeRanks();
     favoritesNotifier.addListener(_onFavoritesChanged);
   }
 
   // ── 카드 하단 통계(평균 간격 등): 화면에 그려진 카드의 코드를 모아 한 번에 조회 ──
   int _latestRound = 0;
+
+  /// 홈 랭킹(TOP 20, 인터넷 판매점 제외)과 같은 순위 — 여기에 있는 판매점만 순위를 표시한다
+  Map<String, int> _homeRanks = {};
+
+  Future<void> _loadHomeRanks() async {
+    try {
+      final all = await SupabaseService.getTopRankedStores(limit: 20);
+      final ranked = all.where((s) => !((s['store_name'] ?? '') as String).startsWith('인터넷')).take(20).toList();
+      final m = <String, int>{};
+      for (var i = 0; i < ranked.length; i++) {
+        final c = (ranked[i]['dhlottery_code'] ?? '').toString();
+        if (c.isNotEmpty) m[c] = i + 1;
+      }
+      if (mounted) setState(() => _homeRanks = m);
+    } catch (_) {}
+  }
   final Map<String, RankingStoreExtras> _extras = {};
   final Set<String> _extrasPending = {};
   final Set<String> _extrasRequested = {};
@@ -102,16 +117,6 @@ class _RegionScreenState extends State<RegionScreen> {
     setState(() {
       _favorites = (prefs.getStringList('favorite_stores') ?? []).toSet();
     });
-  }
-
-  Future<void> _loadTop30Ranks() async {
-    final prefs = await SharedPreferences.getInstance();
-    final rankList = prefs.getStringList('prev_ranking') ?? [];
-    final Map<String, int> ranks = {};
-    for (int i = 0; i < rankList.length; i++) {
-      ranks[rankList[i]] = i + 1;
-    }
-    setState(() => _top30Ranks = ranks);
   }
 
   Future<void> _saveFavorites() async {
@@ -1284,13 +1289,14 @@ class _RegionScreenState extends State<RegionScreen> {
     final isExpanded = _expandedCards.contains(store.dhlotteryCode);
     final (highlight, others) = splitStoreBadges(BadgeService.getBadges(store.dhlotteryCode));
     _requestExtras(store.dhlotteryCode);
+    // 홈 랭킹에 있는 판매점만 홈과 같은 순위로 표시, 나머지는 순위 없이 표시
+    final homeRank = _homeRanks[store.dhlotteryCode];
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: RankingStoreCard(
         key: ValueKey('region_card_${store.dhlotteryCode}_$rank'),
-        // rank > 0: 지역 TOP 목록(메달 표시) · 0: 검색·지역 목록(순위 없음)
-        data: RankingCardData.fromLotteryStore(store, rank: rank),
+        data: RankingCardData.fromLotteryStore(store, rank: homeRank ?? 0),
         extras: _extras[store.dhlotteryCode],
         badges: others,
         highlightBadges: highlight,
@@ -1298,10 +1304,7 @@ class _RegionScreenState extends State<RegionScreen> {
         isExpanded: isExpanded,
         latestRound: _latestRound,
         showResearch: false,
-        showMedal: rank > 0,
-        extraChips: [
-          if (_top30Ranks.containsKey(store.dhlotteryCode)) _buildTop30Badge(_top30Ranks[store.dhlotteryCode]!),
-        ],
+        showMedal: homeRank != null,
         onTap: () {
           setState(() {
             if (isExpanded) {
@@ -1355,25 +1358,6 @@ class _RegionScreenState extends State<RegionScreen> {
             const SizedBox(width: 6),
             Text(label, style: const TextStyle(fontSize: 13, color: Color(0xFF555555), fontWeight: FontWeight.w500)),
           ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTop30Badge(int rank) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: Colors.amber.shade50,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: Colors.amber.shade300, width: 1),
-      ),
-      child: Text(
-        '복권명당 TOP30:$rank위',
-        style: TextStyle(
-          fontSize: 10,
-          color: Colors.amber.shade800,
-          fontWeight: FontWeight.bold,
         ),
       ),
     );
