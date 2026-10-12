@@ -2,7 +2,7 @@ name: Research Public
 
 # 일반 사용자 공개 요약(구매예측번호 3세트 + 공개 연구 1개)을 research_v8_public.sql 의 공개 전용 테이블에 저장한다.
 # research_results 는 읽기만 한다. 쓰기는 service_role 키(SUPABASE_SERVICE_KEY)로만 한다.
-# 기존 크롤링 워크플로는 수정하지 않는다. 외부 사이트 접속 없음.
+# 기존 크롤링 워크플로는 수정하지 않는다. 외부 사이트 접속 없음. (research_v8_public.sql 적용 2026-10-12)
 on:
   push:
     branches: [main]
