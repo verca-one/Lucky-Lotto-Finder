@@ -9,6 +9,7 @@ import 'ac_value_screen.dart';
 import 'zone_balance_screen.dart';
 import 'tax_calculator_screen.dart';
 import 'recommend_numbers_content.dart';
+import 'random_recommend_content.dart';
 import '../models/lotto_winning_number.dart';
 import '../services/research/research_scheduler.dart';
 import '../services/supabase_service.dart';
@@ -25,21 +26,17 @@ class RecommendMenuItem {
 
 /// 추천 탭 '번호 추천' 메뉴 — 일반·관리자 모드 동일.
 /// '자리별 패턴 분석'·'구매예측'은 추천 탭에 두지 않는다 (관리자 메뉴의 '패턴 분석'·'예측 연구 현황'에만 있음).
-/// 일반 모드 '번호 추천' — 엔진 도입 이전 버전 그대로 (엔진 개입 없음)
+/// '번호 추천' 메뉴 (모드 공통). '추천번호' 내용은 모드에 따라 다르다:
+///   일반 모드 — 엔진 개입 없는 랜덤 추천 (RandomRecommendContent)
+///   관리자 모드(프리미엄) — 랜덤확률분석엔진 최종 추천번호 (RecommendNumbersContent)
 const List<RecommendMenuItem> kRecommendNumberMenu = [
   RecommendMenuItem('ai_sub', Icons.auto_awesome, Colors.purple, 'AI 조합번호 생성', 'AI 법칙 기반 번호 추천'),
   RecommendMenuItem('random', Icons.casino, Colors.orange, '나만의 번호 생성', '주사위를 굴려 랜덤 번호 조합'),
+  RecommendMenuItem('numbers', Icons.confirmation_number_rounded, Colors.deepPurple, '추천번호', '이번 회차 추천번호'),
   RecommendMenuItem('meaning', Icons.menu_book, Colors.teal, '번호별 의미', '1~45 각 번호의 상징과 법칙 연계'),
 ];
 
-/// 관리자 모드(프리미엄) 전용 — 랜덤확률분석엔진 최종 추천번호
-const RecommendMenuItem kEngineNumberMenuItem =
-    RecommendMenuItem('numbers', Icons.confirmation_number_rounded, Colors.deepPurple, '추천번호', '이번 회차 최종 추천번호 (관리자)');
-
-/// 모드별 '번호 추천' 메뉴. 일반 모드에는 엔진 추천번호를 넣지 않는다.
-List<RecommendMenuItem> recommendNumberMenuFor({required bool admin}) => admin
-    ? [kRecommendNumberMenu[0], kRecommendNumberMenu[1], kEngineNumberMenuItem, kRecommendNumberMenu[2]]
-    : kRecommendNumberMenu;
+List<RecommendMenuItem> recommendNumberMenuFor({required bool admin}) => kRecommendNumberMenu;
 
 class RecommendScreen extends StatefulWidget {
   const RecommendScreen({super.key});
@@ -58,6 +55,9 @@ class RecommendScreenState extends State<RecommendScreen> {
   /// 관리자 모드(프리미엄) 여부 — 탭을 다시 열 때마다 갱신
   bool _isAdmin = false;
 
+  /// '추천번호' 화면을 열 때의 모드 (true = 엔진 추천번호를 보여 주는 중)
+  bool _shownEngine = false;
+
   @override
   void initState() {
     super.initState();
@@ -75,7 +75,8 @@ class RecommendScreenState extends State<RecommendScreen> {
     final v = await AdminGate.isAdmin();
     if (!mounted) return;
     if (v != _isAdmin) setState(() => _isAdmin = v);
-    if (!v && _currentSub == 'numbers') setState(() => _currentSub = null);
+    // 모드가 바뀌면 열려 있던 '추천번호'는 메뉴로 (일반↔엔진 내용이 섞이지 않게)
+    if (_currentSub == 'numbers' && v != _shownEngine) setState(() => _currentSub = null);
   }
 
   Future<void> _loadLatestRound() async {
@@ -120,6 +121,9 @@ class RecommendScreenState extends State<RecommendScreen> {
     }
     if (_currentSub == 'meaning') {
       return _wrapWithBack(const NumberMeaningContent(), '번호 추천', null);
+    }
+    if (_currentSub == 'numbers' && !_isAdmin) {
+      return _wrapWithBack(const RandomRecommendContent(), '번호 추천', null);
     }
     if (_currentSub == 'numbers' && _isAdmin) {
       return _wrapWithBack(const RecommendNumbersContent(), '번호 추천', null);
@@ -220,7 +224,10 @@ class RecommendScreenState extends State<RecommendScreen> {
                       borderColor: const Color(0xFFE8EDF5),
                       title: m.title,
                       subtitle: m.subtitle,
-                      onTap: () => setState(() => _currentSub = m.sub),
+                      onTap: () => setState(() {
+                        _currentSub = m.sub;
+                        _shownEngine = _isAdmin;
+                      }),
                     ),
                   ],
                 ],
