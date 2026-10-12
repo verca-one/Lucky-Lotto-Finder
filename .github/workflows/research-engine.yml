@@ -60,6 +60,11 @@ jobs:
           flutter-version: '3.41.4'
           channel: stable
           cache: true
+      - name: Placeholder for local-only store JSON assets (git 제외 대용량 파일, 엔진은 사용하지 않음)
+        run: |
+          for f in $(grep -oE "assets/[^ ]+\.json" pubspec.yaml); do
+            [ -f "$f" ] || { echo '[]' > "$f"; echo "placeholder: $f"; }
+          done
       - run: flutter pub get
       - name: Server research pipeline (target ${{ needs.gate.outputs.target }})
         env:
