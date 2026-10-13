@@ -3,7 +3,9 @@ name: Research Engine
 # 관리자 앱 없이 서버에서 모든 엔진·연구를 실행하고(기존 Dart 엔진 헤드리스 실행), 일반 공개용 요약까지 저장한다.
 #   gate    : 최신 회차 데이터(당첨번호·1·2등 판매점·크롤링 완료) 준비 + 중복 실행 여부 판단 (research_pipeline_gate.py)
 #   engine  : flutter_app/tool/server/research_pipeline_test.dart — 단계별 성공·실패를 research_pipeline_runs 에 기록
-#   publish : research_public_worker.py — 관리자 5세트 중 상위 3세트·공개 연구 1개 저장 (매 실행 동기화)
+#   publish : research_review_worker.py — 중앙 엔진 복기·지방장 성적표·비서 복기 브리핑 (research_v10_review.sql)
+#             research_public_worker.py — 관리자 5세트 중 상위 3세트·공개 연구 1개 저장 (매 실행 동기화)
+#   지방장 회차 복기는 Research Worker 의 research_agent_replay.py 가 회차 루프에서 저장한다.
 # 쓰기는 SUPABASE_SERVICE_KEY(GitHub Secrets)로만 한다. 기존 크롤링 워크플로는 수정하지 않는다.
 # 연구 Dart 파이프라인은 외부 사이트에 접속하지 않는다 (판매액 수집은 Research Worker 의 research_prize_stats_collector.py).
 on:
@@ -18,6 +20,7 @@ on:
     paths:
       - 'research_pipeline_gate.py'
       - 'research_public_worker.py'
+      - 'research_review_worker.py'
       - 'flutter_app/tool/server/**'
       - '.github/workflows/research-engine.yml'
 
@@ -87,13 +90,20 @@ jobs:
     needs: [gate, engine]
     if: ${{ !cancelled() && needs.gate.result == 'success' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
       - run: pip install requests
+      - name: Engine review (중앙 엔진 복기·지방장 성적표·비서 복기 브리핑)
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python research_review_worker.py --record-run
       - name: Publish public summary (3 sets + public study)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

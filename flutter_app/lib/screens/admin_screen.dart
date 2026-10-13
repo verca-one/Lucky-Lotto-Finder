@@ -24,6 +24,7 @@ import '../widgets/agent_briefing_section.dart';
 import '../widgets/db_usage_card.dart';
 import '../services/research/research_scheduler.dart';
 import '../services/rpa_monte_carlo_engine.dart';
+import 'admin_engine_review_screen.dart';
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({super.key});
@@ -130,6 +131,15 @@ class _AdminScreenState extends State<AdminScreen> {
                       color: const Color(0xFF00695C),
                       onTap: () => Navigator.push(context,
                           MaterialPageRoute(builder: (_) => const AdminAgentResearchScreen())),
+                    ),
+                    const SizedBox(height: 8),
+                    _buildAdminMenuItem(
+                      icon: Icons.fact_check_rounded,
+                      title: '엔진 복기 연구소',
+                      subtitle: '중앙 엔진·지방장 238명 회차별 복기 · 공간전이 복기 · 보정 이력 (서버 자동 복기)',
+                      color: const Color(0xFF4527A0),
+                      onTap: () => Navigator.push(context,
+                          MaterialPageRoute(builder: (_) => const AdminEngineReviewScreen())),
                     ),
                     const SizedBox(height: 8),
                     _buildAdminMenuItem(
@@ -1303,6 +1313,8 @@ class BriefingDetailScreen extends StatelessWidget {
           const MasterBriefingSection(),
           const SizedBox(height: 16),
           const AgentBriefingSection(),
+          const SizedBox(height: 16),
+          const EngineReviewBriefingCard(),
           const SizedBox(height: 20),
           _buildSummaryRow(),
           const SizedBox(height: 20),

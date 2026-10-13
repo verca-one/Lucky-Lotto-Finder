@@ -1,0 +1,41 @@
+name: Research Review Backfill
+
+# 과거 순차 복기 (1000회 → 최신): 999회 기준선부터 지방장 엔진을 메모리에서 다시 재현하며 회차별 복기만 저장한다.
+#   · 재현 테이블·실전 상태(Storage)는 쓰지 않는다 (--review-backfill = dry-run + 임시 상태 폴더)
+#   · 회차마다 재계산한 TOP5 가 동결 저장본과 같은지 확인해 기록 (불일치 회차는 실행 기록에 남김)
+#   · 이어서 중앙 엔진 복기·지방장 성적표·브리핑을 전 회차 작성
+# 한 번 저장된 회차 복기는 수정·삭제되지 않는다 (DB 트리거). 이후 회차는 Research Worker 가 자동 복기한다.
+on:
+  push:
+    branches: [main]
+    paths:
+      - '.github/workflows/research-review-backfill.yml'
+      - 'research_review_agents.py'
+  workflow_dispatch:
+
+concurrency:
+  group: research-review-backfill
+  cancel-in-progress: false
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install numpy scipy requests supabase
+      - name: Agent review backfill (지방장 238명 × 1000~최신)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          RESEARCH_RUNNER: github-actions
+        run: python research_agent_replay.py --review-backfill --out /tmp/review_backfill.json
+      - name: Central review for all rounds (중앙 엔진 복기·성적표·브리핑)
+        if: ${{ !cancelled() }}
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python research_review_worker.py --all

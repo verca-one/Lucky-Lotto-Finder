@@ -32,6 +32,7 @@ import numpy as np
 import requests
 
 import research_agent_worker as W
+import research_review_agents as RV
 from research_agent_worker import (Universe, Engine, discover, store_rates, region_rates, tune, TUNED, load, key_role,
                                    h_summary, summarize_h, dv_central, STATUS, S_DISC, S_RES, S_PASS, S_WEAK, S_REJ, S_COMB,
                                    BOOST_KINDS, K_DELIVER, LEARN_START, CP_FIRST, CP_STEP, FACTOR_CAP)
@@ -571,6 +572,17 @@ def run(db, key, a, raw=None, ready=None):
                                                                "status": "eq.done"}):
             done[r["stage"]].add(r["target_round"])
     wr = Writer(db, a.dry_run)
+    # 회차 복기 (rv-1.0): 실전 실행 또는 과거 순차 복기(--review-backfill)에서 저장
+    review_on = bool(db is not None and (not a.dry_run or getattr(a, "review_backfill", False))
+                     and db.exists("research_review_agent_rounds"))
+    rvw = RV.ReviewWriter(db, review_on)
+    pred_modes = {}
+    if review_on:
+        pred_modes = {r["target_round"]: r["replay_mode"] for r in db.select_all(
+            "research_replay_predictions", {"select": "target_round,replay_mode", "order": "target_round",
+                                            "replay_run_id": f"eq.{RUN_ID}"})}
+        log(f"[review] 회차 복기 저장 ({RV.REVIEW_VERSION})")
+    mismatch_rounds = []
     unmatched = Counter((h["round"], h["prize_tier"]) for h in raw["hist"] if h["dhlottery_code"] not in u.cidx)
     events_cursor = len(eng.events)
     summary_rounds = []
@@ -590,6 +602,7 @@ def run(db, key, a, raw=None, ready=None):
 
     def flush_research(last_round, write_hyp=False):
         wr.flush()
+        rvw.flush()
         if not a.dry_run and write_hyp:
             wr.put("research_replay_hypotheses", hypothesis_rows(u, eng, tr, last_round), "replay_run_id,hypothesis_id")
         size = save_state(last_round)
@@ -629,10 +642,13 @@ def run(db, key, a, raw=None, ready=None):
         else:
             if stored != lists:
                 provenance.setdefault("stored_snapshot_mismatch", []).append(t)
+                mismatch_rounds.append(t)
             lists = stored
         # E 결과 공개 · F 검증
         verified_at = now()
         per, cm, focus = evaluate(u, eng, pr, lists_override=stored)
+        rv_before = RV.capture(eng) if review_on else None
+        fire2 = kout = expv2 = None
         unk1, unk2 = unmatched.get((t, "first"), 0), unmatched.get((t, "second"), 0)
         first_idx = np.where(u.F[ti] == 1)[0]
         if t not in done["verified"]:
@@ -657,6 +673,7 @@ def run(db, key, a, raw=None, ready=None):
         if u.valid[ti]:
             fire2, trials2, expv2, _, _ = eng.fire(ti, with_cowin=True)
             k, koff, eoff = eng.outcomes(ti, fire2)
+            kout = k
             eng.n += trials2
             eng.k += k
             eng.e += expv2
@@ -680,6 +697,10 @@ def run(db, key, a, raw=None, ready=None):
         events_cursor = len(eng.events)
         tr.grow(eng.H)
         eng.st.H_index = {h["hypothesis_id"]: h["idx"] for h in eng.st.H}
+        # 회차 복기 (사전 예측 vs 실제 · 가설 발화·적중 · 판정 변화와 전후 배수)
+        if review_on:
+            rvw.add(RV.round_review(u, eng, pr, ti, t, snap_id(t), lists, fire2, kout, expv2, rv_before, changes,
+                                    pred_modes.get(t, "sequential_replay"), stored is not None, t in mismatch_rounds))
         # H 사후 브리핑
         post, skill = post_briefing(u, eng, pr, per, cm, focus, changes, tr, lists)
         tr.rounds.append({"t": t, "agents": per, "skill": skill, "hash": hsh})
@@ -703,6 +724,7 @@ def run(db, key, a, raw=None, ready=None):
                 f"hits={sum(m['hits_any'] for m in per.values())} ({time.time() - t_start:.0f}s)")
         if t % WRITE_EVERY == 0:
             wr.flush()
+            rvw.flush()
         if t % STATE_EVERY == 0 and t != latest:
             flush_research(t)
         last = t
@@ -733,7 +755,11 @@ def run(db, key, a, raw=None, ready=None):
     if not a.dry_run:
         write_compat(wr, compat, immutable=live_new)   # 동결 행은 처음 한 번만, 지방장 성과·브리핑은 매번 갱신
     flush_research(latest, write_hyp=True)
+    rvw.flush()
     totals = summarize(u, eng, tr, perf, latest, replayed, provenance)
+    totals["review"] = {"version": RV.REVIEW_VERSION, "enabled": review_on, "rounds_written": rvw.written,
+                        "from": min(rvw.rounds) if rvw.rounds else None, "to": max(rvw.rounds) if rvw.rounds else None,
+                        "stored_snapshot_mismatch": mismatch_rounds}
     totals["write_bytes"] = dict(wr.bytes)
     totals["elapsed_sec"] = round(time.time() - t_start, 1)
     if not a.dry_run:
@@ -1088,6 +1114,17 @@ def patch_run_stats(db, stats):
                    timeout=60)
 
 
+def _review_run(db, status, stats, error):
+    """과거 순차 복기 실행 기록 (research_review_runs)"""
+    try:
+        db.upsert("research_review_runs", [clean({"review_version": RV.REVIEW_VERSION, "kind": "backfill", "status": status,
+                                                  "from_round": (stats or {}).get("from"), "to_round": (stats or {}).get("to"),
+                                                  "stats": stats or {}, "error": error, "runner": os.getenv("GITHUB_RUN_ID"),
+                                                  "finished_at": now()})], "id")
+    except Exception as e:
+        log(f"[review] 실행 기록 저장 실패: {e}")
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
@@ -1097,7 +1134,13 @@ def main():
     ap.add_argument("--fresh", action="store_true", help="저장 상태 무시하고 999회 기준선부터 재현")
     ap.add_argument("--usage-only", action="store_true", help="DB 사용량만 측정·기록")
     ap.add_argument("--read-stored", action="store_true", help="dry-run 에서도 DB 의 동결 예측을 읽어 그대로 검증 (읽기 전용)")
+    ap.add_argument("--review-backfill", action="store_true",
+                    help="999회 기준선부터 메모리에서 다시 재현하며 회차 복기만 저장 (재현 테이블·저장 상태는 쓰지 않음)")
     a = ap.parse_args()
+    if a.review_backfill:
+        import tempfile
+        a.dry_run, a.read_stored, a.fresh = True, True, True
+        a.state_dir = a.state_dir or tempfile.mkdtemp(prefix="review_state_")
     url, key = os.getenv("SUPABASE_URL"), os.getenv("SUPABASE_KEY")
     if not url or not key:
         log("SUPABASE_URL / SUPABASE_KEY 환경변수가 필요합니다"); sys.exit(1)
@@ -1106,6 +1149,11 @@ def main():
         db.h.pop("Authorization", None)
     if a.dry_run and not a.state_dir:
         log("--dry-run 은 --state-dir 와 함께 사용하세요 (Storage 쓰기 방지)"); sys.exit(1)
+    if a.review_backfill:
+        if key_role(key) != "service_role":
+            log("--review-backfill 은 service_role 키가 필요합니다 (복기 저장)"); sys.exit(1)
+        if not db.exists("research_review_agent_rounds"):
+            log("research_v10_review.sql 미적용 — 과거 순차 복기를 건너뜁니다"); sys.exit(1)
     raw = load(db)
     ready, pending = W.ready_latest(raw)
     if pending:
@@ -1155,6 +1203,8 @@ def main():
     try:
         totals, compat = run(db, key, a, raw=raw, ready=ready)
     except Exception as e:
+        if a.review_backfill:
+            _review_run(db, "failed", None, str(e)[:500])
         if not a.dry_run:
             try:
                 db.upsert("research_replay_runs", [{"replay_run_id": RUN_ID, "model_version": MODEL, "replay_mode": REPLAY_MODE,
@@ -1170,6 +1220,10 @@ def main():
             u2["pending_rounds"] = pending
         totals["usage"] = u2
         patch_run_stats(db, clean(totals))
+    if a.review_backfill:
+        rv = totals.get("review") or {}
+        ok = bool(rv.get("rounds_written")) and not rv.get("stored_snapshot_mismatch")
+        _review_run(db, "success" if ok else "partial", rv, None if ok else f"재계산 목록 ≠ 동결 목록: {rv.get('stored_snapshot_mismatch')}")
     if a.out:
         json.dump(clean({"summary": totals, "hashes": compat.get("hashes"), "live_hash": compat.get("live_hash"),
                          "last_eval": compat.get("last_eval"), "hyp_sample": compat.get("hyp_sample"), "agent_perf_summary": compat["briefing"].get("agent_performance"), "verdicts": compat["briefing"].get("hypothesis_verdicts"),
