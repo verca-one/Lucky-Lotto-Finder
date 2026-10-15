@@ -1074,9 +1074,19 @@ def usage_update(prev, cur, latest_round):
     if len(window) >= 2:
         days = (datetime.fromisoformat(window[-1]["at"]) - datetime.fromisoformat(window[0]["at"])).total_seconds() / 86400
         if days >= 3:
-            weekly = (window[-1]["database_bytes"] - window[0]["database_bytes"]) / days * 7
+            # 측정은 실행 시작·끝에 짝으로 남는다. 하루 미만 간격(한 실행 안의 저장 — 과거 재현·복기 일괄 저장 같은
+            # 일회성 대량 저장 포함)은 빼고, 하루 이상 간격의 증가 속도 중간값을 쓴다.
+            rates = []
+            for h0, h1 in zip(window, window[1:]):
+                dd = (datetime.fromisoformat(h1["at"]) - datetime.fromisoformat(h0["at"])).total_seconds() / 86400
+                if dd >= 1.0:
+                    rates.append((h1["database_bytes"] - h0["database_bytes"]) / dd * 7)
+            if rates:
+                rates.sort()
+                weekly = rates[len(rates) // 2]
     est = prev.get("estimated_weekly_growth_bytes")
-    use = weekly if weekly is not None else est
+    # 보수적으로: 실측(하루 이상 간격)과 회차당 추정(매주 새 회차 기록) 중 큰 값
+    use = max(x for x in (weekly, est) if x is not None) if (weekly is not None or est is not None) else None
     weeks = (FREE_TIER_BYTES - cur["database_bytes"]) / use if use and use > 0 else None
     if pct >= CRITICAL_PCT:
         level, msg = "critical", f"DB {pct:.0f}% 사용 — 연구 기록 저장을 일시 중지했습니다. 유료 전환은 하지 않습니다. 정리 방안 승인이 필요합니다."
