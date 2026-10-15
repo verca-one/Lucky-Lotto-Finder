@@ -6,6 +6,7 @@ import '../services/research/agent_research_repository.dart' show agentModelLabe
 import '../services/research/agent_verdicts.dart';
 import '../services/research/final_recommendation_engine.dart';
 import '../services/research/master_briefing_service.dart';
+import '../services/research/number_popularity.dart';
 import '../services/store_map_launcher.dart';
 import 'agent_store_evidence_widgets.dart';
 import 'purchase_recommend_card.dart' show lottoBall, statusChip, popularityValidationLine;
@@ -53,6 +54,10 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
           return _box(Padding(padding: const EdgeInsets.all(14),
               child: Text('주요 브리핑: ${b.deniedMessage}', style: const TextStyle(fontSize: 12))));
         }
+        final showPurchase = b.purchase?.validated == true;
+        final popNo = b.popularity == null ? null : '2';
+        final purchaseNo = '${popNo == null ? 2 : 3}';
+        final storeNo = '${(popNo == null ? 2 : 3) + (showPurchase ? 1 : 0)}';
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             const Text('주요 브리핑', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: _purple)),
@@ -67,10 +72,14 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
           ]),
           const SizedBox(height: 6),
           _engineCard(b),
+          if (popNo != null) ...[
+            const SizedBox(height: 10),
+            PopularityPicksCard(no: popNo, target: b.targetRound, pop: b.popularity!),
+          ],
           const SizedBox(height: 10),
-          _purchaseCard(b),
+          _purchaseCard(b, purchaseNo),
           const SizedBox(height: 10),
-          _storeCard(b),
+          _storeCard(b, storeNo),
         ]);
       },
     );
@@ -139,7 +148,16 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
                   : '${b.targetRound}회 $kOfficialPreparingMessage — 다른 회차 번호를 대신 표시하지 않습니다.',
               style: TextStyle(fontSize: 12, color: Colors.orange.shade900))
         else ...[
-          ...f.sets.asMap().entries.map((s) => _setRow(s.key + 1, s.value, color)),
+          ...f.sets.asMap().entries.map((s) {
+            final ps = b.popularity?.scoreOf(s.value);
+            return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              _setRow(s.key + 1, s.value, color),
+              if (ps != null) Padding(padding: const EdgeInsets.fromLTRB(26, 0, 0, 6), child: PopularityTag(score: ps)),
+            ]);
+          }),
+          if (b.popularity != null && b.popularity!.official.isNotEmpty)
+            Text('인기도: 다른 사람들이 같은 조합을 고를 가능성(무작위 조합 대비). 1등 확률은 같고, 당첨 시 나눠 가질 사람 수가 달라집니다.',
+                style: TextStyle(fontSize: 10, color: Colors.grey.shade600, height: 1.4)),
           Text('마스터, ${f.note}', style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700, height: 1.4)),
         ],
         const SizedBox(height: 4),
@@ -183,14 +201,14 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
   }
 
   // ② 구매예측 번호 — 검증 통과 시에만 표시 (미통과면 카드 자체를 생략)
-  Widget _purchaseCard(MasterBriefing b) {
+  Widget _purchaseCard(MasterBriefing b, String no) {
     final p = b.purchase;
     if (p == null || !p.validated) return const SizedBox.shrink();
     const color = Color(0xFF00897B);
     return _box(Padding(
       padding: const EdgeInsets.all(14),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        _header('2', '${b.targetRound}회 구매예측 번호', color, chip: statusChip('검증 통과', color)),
+        _header(no, '${b.targetRound}회 구매예측 번호', color, chip: statusChip('검증 통과', color)),
         const SizedBox(height: 4),
         Text('실제 판매 데이터로 검증한 "덜 팔리는 조합" — 당첨 시 상금을 나눌 사람이 적은 번호',
             style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
@@ -207,7 +225,7 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
   }
 
   // ③ 이번 주 엔진 추천 명당
-  Widget _storeCard(MasterBriefing b) {
+  Widget _storeCard(MasterBriefing b, String no) {
     const color = Color(0xFFE65100);
     final ev = b.evidence;
     final kinds = [
@@ -218,7 +236,7 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
     return _box(Padding(
       padding: const EdgeInsets.all(14),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        _header('3', '이번 주 엔진 추천 명당', color,
+        _header(no, '이번 주 엔진 추천 명당', color,
             chip: statusChip(chipText, chipText.startsWith('검증 통과') ? Colors.green.shade700 : Colors.grey.shade700)),
         const SizedBox(height: 4),
         Text(
@@ -329,6 +347,7 @@ class MasterBriefingCompact extends StatelessWidget {
         // ① 과 같은 공식 최종 예측 1세트
         final eng = b.official?.hasSets == true ? b.official!.rec!.sets.first : null;
         final pur = b.purchase?.validated == true ? b.purchase!.recommendations.first.numbers : null;
+        final pop = b.popularity?.picks.isNotEmpty == true ? b.popularity!.picks.first.set : null;
         Widget line(String label, List<int>? nums, Color c) => Padding(
               padding: const EdgeInsets.only(bottom: 4),
               child: Row(children: [
@@ -342,6 +361,7 @@ class MasterBriefingCompact extends StatelessWidget {
               style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF333333))),
           const SizedBox(height: 6),
           line('엔진 번호', eng, const Color(0xFF1565C0)),
+          if (pop != null) line('비인기', pop, kPopularityColor),
           if (pur != null) line('구매예측', pur, const Color(0xFF00897B)),
           Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
             const SizedBox(width: 62, child: Text('추천 명당', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Color(0xFFE65100)))),
@@ -351,6 +371,92 @@ class MasterBriefingCompact extends StatelessWidget {
           ]),
         ]);
       },
+    );
+  }
+}
+
+const kPopularityColor = Color(0xFF6A1B9A);
+
+/// 공식 세트 아래 인기도 한 줄 — '인기 상위 5% · 몫 −13%'
+class PopularityTag extends StatelessWidget {
+  final PopularityScore score;
+  const PopularityTag({super.key, required this.score});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = [Colors.red.shade700, Colors.grey.shade700, Colors.green.shade700][score.tier];
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+      decoration: BoxDecoration(color: c.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(6)),
+      child: Text('${score.label} · ${score.shareLabel}',
+          style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: c)),
+    );
+  }
+}
+
+/// 비인기 추천 5세트 (pop-1.0) — 1등 확률은 같고, 당첨 시 나눠 가질 사람이 적을 것으로 추정되는 조합
+class PopularityPicksCard extends StatelessWidget {
+  final String no;
+  final int target;
+  final NumberPopularity pop;
+  const PopularityPicksCard({super.key, required this.no, required this.target, required this.pop});
+
+  @override
+  Widget build(BuildContext context) {
+    const color = kPopularityColor;
+    final status = switch (pop.picksStatus) {
+      'registered' => ('사전 등록 완료', Colors.teal.shade700),
+      'late' => ('마감 후 생성 · 장부 미등록', Colors.orange.shade800),
+      'pending' => ('등록 대기', Colors.grey.shade700),
+      _ => ('검증 미통과 · 추천 없음', Colors.grey.shade700),
+    };
+    return Container(
+      key: const ValueKey('popularity_picks_card'),
+      width: double.infinity,
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFFEDE7F6))),
+      padding: const EdgeInsets.all(14),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+            width: 22, height: 22, alignment: Alignment.center,
+            decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(6)),
+            child: Text(no, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w900)),
+          ),
+          const SizedBox(width: 8),
+          Expanded(child: Text('$target회 비인기 추천조합', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: color))),
+          statusChip(status.$1, status.$2),
+        ]),
+        const SizedBox(height: 4),
+        Text('다른 사람들이 잘 고르지 않는 조합 — 당첨되면 나눠 가질 사람이 적을 것으로 추정',
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+        const SizedBox(height: 2),
+        Text(pop.validationLine, style: TextStyle(fontSize: 10.5, color: Colors.teal.shade800, height: 1.4)),
+        const SizedBox(height: 8),
+        if (pop.picks.isEmpty)
+          Text('이번 회차 비인기 추천조합이 없습니다.', style: TextStyle(fontSize: 12, color: Colors.orange.shade900))
+        else
+          ...pop.picks.asMap().entries.map((e) => Container(
+                margin: const EdgeInsets.only(bottom: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+                decoration: BoxDecoration(color: color.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(10)),
+                child: Column(children: [
+                  Row(children: [
+                    SizedBox(width: 18, child: Text('${e.key + 1}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: color))),
+                    Expanded(
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: e.value.set.map((n) => lottoBall(n, size: 28)).toList(),
+                      ),
+                    ),
+                  ]),
+                  const SizedBox(height: 4),
+                  Align(alignment: Alignment.centerRight, child: PopularityTag(score: e.value)),
+                ]),
+              )),
+        Text('마스터, 모든 조합의 1등 확률은 같습니다(1/8,145,060). 이 조합은 확률이 아니라 "당첨 시 나눠 가질 사람 수"를 줄이려는 선택이며, '
+            '몫 +N%는 ${pop.trainingEnd}회까지 당첨자 수로 학습한 모델 추정치입니다. 선정: ${pop.pickRule}',
+            style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700, height: 1.4)),
+      ]),
     );
   }
 }

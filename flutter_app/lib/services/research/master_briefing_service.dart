@@ -25,6 +25,7 @@ import '../supabase_service.dart';
 import 'agent_research_repository.dart';
 import 'agent_store_evidence.dart';
 import 'final_recommendation_engine.dart';
+import 'number_popularity.dart';
 import 'purchase_prediction_engine.dart';
 import 'research_scheduler.dart';
 
@@ -118,6 +119,9 @@ class MasterBriefing {
   /// 연구용 · Number 엔진 기본 조합 (최종 추천 아님)
   final RpaLiveNumbers? engine;
   final PurchaseModelReport? purchase;
+
+  /// 번호 인기도 (pop-1.0 · 서버 저장본) — 공식 세트 인기도 · 비인기 추천 5세트
+  final NumberPopularity? popularity;
   final List<MasterStorePick> stores;
   final List<String> storeEngineRegions;   // Store 엔진 이번 회차 지역 후보
   final int? storeEngineTrainingEnd;
@@ -135,7 +139,7 @@ class MasterBriefing {
   /// 비관리자 요청 → 조회하지 않음 ('관리자 전용')
   final String? deniedMessage;
   const MasterBriefing({
-    required this.targetRound, required this.latestRound, this.official, this.officialError, this.engine, this.purchase,
+    required this.targetRound, required this.latestRound, this.official, this.officialError, this.engine, this.purchase, this.popularity,
     this.stores = const [], this.storeEngineRegions = const [], this.storeEngineTrainingEnd, this.storeError,
     this.agentRef, this.fallbackReason, this.evidence, this.deniedMessage,
   });
@@ -183,6 +187,8 @@ class MasterBriefingService {
     try { engine = await RpaLiveNumbers.load(target); } catch (e) { debugPrint('[Master] engine: $e'); }
     PurchaseModelReport? purchase;
     try { purchase = await ResearchScheduler.instance.purchaseReport(targetRound: target); } catch (e) { debugPrint('[Master] purchase: $e'); }
+    NumberPopularity? popularity;
+    try { popularity = await NumberPopularity.load(target); } catch (e) { debugPrint('[Master] popularity: $e'); }
 
     var regions = <String>[];
     int? storeTe;
@@ -232,7 +238,7 @@ class MasterBriefingService {
 
     _cache = MasterBriefing(
       targetRound: target, latestRound: latest, official: official, officialError: officialError,
-      engine: engine, purchase: purchase,
+      engine: engine, purchase: purchase, popularity: popularity,
       stores: picks, storeEngineRegions: regions, storeEngineTrainingEnd: storeTe, storeError: storeErr,
       agentRef: agentRef, fallbackReason: fallbackReason, evidence: evidence,
     );

@@ -20,9 +20,19 @@
     셋 다 만족하면 '통과' — 그때만 인기도 점수를 번호 선택(당첨금 기대값)에 쓰는 것을 제안한다.
 
 결과는 당첨 확률이 아니라 '당첨됐을 때 나눠 가질 사람 수'에 관한 것이다. 확률이 올라간다고 표현하지 않는다.
-외부 사이트 접속 없음 — DB에 저장된 research_prize_stats(읽기 전용)만 사용. DB에 쓰지 않는다.
+외부 사이트 접속 없음 — DB에 저장된 research_prize_stats·lotto_winning_numbers(읽기 전용)만 사용.
 
-사용: python research_popularity.py [--out result.json] [--sets '[[1,2,3,4,5,6]]']   (환경변수 SUPABASE_URL, SUPABASE_KEY)
+브리핑 게시 (--publish, 서버 GitHub Actions 전용)
+  · 실전 모델: 같은 특징·릿지 회귀를 저장된 전체 회차로 다시 학습 (검증 결과는 위 프로토콜 값을 그대로 함께 저장)
+  · 공식 최종 추천번호(fr-1.0) 5세트의 인기도 백분위·예상 1등 몫을 research_results(number_popularity)에 저장
+  · 비인기 추천 5세트: 목표 회차로 고정한 난수 조합 중 학습 범위 안(특징별 1~99% 구간)에서 인기도 하위 5% →
+    서로 3개 이상 겹치지 않게, 과거 1등 조합 제외하고 낮은 순으로 5세트.
+    판매 마감(토 20:00 KST) 전에만 사전 등록 장부(research_predictions, popularity_pick)에 올린다 — 등록 후 변경 불가.
+  · 검증이 통과하지 않으면 추천 5세트를 만들지 않는다.
+
+사용: python research_popularity.py [--out result.json] [--sets '[[1,2,3,4,5,6]]']   (검증 · DB 쓰기 없음)
+      python research_popularity.py --publish [--dry-run]                         (브리핑 게시 · 서버 전용)
+      환경변수 SUPABASE_URL, SUPABASE_KEY
 """
 
 import argparse
@@ -30,7 +40,10 @@ import json
 import math
 import os
 import sys
+from datetime import datetime, timedelta, timezone
 from itertools import combinations
+
+import requests
 
 import numpy as np
 
@@ -221,14 +234,159 @@ def run(db, out_path=None, sets=None):
     return res
 
 
+# ── 브리핑 게시 (서버 전용) ─────────────────────────────────────────────
+
+RESULT_TYPE = "number_popularity"
+ALGO = "popularity_pick"
+PICK_SAMPLE = 200000
+PICK_POOL_PCT = 5          # 인기도 하위 5% 안에서 고른다
+PICK_MAX_OVERLAP = 2       # 추천 세트끼리 겹치는 번호 최대 개수
+OFFICIAL_VERSION = "fr-1.0"
+
+
+class Scorer:
+    """저장된 전체 회차로 학습한 실전 인기도 점수기. 백분위·예상 1등 몫은 무작위 조합 기준."""
+
+    def __init__(self, data, prev, seed):
+        X = mat(data)
+        y4 = np.log([r["R4"] for r in data])
+        self.model = Model().fit(X, y4)
+        lr1 = np.log([(r["r1"] + 0.5) / r["e1"] for r in data])
+        self.b, self.a = (float(v) for v in np.polyfit(y4, lr1, 1))
+        self.prev = prev
+        self.lo, self.hi = np.quantile(X, 0.01, axis=0), np.quantile(X, 0.99, axis=0)
+        self.lam = float(np.mean([r["e1"] for r in data[-52:]]))   # 최근 1년 회차당 기대 1등 수
+        gen = np.random.default_rng(seed)
+        self.sample = [sorted(int(v) for v in gen.choice(np.arange(1, 46), 6, replace=False)) for _ in range(PICK_SAMPLE)]
+        self.sx = np.array([[features(c, prev)[k] for k in FEATURES] for c in self.sample], float)
+        self.sp = self.model.predict(self.sx)
+        self.sorted = np.sort(self.sp)
+        self.mean = float(np.mean(self.sp))
+        self.m_rand = float(np.mean([self._share(p) for p in self.sp[:20000]]))
+
+    def _share(self, p):
+        return share_multiplier(math.exp(self.b * (p - self.mean)), self.lam)
+
+    def score(self, st):
+        p = float(self.model.predict(np.array([[features(st, self.prev)[k] for k in FEATURES]], float))[0])
+        pct = 100.0 * float(np.searchsorted(self.sorted, p)) / len(self.sorted)
+        return {"set": sorted(int(n) for n in st), "popularity_pct": round(pct, 1),
+                "share_vs_random": round(self._share(p) / self.m_rand, 3)}
+
+    def picks(self, past_combos, n=5):
+        inside = np.all((self.sx >= self.lo) & (self.sx <= self.hi), axis=1)
+        cut = np.percentile(self.sp, PICK_POOL_PCT)
+        order = [i for i in np.argsort(self.sp) if inside[i] and self.sp[i] <= cut]
+        out, seen = [], set()
+        for i in order:
+            c = tuple(self.sample[i])
+            if c in seen or c in past_combos:
+                continue
+            seen.add(c)
+            if all(len(set(c) & set(o)) <= PICK_MAX_OVERLAP for o in out):
+                out.append(list(c))
+            if len(out) == n:
+                break
+        return out
+
+
+def sales_deadline(draw_date, rnd):
+    try:
+        d = datetime.strptime(str(draw_date)[:10].replace(".", "-"), "%Y-%m-%d")
+    except ValueError:
+        d = datetime(2002, 12, 7) + timedelta(days=7 * (rnd - 1))
+    d = d + timedelta(days=7)
+    return datetime(d.year, d.month, d.day, 11, tzinfo=timezone.utc)   # 토 20:00 KST
+
+
+def publish(url, key, dry_run=False):
+    db = Db(url, key)
+    base = url.rstrip("/") + "/rest/v1/"
+
+    def get(t, params):
+        r = requests.get(base + t, params=params, headers=db.h, timeout=60)
+        r.raise_for_status()
+        return r.json()
+
+    validation = run(db)
+    data = load_rounds(db)
+    wins = db.select_all("lotto_winning_numbers", {"select": "round,draw_date,num1,num2,num3,num4,num5,num6", "order": "round.asc"})
+    w = wins[-1]
+    target = w["round"] + 1
+    prev = [w[f"num{i}"] for i in range(1, 7)]
+    past = {tuple(sorted(x[f"num{i}"] for i in range(1, 7))) for x in wins}
+    deadline = sales_deadline(w["draw_date"], w["round"])
+    now = datetime.now(timezone.utc)
+    sc = Scorer(data, prev, seed=SEED + target)
+
+    off = get("research_results", {"select": "training_end_round,payload->sets", "research_type": "eq.final_recommendation",
+                                   "model_version": f"eq.{OFFICIAL_VERSION}", "target_round": f"eq.{target}",
+                                   "order": "training_end_round.desc", "limit": "1"})
+    official = [sc.score(st) for st in (off[0].get("sets") or [])] if off else []
+
+    reg = get("research_predictions", {"select": "sets", "algorithm": f"eq.{ALGO}", "version": f"eq.{VERSION}",
+                                       "target_round": f"eq.{target}"})
+    registered = bool(reg)
+    if registered:
+        picks_sets = reg[0]["sets"]
+    elif validation["passed"]:
+        picks_sets = sc.picks(past)
+    else:
+        picks_sets = []
+    status = "registered" if registered else ("none" if not picks_sets else ("pending" if now < deadline else "late"))
+
+    if not dry_run and not registered and picks_sets and now < deadline:
+        db.upsert("research_predictions", [{
+            "algorithm": ALGO, "version": VERSION, "target_round": target, "data_end_round": data[-1]["round"],
+            "sets": picks_sets, "generated_at": now.isoformat(), "deadline_at": deadline.isoformat(),
+            "pre_deadline": True, "locked": True, "status": "pending"}],
+            on_conflict="algorithm,version,target_round", ignore_duplicates=True)
+        reg = get("research_predictions", {"select": "sets", "algorithm": f"eq.{ALGO}", "version": f"eq.{VERSION}",
+                                           "target_round": f"eq.{target}"})
+        if reg:
+            picks_sets, status = reg[0]["sets"], "registered"
+
+    payload = {
+        "version": VERSION, "target_round": target, "training": [data[0]["round"], data[-1]["round"]],
+        "validation": {k: validation[k] for k in ("train", "test", "n_test", "test_spearman", "test_ci95", "gates",
+                                                  "passed", "rank1_actual_over_expected", "share_multiplier")},
+        "official": official,
+        "official_training_end": off[0]["training_end_round"] if off else None,
+        "picks": [sc.score(st) for st in picks_sets],
+        "picks_status": status,   # registered | pending(드라이런) | late(마감 후 — 등록 안 함) | none(검증 미통과)
+        "pick_rule": f"무작위 {PICK_SAMPLE:,}개 중 학습 범위 안 · 인기도 하위 {PICK_POOL_PCT}% · "
+                     f"서로 {PICK_MAX_OVERLAP + 1}개 이상 겹침 금지 · 과거 1등 조합 제외",
+        "lambda_rank1": round(sc.lam, 2),
+        "deadline_at": deadline.isoformat(),
+        "generated_at": now.isoformat(),
+    }
+    print(json.dumps({k: payload[k] for k in ("target_round", "training", "official", "picks", "picks_status")},
+                     ensure_ascii=False))
+    if dry_run:
+        print("드라이런 — DB에 쓰지 않음")
+        return payload
+    db.upsert("research_results", [{"research_type": RESULT_TYPE, "model_version": VERSION,
+                                    "training_end_round": data[-1]["round"], "target_round": target, "payload": payload}],
+              on_conflict="research_type,model_version,training_end_round,target_round")
+    print(f"{target}회 인기도 브리핑 저장 · 추천 5세트 {status}")
+    return payload
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out")
     ap.add_argument("--sets", help='점수를 볼 조합 JSON, 예: "[[1,2,3,4,5,6]]"')
+    ap.add_argument("--publish", action="store_true", help="브리핑 게시 (서버 전용)")
+    ap.add_argument("--dry-run", action="store_true", help="--publish 계산만, DB 쓰기 없음")
     a = ap.parse_args()
     url, key = os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_KEY")
     if not url or not key:
         sys.exit("SUPABASE_URL / SUPABASE_KEY 환경변수가 필요합니다")
+    if a.publish:
+        if not a.dry_run and os.environ.get("GITHUB_ACTIONS") != "true":
+            sys.exit("--publish 는 서버(GitHub Actions)에서만 저장합니다. 로컬은 --dry-run 만 허용")
+        publish(url, key, a.dry_run)
+        return
     run(Db(url, key), a.out, json.loads(a.sets) if a.sets else None)
 
 
