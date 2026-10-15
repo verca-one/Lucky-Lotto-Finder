@@ -47,6 +47,8 @@ class PredictionRegistry {
   static const String algoNumberEngine = 'number_engine';
   static const String algoPurchase = 'purchase_prediction';
   static const String algoRandom = 'random_control';
+  /// 공식 최종 추천번호(fr-1.0) 5세트 — 화면·브리핑에 쓰는 공식 번호를 추첨 전 잠금·채점
+  static const String algoOfficial = 'official_final';
 
   /// 대상 회차의 판매 마감 시각(토 20:00 KST = 11:00 UTC). 최신 추첨일에서 주 단위로 계산.
   static DateTime deadlineFor(int targetRound, LottoWinningNumber latest) {

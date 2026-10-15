@@ -325,7 +325,7 @@ class _AdminResearchScreenState extends State<AdminResearchScreen> with SingleTi
         ),
         _kv('최신 회차', '${d.latestRound}회 (${d.latest.drawDate})'),
         _kv('등록 대상', '${d.targetRound}회 · 마감 ${deadline.year}-${deadline.month.toString().padLeft(2, '0')}-${deadline.day.toString().padLeft(2, '0')} ${deadline.hour}:00'),
-        _kv('알고리즘', 'number_engine(v2.1) · purchase_prediction($kPurchaseVersionLabel) · random_control(r1)'),
+        _kv('알고리즘', 'official_final(fr-1.0, 공식 5세트) · number_engine(v2.1) · purchase_prediction($kPurchaseVersionLabel) · random_control(r1)'),
         _note('앱 실행 시 최신 회차당 1회 자동: 미채점 예측 채점 → 다음 회차 예측 등록(잠금) → 연구 갱신. '
             '마감 이후 생성된 예측은 사전 실적으로 인정하지 않습니다(invalid). 통계적 우위가 관측되어도 운영 엔진에 자동 반영하지 않습니다.'),
       ])),

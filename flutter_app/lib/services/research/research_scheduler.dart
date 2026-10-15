@@ -199,6 +199,14 @@ class ResearchScheduler {
       for (int t = target; t < target + 6; t++) {
         await step('final_recommendation_$t', () => FinalRecommendationEngine.instance.ensureStored(t));
       }
+      // 공식 최종 추천번호 5세트를 사전 등록 장부에도 잠금 (판매 마감 전 · DB 가 수정·삭제 차단, 추첨 후 자동 채점)
+      await step('register_official_final', () async {
+        final rec = await FinalRecommendationEngine.instance.loadStored(target);
+        if (rec != null && rec.sets.length == 5) {
+          await reg.register(algorithm: PredictionRegistry.algoOfficial, version: kFinalRecVersion, targetRound: target,
+              dataEndRound: rec.trainingEndRound, sets: rec.sets, deadline: deadline);
+        }
+      });
 
       _lastRunLatest = d.latestRound;
       _setStatus(ResearchPhase.done, target, '완료 · $target회 예측 등록 · 연구 결과 저장 (${d.latestRound}회까지 데이터)');

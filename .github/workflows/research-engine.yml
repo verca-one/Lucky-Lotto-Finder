@@ -21,6 +21,7 @@ on:
       - 'research_pipeline_gate.py'
       - 'research_public_worker.py'
       - 'research_review_worker.py'
+      - 'research_register_official.py'
       - 'flutter_app/tool/server/**'
       - '.github/workflows/research-engine.yml'
 
@@ -97,6 +98,12 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install requests
+      - name: Register official 5 sets (공식 최종 추천번호 사전 등록, 판매 마감 전만)
+        if: ${{ !cancelled() }}
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python research_register_official.py
       - name: Engine review (중앙 엔진 복기·지방장 성적표·비서 복기 브리핑)
         if: ${{ !cancelled() }}
         continue-on-error: true
