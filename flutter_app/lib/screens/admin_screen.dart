@@ -15,16 +15,14 @@ import 'admin_badge_status_screen.dart';
 import 'admin_recommend_stores_screen.dart';
 import 'admin_pattern_analysis_screen.dart';
 import 'admin_rpa_screen.dart';
-import 'admin_research_screen.dart';
 import 'admin_region_research_screen.dart';
-import 'admin_agent_research_screen.dart';
-import 'admin_agent_replay_screen.dart';
 import '../widgets/master_briefing_section.dart';
 import '../widgets/agent_briefing_section.dart';
 import '../widgets/db_usage_card.dart';
 import '../services/research/research_scheduler.dart';
 import '../services/rpa_monte_carlo_engine.dart';
 import 'admin_engine_review_screen.dart';
+import 'admin_research_lab_screen.dart';
 
 class AdminScreen extends StatefulWidget {
   const AdminScreen({super.key});
@@ -116,48 +114,12 @@ class _AdminScreenState extends State<AdminScreen> {
                     ),
                     const SizedBox(height: 8),
                     _buildAdminMenuItem(
-                      icon: Icons.travel_explore_rounded,
-                      title: '명당 가설 연구소 · 전국 지역 연구',
-                      subtitle: '시·군·구 독립 연구 · 지역 간 전이 · 유명/신흥 명당 · 예측 난이도 · 복합 가설',
-                      color: const Color(0xFF0D47A1),
+                      icon: Icons.biotech_rounded,
+                      title: '연구소',
+                      subtitle: '명당 가설 연구소 · 전국 지방장 연구소 · 엔진 복기 연구소 · 지방장 실전형 재현 기록 · 예측 연구 현황',
+                      color: const Color(0xFF1A237E),
                       onTap: () => Navigator.push(context,
-                          MaterialPageRoute(builder: (_) => const AdminRegionResearchScreen())),
-                    ),
-                    const SizedBox(height: 8),
-                    _buildAdminMenuItem(
-                      icon: Icons.groups_2_rounded,
-                      title: '전국 지방장 연구소',
-                      subtitle: '시·군·구 지방장 연구 · 중앙 엔진 · 공유 가설 저장소 · 미래 검증 성능',
-                      color: const Color(0xFF00695C),
-                      onTap: () => Navigator.push(context,
-                          MaterialPageRoute(builder: (_) => const AdminAgentResearchScreen())),
-                    ),
-                    const SizedBox(height: 8),
-                    _buildAdminMenuItem(
-                      icon: Icons.fact_check_rounded,
-                      title: '엔진 복기 연구소',
-                      subtitle: '중앙 엔진·지방장 238명 회차별 복기 · 공간전이 복기 · 보정 이력 (서버 자동 복기)',
-                      color: const Color(0xFF4527A0),
-                      onTap: () => Navigator.push(context,
-                          MaterialPageRoute(builder: (_) => const AdminEngineReviewScreen())),
-                    ),
-                    const SizedBox(height: 8),
-                    _buildAdminMenuItem(
-                      icon: Icons.history_edu_rounded,
-                      title: '지방장 실전형 재현 기록',
-                      subtitle: '회차별 동결 예측 · 사전/사후 브리핑 · 지방장 이력 · 가설 실전 성능 · 누적 성능',
-                      color: const Color(0xFF37474F),
-                      onTap: () => Navigator.push(context,
-                          MaterialPageRoute(builder: (_) => const AdminAgentReplayScreen())),
-                    ),
-                    const SizedBox(height: 8),
-                    _buildAdminMenuItem(
-                      icon: Icons.science_rounded,
-                      title: '예측 연구 현황',
-                      subtitle: '추첨예측 · 구매예측 · 판매점 분석 · 예측력 검증 (상태는 엔진 브리핑에 통합)',
-                      color: Colors.indigo.shade700,
-                      onTap: () => Navigator.push(context,
-                          MaterialPageRoute(builder: (_) => const AdminResearchScreen())),
+                          MaterialPageRoute(builder: (_) => const AdminResearchLabScreen())),
                     ),
                     const SizedBox(height: 8),
                     _buildAdminMenuItem(
