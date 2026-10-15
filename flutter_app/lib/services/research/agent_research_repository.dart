@@ -1220,8 +1220,18 @@ class AgentResearchRepository {
           .eq('target_round', target)
           .eq('mode', 'live');
       if (agentId != null) q = q.eq('agent_id', agentId);
-      final rows = await q.order('rank', ascending: true).range(0, 1999);
-      final list = List<Map<String, dynamic>>.from(rows).map(AgentDelivery.fromRow).toList()
+      // 서버 1회 최대 1000행 → 1000행씩 나눠 받기 (지방장 238명 × TOP5 ≈ 1144행)
+      final rows = <Map<String, dynamic>>[];
+      for (var off = 0; off < 10000; off += 1000) {
+        final page = List<Map<String, dynamic>>.from(await q
+            .order('agent_id', ascending: true)
+            .order('rank', ascending: true)
+            .order('store_code', ascending: true)
+            .range(off, off + 999));
+        rows.addAll(page);
+        if (page.length < 1000) break;
+      }
+      final list = rows.map(AgentDelivery.fromRow).toList()
         ..sort((a, b) {
           final c = a.rank.compareTo(b.rank);
           return c != 0 ? c : a.storeCode.compareTo(b.storeCode);

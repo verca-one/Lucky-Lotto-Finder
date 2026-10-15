@@ -20,6 +20,7 @@ import 'nearby_screen.dart';
 import 'admin_route_recommend_screen.dart';
 import 'admin_region_recommend_screen.dart';
 import 'admin_location_recommend_screen.dart';
+import '../widgets/agent_next_picks.dart';
 import '../widgets/agent_store_widgets.dart' show AgentCentralView;
 
 class AdminRecommendStoresScreen extends StatefulWidget {
@@ -828,6 +829,45 @@ class _AdminRecommendStoresScreenState extends State<AdminRecommendStoresScreen>
     );
   }
 
+  /// 지방장 238명이 추첨 전에 동결한 다음 회차 추천 판매점 — 시·도 → 시·군·구로 골라 보기
+  Widget _buildAgentPicksCard() {
+    return GestureDetector(
+      key: const ValueKey('agent_next_picks_card'),
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AgentNextPicksScreen())),
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(colors: [Color(0xFF00695C), Color(0xFF26A69A)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [BoxShadow(color: const Color(0xFF00695C).withValues(alpha: 0.35), blurRadius: 10, offset: const Offset(0, 4))],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          child: Row(children: [
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.22), shape: BoxShape.circle),
+              child: const Icon(Icons.groups_2_rounded, color: Colors.white, size: 26),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text('${_latestRound > 0 ? '${_latestRound + 1}회 ' : ''}지방장 추천 판매점',
+                    style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white)),
+                const SizedBox(height: 4),
+                Text('전국 시·군·구 지방장이 고른 다음 회차 TOP5 · 어느 지역이든 골라서 확인',
+                    style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.88))),
+              ]),
+            ),
+            const SizedBox(width: 8),
+            const Icon(Icons.chevron_right_rounded, color: Colors.white, size: 26),
+          ]),
+        ),
+      ),
+    );
+  }
+
   Widget _buildRegionCard() {
     final regionCount = _regionStores.map((s) => s.region).toSet().length;
     return GestureDetector(
@@ -1058,6 +1098,7 @@ class _AdminRecommendStoresScreenState extends State<AdminRecommendStoresScreen>
       ),
       body: _wrapWithTopTabs(Column(
         children: [
+          _buildAgentPicksCard(),
           _buildNearbyCard(),
           _buildRegionCard(),
           _buildEngineActionBar(),
@@ -2496,9 +2537,16 @@ class _RegionRecommendSheetState extends State<_RegionRecommendSheet> {
                 : ListView(
                     controller: ctrl,
                     padding: const EdgeInsets.only(bottom: 24),
-                    children: _nearbyMode
-                        ? _buildMyRegionList(context)
-                        : _buildRegionList(context, _applyFilter(sorted), grouped, displayRegions),
+                    children: [
+                      // 지방장 다음 회차 추천 (선택 지역 또는 내 위치 지역)
+                      if (_nearbyMode && _myRegion != null)
+                        AgentPicksForRegion(key: ValueKey('picks_${_myRegion!}'), region: _myRegion!)
+                      else if (_selectedRegion != null)
+                        AgentPicksForRegion(key: ValueKey('picks_${_selectedRegion!}'), region: _selectedRegion!),
+                      ...(_nearbyMode
+                          ? _buildMyRegionList(context)
+                          : _buildRegionList(context, _applyFilter(sorted), grouped, displayRegions)),
+                    ],
                   ),
           ),
         ],
