@@ -364,11 +364,11 @@ class _BackCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(14),
         onTap: onTap,
         child: Ink(
+          // 지난 회차 카드는 흐릿하게 — 앞 카드(최신 회차)가 주인공
           decoration: BoxDecoration(
-            color: Color.lerp(Colors.white, theme.accent, 0.22),
+            color: Color.lerp(Colors.white, theme.accent, 0.08),
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: theme.accent.withValues(alpha: 0.55)),
-            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.10), blurRadius: 6, offset: const Offset(0, 2))],
+            border: Border.all(color: theme.accent.withValues(alpha: 0.22)),
           ),
           padding: const EdgeInsets.fromLTRB(10, 3, 10, 0),
           child: Align(
@@ -379,7 +379,7 @@ class _BackCard extends StatelessWidget {
                 fit: BoxFit.scaleDown,
                 alignment: Alignment.centerLeft,
                 child: Text('${theme.short} ${card.round}회 · $time',
-                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: theme.ink)),
+                    style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: theme.ink.withValues(alpha: 0.38))),
               ),
             ),
           ),
