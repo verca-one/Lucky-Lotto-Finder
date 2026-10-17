@@ -1260,9 +1260,9 @@ class BriefingDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final items = _generateItems(data);
-    // 탭: 지난 회차 검증 → 이번 회차 브리핑 → 지방장 보고
+    // 탭: 이번 회차 브리핑(맨 위 회차 검증 링크) · 지방장 보고
     return DefaultTabController(
-      length: 3,
+      length: 2,
       child: Scaffold(
       backgroundColor: const Color(0xFFF8F5FF),
       appBar: AppBar(
@@ -1275,14 +1275,15 @@ class BriefingDetailScreen extends StatelessWidget {
           unselectedLabelColor: Colors.white70,
           indicatorColor: Color(0xFFFFC107),
           labelStyle: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
-          tabs: [Tab(text: '회차 검증'), Tab(text: '이번 회차 브리핑'), Tab(text: '지방장보고')],
+          tabs: [Tab(text: '이번 회차 브리핑'), Tab(text: '지방장보고')],
         ),
       ),
       body: TabBarView(children: [
-        const RoundDebriefView(),
         ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          const RoundDebriefLinkCard(),
+          const SizedBox(height: 12),
           _buildHeader(),
           const SizedBox(height: 16),
           const MasterBriefingSection(),

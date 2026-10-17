@@ -46,6 +46,19 @@ void main() {
     expect(find.text('⑤ 1247회 변경점'), findsOneWidget);
   });
 
+  testWidgets('브리핑 상단 박스 링크 → 회차 검증 화면', (tester) async {
+    phone(tester);
+    final r = RoundDebrief.fromPayload(Map<String, dynamic>.from(fixture()['main'] as Map));
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: RoundDebriefLinkCard(loader: () async => r))));
+    await tester.pumpAndSettle();
+    expect(find.text('1246회 검증 보고'), findsOneWidget);
+    expect(find.textContaining('공식 5세트 최고 1개 일치'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('round_debrief_link')));
+    await tester.pumpAndSettle();
+    expect(find.text('회차 검증'), findsOneWidget);
+    expect(find.byKey(const ValueKey('debrief_numbers')), findsOneWidget);
+  });
+
   testWidgets('지방장보고 탭 — 당첨 지역 필터 · 카드 펼치기', (tester) async {
     phone(tester);
     final a = AgentDebrief.fromPayload(Map<String, dynamic>.from(fixture()['agents'] as Map));

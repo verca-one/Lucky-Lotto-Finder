@@ -915,6 +915,99 @@ class _RoundDebriefViewState extends State<RoundDebriefView> {
   double? _d(dynamic v) => (v as num?)?.toDouble();
 }
 
+/// 회차 검증 전체 화면 (브리핑 상단 링크에서 이동)
+class RoundDebriefScreen extends StatelessWidget {
+  final Future<RoundDebrief?> Function()? loader;
+  const RoundDebriefScreen({super.key, this.loader});
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: const Color(0xFFF8F5FF),
+        appBar: AppBar(
+          backgroundColor: _purple,
+          foregroundColor: Colors.white,
+          title: const Text('회차 검증', style: TextStyle(fontWeight: FontWeight.w700)),
+        ),
+        body: RoundDebriefView(loader: loader),
+      );
+}
+
+/// 이번 회차 브리핑 맨 위 — 지난 회차 검증 보고로 가는 박스 링크
+class RoundDebriefLinkCard extends StatefulWidget {
+  final Future<RoundDebrief?> Function()? loader;
+  const RoundDebriefLinkCard({super.key, this.loader});
+  @override
+  State<RoundDebriefLinkCard> createState() => _RoundDebriefLinkCardState();
+}
+
+class _RoundDebriefLinkCardState extends State<RoundDebriefLinkCard> {
+  late final Future<RoundDebrief?> _f = (widget.loader ?? RoundDebriefRepository.loadRound)();
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<RoundDebrief?>(
+      future: _f,
+      builder: (context, s) {
+        final r = s.data;
+        final title = r == null ? '지난 회차 검증 보고' : '${r.round}회 검증 보고';
+        String sub;
+        if (s.connectionState != ConnectionState.done) {
+          sub = '불러오는 중…';
+        } else if (r == null) {
+          sub = '추첨 후 서버가 결과를 반영하면 자동으로 만들어집니다.';
+        } else {
+          final off = r.groups.where((g) => g.key == 'official' && g.sets.isNotEmpty).firstOrNull;
+          sub = '지난주 추천 채점 · 검수 · ${r.next}회 변경점'
+              '${off == null ? '' : ' — 공식 5세트 최고 ${off.bestMatches}개 일치'}'
+              ' · 추천 명당 1등 ${r.stores['prev_hits_first'] ?? 0}곳';
+        }
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            key: const ValueKey('round_debrief_link'),
+            borderRadius: BorderRadius.circular(14),
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => RoundDebriefScreen(loader: widget.loader))),
+            child: Ink(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                gradient: const LinearGradient(colors: [Color(0xFF311B92), Color(0xFF5E35B1)]),
+                borderRadius: BorderRadius.circular(14),
+              ),
+              child: Row(children: [
+                Container(
+                  width: 44, height: 44,
+                  decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.18), shape: BoxShape.circle),
+                  child: const Icon(Icons.fact_check_rounded, color: Colors.white, size: 24),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Row(children: [
+                      Flexible(child: Text(title, style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w900))),
+                      if (r != null) ...[
+                        const SizedBox(width: 6),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(6)),
+                          child: Text(r.status == 'final' ? '확정' : '일부 대기',
+                              style: const TextStyle(color: Colors.white, fontSize: 10.5, fontWeight: FontWeight.w800)),
+                        ),
+                      ],
+                    ]),
+                    const SizedBox(height: 3),
+                    Text(sub, style: TextStyle(color: Colors.white.withValues(alpha: 0.88), fontSize: 11.5)),
+                  ]),
+                ),
+                const Icon(Icons.chevron_right_rounded, color: Colors.white, size: 26),
+              ]),
+            ),
+          ),
+        );
+      },
+    );
+  }
+}
+
 // ═══════════════════════ 지방장보고 ═══════════════════════
 class AgentReportView extends StatefulWidget {
   final Future<AgentDebrief?> Function()? loader;
