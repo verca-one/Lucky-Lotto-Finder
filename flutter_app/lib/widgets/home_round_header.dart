@@ -65,6 +65,9 @@ const kPendingLine = Color(0xFFE4E7EB);
 /// 뒤 카드가 앞 카드 위로 드러나는 높이
 const double kBackCardPeek = 20;
 
+/// 뒤 카드가 앞 카드 오른쪽으로 드러나는 폭
+const double kBackCardSide = 6;
+
 class HomeRoundHeader extends StatefulWidget {
   /// null = 아직 불러오는 중
   final GameRoundData? lotto;
@@ -218,16 +221,17 @@ class _GameStack extends StatelessWidget {
       fit: StackFit.passthrough,
       clipBehavior: Clip.none,
       children: [
+        // 뒤 카드: 앞 카드 위쪽과 오른쪽으로 조금씩 드러나 겹쳐 보이게
         if (back != null)
           Positioned(
             top: 0,
-            left: 7,
-            right: 7,
-            height: kBackCardPeek + 24,
+            bottom: 10,
+            left: 8,
+            right: 0,
             child: _BackCard(key: ValueKey('header_${type}_back'), card: back, theme: t, onTap: () => onOpen(back)),
           ),
         Padding(
-          padding: const EdgeInsets.only(top: kBackCardPeek),
+          padding: EdgeInsets.only(top: kBackCardPeek, right: back != null ? kBackCardSide : 0),
           child: AnimatedSwitcher(
             duration: const Duration(milliseconds: 450),
             switchInCurve: Curves.easeOut,

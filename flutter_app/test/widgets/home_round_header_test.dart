@@ -195,7 +195,7 @@ void main() {
     Color? colorOf(WidgetTester tester, Finder scope, String text) =>
         tester.widget<Text>(find.descendant(of: scope, matching: find.text(text))).style?.color;
 
-    testWidgets('신규 회차 대기 카드: 흰 배경, 글자·상태 모두 옅은 회색, 완료 표시 없음, 뒤 카드는 테마색 유지', (tester) async {
+    testWidgets('신규 회차 대기 카드: 흰 배경, 글자·상태 모두 옅은 회색, 완료 표시 없음, 뒤 카드는 테마색을 흐릿하게', (tester) async {
       for (final (now, key, label) in [
         (kst(2026, 10, 17, 10), 'header_lotto_front_1246_scheduled', '추첨 예정'),
         (kst(2026, 10, 17, 21), 'header_lotto_front_1246_awaiting', '결과 대기'),
@@ -217,7 +217,7 @@ void main() {
         expect(fades.every((f) => f.opacity.value == 1.0), isTrue);
         // 뒤 카드(직전 완료 회차)는 로또 금색 테마 그대로
         final back = find.byKey(const ValueKey('header_lotto_back'));
-        expect(colorOf(tester, back, '로또 1245회 · ${formatUpdateTime(t1245)} 업데이트'), const Color(0xFF8A6100));
+        expect(colorOf(tester, back, '로또 1245회 · ${formatUpdateTime(t1245)} 업데이트'), const Color(0xFF8A6100).withValues(alpha: 0.38));
       }
     });
 
