@@ -2,8 +2,12 @@ name: Crawl Lotto
 
 on:
   schedule:
-    # 매주 토요일 13:00 UTC (토요일 22:00 KST)
-    - cron: '0 13 * * 6'
+    # 토요일 23:00 KST = 토요일 14:00 UTC (추첨 20:35 KST 이후 첫 수집)
+    - cron: '0 14 * * 6'
+    # 일요일 03:00 KST = 토요일 18:00 UTC (재시도)
+    - cron: '0 18 * * 6'
+    # 일요일 06:00 KST = 토요일 21:00 UTC (재시도)
+    - cron: '0 21 * * 6'
   workflow_dispatch:
 
 jobs:
@@ -54,6 +58,8 @@ jobs:
         python lotto_verca_uploader.py
 
     - name: Retry pending store rounds (로또)
+      timeout-minutes: 30
+      continue-on-error: true
       env:
         SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
         SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
