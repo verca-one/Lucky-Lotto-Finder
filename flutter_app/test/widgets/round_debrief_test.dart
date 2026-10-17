@@ -1,0 +1,65 @@
+// 회차 검증 · 지방장보고 탭 — 서버 저장본(1246회 드라이런 결과) 표시
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:flutter_app/screens/round_debrief_view.dart';
+import 'package:flutter_app/services/research/round_debrief.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+Map<String, dynamic> fixture() =>
+    jsonDecode(File('test/fixtures/debrief_1246.json').readAsStringSync()) as Map<String, dynamic>;
+
+/// 휴대폰 폭(360×780)에서 넘침 없는지 확인
+void phone(WidgetTester tester) {
+  tester.view.physicalSize = const Size(1080, 2340);
+  tester.view.devicePixelRatio = 3;
+  addTearDown(tester.view.reset);
+}
+
+void main() {
+  test('저장본 해석 — 번호 그룹 · 판매점 · 검수 · 다음 회차', () {
+    final r = RoundDebrief.fromPayload(Map<String, dynamic>.from(fixture()['main'] as Map));
+    expect(r.round, 1246);
+    expect(r.next, 1247);
+    expect(r.actual, [16, 22, 23, 24, 27, 28]);
+    final off = r.groups.firstWhere((g) => g.key == 'official');
+    expect(off.sets.length, 5);
+    expect(off.sets.expand((s) => s.hits), contains(23));
+    expect(r.storesPrev.length, 5);
+    expect(r.analyst, isNotEmpty);
+    expect(r.mathematician.last, contains('1/8,145,060'));
+    expect(r.nextOfficial['status'], 'ready');
+  });
+
+  testWidgets('회차 검증 탭 — 채점·검수·변경점 카드', (tester) async {
+    phone(tester);
+    final r = RoundDebrief.fromPayload(Map<String, dynamic>.from(fixture()['main'] as Map));
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: RoundDebriefView(loader: () async => r))));
+    await tester.pumpAndSettle();
+    expect(find.text('1246회 검증 보고'), findsOneWidget);
+    expect(find.byKey(const ValueKey('debrief_numbers')), findsOneWidget);
+    await tester.scrollUntilVisible(find.byKey(const ValueKey('debrief_audit')), 400);
+    expect(find.textContaining('실무 분석 관점'), findsOneWidget);
+    expect(find.textContaining('수학 관점'), findsOneWidget);
+    await tester.scrollUntilVisible(find.byKey(const ValueKey('debrief_next')), 400);
+    expect(find.text('⑤ 1247회 변경점'), findsOneWidget);
+  });
+
+  testWidgets('지방장보고 탭 — 당첨 지역 필터 · 카드 펼치기', (tester) async {
+    phone(tester);
+    final a = AgentDebrief.fromPayload(Map<String, dynamic>.from(fixture()['agents'] as Map));
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: AgentReportView(loader: () async => a))));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('지방장 보고 — 1246회'), findsOneWidget);
+    final withFirst = a.agents.where((x) => x.hadFirst || x.secondHits > 0).length;
+    expect(find.byType(AgentReportCard), findsNWidgets(withFirst));
+    await tester.tap(find.byKey(const ValueKey('agent_only_first')));
+    await tester.pumpAndSettle();
+    expect(find.byType(AgentReportCard), findsNWidgets(a.agents.length));
+    await tester.tap(find.byType(ExpansionTile).first);
+    await tester.pumpAndSettle();
+    expect(find.text('1246회 추천 TOP5 → 결과'), findsOneWidget);
+    expect(find.text('1247회 TOP5 (변경점)'), findsOneWidget);
+  });
+}

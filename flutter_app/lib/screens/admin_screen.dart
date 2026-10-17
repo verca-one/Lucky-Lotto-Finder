@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'round_debrief_view.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/rpa_unified_prediction.dart' show kRpaActiveModelVersion;
@@ -1259,15 +1260,27 @@ class BriefingDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final items = _generateItems(data);
-    return Scaffold(
+    // 탭: 지난 회차 검증 → 이번 회차 브리핑 → 지방장 보고
+    return DefaultTabController(
+      length: 3,
+      child: Scaffold(
       backgroundColor: const Color(0xFFF8F5FF),
       appBar: AppBar(
         backgroundColor: const Color(0xFF4527A0),
         foregroundColor: Colors.white,
         title: const Text('엔진 브리핑', style: TextStyle(fontWeight: FontWeight.w700)),
         elevation: 0,
+        bottom: const TabBar(
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white70,
+          indicatorColor: Color(0xFFFFC107),
+          labelStyle: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+          tabs: [Tab(text: '회차 검증'), Tab(text: '이번 회차 브리핑'), Tab(text: '지방장보고')],
+        ),
       ),
-      body: ListView(
+      body: TabBarView(children: [
+        const RoundDebriefView(),
+        ListView(
         padding: const EdgeInsets.all(16),
         children: [
           _buildHeader(),
@@ -1290,6 +1303,9 @@ class BriefingDetailScreen extends StatelessWidget {
           _buildTechSummary(),
           const SizedBox(height: 32),
         ],
+      ),
+        const AgentReportView(),
+      ]),
       ),
     );
   }
