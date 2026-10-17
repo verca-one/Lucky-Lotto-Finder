@@ -300,6 +300,10 @@ enum OfficialAction {
 
   /// 저장본도 기본 후보도 없음 → '해당 회차 최종 예측 준비 중'
   preparing,
+
+  /// 추첨 전인데 직전 회차(목표−1)까지 학습한 스냅샷도 기본 후보도 없음 → 직전 회차가 엔진에 반영될 때까지 대기.
+  /// 더 이전 회차까지만 학습한 번호를 이 회차 공식 번호로 대신 쓰지 않는다.
+  awaitingEngine,
 }
 
 class OfficialDecision {
@@ -340,6 +344,16 @@ OfficialDecision decideOfficialAction({
   final drawn = (latestDrawn != null && targetRound <= latestDrawn) || salesClosed;
   final preDraw = latestDrawn != null && targetRound > latestDrawn && !salesClosed;
 
+  // 추첨 전 공식 번호는 직전 회차(목표−1)까지 학습한 것만 인정한다.
+  // (예: 1246회 추첨 후 1247회 번호는 1246회까지 학습해야 함 — 1245회까지 학습한 번호를 대신 쓰지 않음)
+  if (preDraw) {
+    final need = targetRound - 1;
+    if (targetRound > latestDrawn + 1) return OfficialDecision(OfficialAction.awaitingEngine, null, isPreDraw: true);
+    if (storedTrainings.contains(need)) return OfficialDecision(OfficialAction.useStored, need, isPreDraw: true);
+    if (latestTrain == need) return OfficialDecision(OfficialAction.buildNew, need, isPreDraw: true);
+    return OfficialDecision(OfficialAction.awaitingEngine, null, isPreDraw: true);
+  }
+
   if (latestTrain != null && storedTrainings.contains(latestTrain)) {
     return OfficialDecision(OfficialAction.useStored, latestTrain, isPreDraw: preDraw);
   }
@@ -358,6 +372,7 @@ const String kOfficialStatusOk = 'official';
 const String kOfficialStatusPostDraw = 'post_draw_no_rebuild';
 const String kOfficialStatusStored = 'stored_no_rebuild';
 const String kOfficialStatusPreparing = 'preparing';
+const String kOfficialStatusAwaitingEngine = 'awaiting_engine';
 const String kOfficialPreparingMessage = '해당 회차 최종 예측 준비 중';
 
 class OfficialPrediction {
@@ -398,6 +413,8 @@ class OfficialPrediction {
   /// 상태 안내 (정상 공식 예측이면 null)
   String? get statusNote => switch (status) {
         kOfficialStatusPreparing => '$targetRound회 $kOfficialPreparingMessage',
+        kOfficialStatusAwaitingEngine => '${targetRound - 1}회 결과가 아직 엔진에 반영되지 않았습니다 — 반영 후 $targetRound회 공식 번호가 '
+            '만들어집니다 (이전 회차까지만 학습한 번호를 대신 표시하지 않음)',
         kOfficialStatusPostDraw => '추첨 후 조회 — 최신 학습 회차(${latestTrain ?? '-'}회) 기준 스냅샷이 없어 '
             '저장된 ${trainingEndRound ?? '-'}회 기준 스냅샷을 표시합니다 (추첨 후에는 새로 만들지 않음)',
         kOfficialStatusStored => '최신 학습 기준 스냅샷을 새로 만들지 않아 저장된 ${trainingEndRound ?? '-'}회 기준 스냅샷을 표시합니다',
@@ -493,6 +510,8 @@ class OfficialPredictionService {
         return latestStoredOr(kOfficialStatusStored, d.action);
       case OfficialAction.preparing:
         return out(kOfficialStatusPreparing, OfficialAction.preparing, null);
+      case OfficialAction.awaitingEngine:
+        return out(kOfficialStatusAwaitingEngine, OfficialAction.awaitingEngine, null);
     }
   }
 }

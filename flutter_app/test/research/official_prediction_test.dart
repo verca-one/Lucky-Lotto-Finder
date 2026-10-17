@@ -65,20 +65,46 @@ void main() {
       expect(d.isPreDraw, isFalse);
     });
 
-    test('기본 후보(number_base) 없음 + 저장본 있음 → 최신 저장본', () {
+    test('추첨 전 · 기본 후보 없음 + 직전 회차 이전 저장본만 → 엔진 반영 대기 (이전 학습 번호로 대체하지 않음)', () {
       final d = decideOfficialAction(
         targetRound: 1246, latestTrain: null, storedTrainings: const [1243, 1244], latestDrawn: 1245,
         salesCloseUtc: close1246, nowUtc: beforeDraw,
       );
-      expect(d.action, OfficialAction.latestStored);
+      expect(d.action, OfficialAction.awaitingEngine);
+      expect(d.training, isNull);
+    });
+
+    test('추첨 후 · 기본 후보 없음 + 저장본 있음 → 재생성 없이 최신 저장본', () {
+      final d = decideOfficialAction(
+        targetRound: 1245, latestTrain: null, storedTrainings: const [1243, 1244], latestDrawn: 1245,
+      );
+      expect(d.action, OfficialAction.latestStoredPostDraw);
       expect(d.training, 1244);
+    });
+
+    test('실측 사고: 1246회 추첨 후 엔진이 1246회를 반영하기 전 → 1247회는 1245회 학습 번호를 쓰지 않고 대기', () {
+      final close1247 = DateTime.utc(2026, 10, 24, 11);
+      final sunday = DateTime.utc(2026, 10, 17, 20);
+      final d = decideOfficialAction(
+        targetRound: 1247, latestTrain: 1245, storedTrainings: const [1244, 1245], latestDrawn: 1246,
+        salesCloseUtc: close1247, nowUtc: sunday,
+      );
+      expect(d.action, OfficialAction.awaitingEngine);
+      expect(d.isPreDraw, isTrue);
+      // 엔진이 1246회까지 학습한 기본 후보를 만들면 그때 1247회 공식 번호 생성
+      final d2 = decideOfficialAction(
+        targetRound: 1247, latestTrain: 1246, storedTrainings: const [1244, 1245], latestDrawn: 1246,
+        salesCloseUtc: close1247, nowUtc: sunday,
+      );
+      expect(d2.action, OfficialAction.buildNew);
+      expect(d2.training, 1246);
     });
 
     test('아무것도 없으면 준비 중 (다른 회차로 대체하지 않음)', () {
       final d = decideOfficialAction(
         targetRound: 1251, latestTrain: null, storedTrainings: const [], latestDrawn: 1245,
       );
-      expect(d.action, OfficialAction.preparing);
+      expect(d.action, OfficialAction.awaitingEngine); // 추첨 전 미래 회차 — 직전 회차 반영 대기
       expect(d.training, isNull);
     });
 
@@ -89,14 +115,14 @@ void main() {
       expect(d.action, OfficialAction.preparing);
     });
 
-    test('선택한 미래 회차(1247~1251)는 그 회차 값으로만 결정', () {
+    test('두 회차 이상 뒤(1247~1251)는 직전 회차가 추첨·반영되기 전까지 공식 번호 없음', () {
       for (final t in [1247, 1248, 1249, 1250, 1251]) {
         final d = decideOfficialAction(
-          targetRound: t, latestTrain: 1245, storedTrainings: const [1244], latestDrawn: 1245,
+          targetRound: t, latestTrain: 1245, storedTrainings: const [1244, 1245], latestDrawn: 1245,
           salesCloseUtc: lottoSalesCloseUtc(t, knownRound: 1245, knownDrawDate: '2026-10-10'), nowUtc: beforeDraw,
         );
-        expect(d.action, OfficialAction.buildNew, reason: '$t');
-        expect(d.training, 1245, reason: '$t');
+        expect(d.action, OfficialAction.awaitingEngine, reason: '$t');
+        expect(d.training, isNull, reason: '$t');
         expect(d.isPreDraw, isTrue, reason: '$t');
       }
     });

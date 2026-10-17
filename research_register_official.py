@@ -2,7 +2,8 @@
 공식 최종 추천번호(fr-1.0) 5세트를 사전 등록 장부(research_predictions)에 등록 — 서버(service_role) 전용
 
   · 대상: 다음 추첨 회차(최신 당첨 회차 + 1)
-  · 등록 내용: 목표 회차의 최신 학습 스냅샷(관리자·브리핑 화면의 공식 5세트와 같은 행)
+  · 등록 내용: 목표 회차의 직전 회차(최신 추첨 회차)까지 학습한 스냅샷(관리자·브리핑 화면의 공식 5세트와 같은 행)
+    — 엔진이 최신 회차를 아직 반영하지 않았으면 등록하지 않고 기다린다 (이전 학습 번호로 대신 등록 금지)
   · 판매 마감(토 20:00 KST) 전에만 등록한다. 마감 후에는 등록하지 않는다 (사후 등록 금지).
   · 이미 등록돼 있으면 아무것도 하지 않는다 (DB 잠금: 세트·생성 시각 수정 불가, 삭제 불가)
   · 추첨 후 채점은 서버 파이프라인의 verifyPending 이 다른 등록 예측과 같은 방식으로 한다.
@@ -51,9 +52,9 @@ def main():
         print(f"{target}회 판매 마감 후 — 사후 등록하지 않음"); return
     fr = get("research_results", {"select": "id,training_end_round,payload->sets,payload->generated_at",
                                   "research_type": "eq.final_recommendation", "model_version": f"eq.{VERSION}",
-                                  "target_round": f"eq.{target}", "order": "training_end_round.desc", "limit": "1"})
+                                  "target_round": f"eq.{target}", "training_end_round": f"eq.{w['round']}", "limit": "1"})
     if not fr or not fr[0].get("sets") or len(fr[0]["sets"]) != 5:
-        print(f"{target}회 공식 최종 추천번호 저장본 없음 — 등록 대기"); return
+        print(f"{target}회 공식 최종 추천번호({w['round']}회까지 학습) 저장본 없음 — 엔진 반영 후 등록 (대기)"); return
     f = fr[0]
     row = {"algorithm": ALGO, "version": VERSION, "target_round": target, "data_end_round": f["training_end_round"],
            "sets": f["sets"], "generated_at": now.isoformat(), "deadline_at": deadline.isoformat(),

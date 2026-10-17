@@ -97,7 +97,7 @@ class NumberPopularity {
     return b.toString();
   }
 
-  /// 목표 회차의 최신 저장본 (없으면 null)
+  /// 목표 회차의 저장본 — 직전 회차까지 반영된 것만 (없으면 null)
   static Future<NumberPopularity?> load(int target) async {
     final rows = await Supabase.instance.client
         .from('research_results')
@@ -105,7 +105,7 @@ class NumberPopularity {
         .eq('research_type', 'number_popularity')
         .eq('model_version', 'pop-1.0')
         .eq('target_round', target)
-        .order('training_end_round', ascending: false)
+        .eq('training_end_round', target - 1)
         .limit(1);
     final l = List<Map<String, dynamic>>.from(rows as List);
     return l.isEmpty ? null : NumberPopularity.fromRow(l.first);

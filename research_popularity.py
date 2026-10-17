@@ -29,6 +29,8 @@
     서로 3개 이상 겹치지 않게, 과거 1등 조합 제외하고 낮은 순으로 5세트.
     판매 마감(토 20:00 KST) 전에만 사전 등록 장부(research_predictions, popularity_pick)에 올린다 — 등록 후 변경 불가.
   · 검증이 통과하지 않으면 추천 5세트를 만들지 않는다.
+  · 최신 추첨 회차의 당첨자 수(research_prize_stats)가 들어오기 전에는 아무것도 저장·등록하지 않는다.
+    공식 5세트 인기도도 직전 회차까지 학습한 공식 스냅샷만 대상으로 한다.
 
 사용: python research_popularity.py [--out result.json] [--sets '[[1,2,3,4,5,6]]']   (검증 · DB 쓰기 없음)
       python research_popularity.py --publish [--dry-run]                         (브리핑 게시 · 서버 전용)
@@ -317,11 +319,14 @@ def publish(url, key, dry_run=False):
     past = {tuple(sorted(x[f"num{i}"] for i in range(1, 7))) for x in wins}
     deadline = sales_deadline(w["draw_date"], w["round"])
     now = datetime.now(timezone.utc)
+    if data[-1]["round"] != w["round"]:
+        print(f"{target}회 대기 — {w['round']}회 당첨자 수 미수집 (저장된 최신 {data[-1]['round']}회). 저장·등록하지 않음")
+        return None
     sc = Scorer(data, prev, seed=SEED + target)
 
     off = get("research_results", {"select": "training_end_round,payload->sets", "research_type": "eq.final_recommendation",
                                    "model_version": f"eq.{OFFICIAL_VERSION}", "target_round": f"eq.{target}",
-                                   "order": "training_end_round.desc", "limit": "1"})
+                                   "training_end_round": f"eq.{w['round']}", "limit": "1"})
     official = [sc.score(st) for st in (off[0].get("sets") or [])] if off else []
 
     reg = get("research_predictions", {"select": "sets", "algorithm": f"eq.{ALGO}", "version": f"eq.{VERSION}",

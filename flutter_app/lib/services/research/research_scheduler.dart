@@ -202,7 +202,8 @@ class ResearchScheduler {
       // 공식 최종 추천번호 5세트를 사전 등록 장부에도 잠금 (판매 마감 전 · DB 가 수정·삭제 차단, 추첨 후 자동 채점)
       await step('register_official_final', () async {
         final rec = await FinalRecommendationEngine.instance.loadStored(target);
-        if (rec != null && rec.sets.length == 5) {
+        // 직전 회차(최신 추첨 회차)까지 학습한 스냅샷만 등록
+        if (rec != null && rec.sets.length == 5 && rec.trainingEndRound == d.latestRound) {
           await reg.register(algorithm: PredictionRegistry.algoOfficial, version: kFinalRecVersion, targetRound: target,
               dataEndRound: rec.trainingEndRound, sets: rec.sets, deadline: deadline);
         }
