@@ -293,6 +293,20 @@ class RoundDebriefRepository {
     return p == null ? null : RoundDebrief.fromPayload(p);
   }
 
+  /// 회차별 검증 보고 목록 (최신 회차부터)
+  static Future<List<RoundDebrief>> loadHistory({int limit = 20}) async {
+    final rows = await Supabase.instance.client
+        .from('research_results')
+        .select('payload')
+        .eq('research_type', 'round_debrief')
+        .eq('model_version', 'db-1.0')
+        .order('training_end_round', ascending: false)
+        .limit(limit);
+    return List<Map<String, dynamic>>.from(rows as List)
+        .map((r) => RoundDebrief.fromPayload(Map<String, dynamic>.from(r['payload'] as Map)))
+        .toList();
+  }
+
   /// 가장 최근 추첨 회차의 지방장 보고 (없으면 null)
   static Future<AgentDebrief?> loadAgents() async {
     final p = await _latest('agent_debrief');

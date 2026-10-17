@@ -1260,7 +1260,8 @@ class BriefingDetailScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final items = _generateItems(data);
-    // 탭: 이번 회차 브리핑(맨 위 회차 검증 링크) · 지방장 보고
+    // 탭: 이번 회차 브리핑 · 지난 회차 검증(회차별 보라색 박스)
+    // 이번 회차 브리핑 맨 위 회차 검증: 토·일 펼침 → 월·화 보라색 박스 → 수요일부터 '지난 회차 검증' 탭에만
     return DefaultTabController(
       length: 2,
       child: Scaffold(
@@ -1275,16 +1276,15 @@ class BriefingDetailScreen extends StatelessWidget {
           unselectedLabelColor: Colors.white70,
           indicatorColor: Color(0xFFFFC107),
           labelStyle: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
-          tabs: [Tab(text: '이번 회차 브리핑'), Tab(text: '지방장보고')],
+          tabs: [Tab(text: '이번 회차 브리핑'), Tab(text: '지난 회차 검증')],
         ),
       ),
       body: TabBarView(children: [
         ListView(
         padding: const EdgeInsets.all(16),
         children: [
-          const RoundDebriefLinkCard(),
-          const SizedBox(height: 12),
-          _buildHeader(),
+          const RoundDebriefTop(),
+          _buildHeader(context),
           const SizedBox(height: 16),
           const MasterBriefingSection(),
           const SizedBox(height: 16),
@@ -1305,13 +1305,13 @@ class BriefingDetailScreen extends StatelessWidget {
           const SizedBox(height: 32),
         ],
       ),
-        const AgentReportView(),
+        const RoundDebriefHistoryView(),
       ]),
       ),
     );
   }
 
-  Widget _buildHeader() => Container(
+  Widget _buildHeader(BuildContext context) => Container(
     padding: const EdgeInsets.all(16),
     decoration: BoxDecoration(
       gradient: const LinearGradient(
@@ -1337,6 +1337,23 @@ class BriefingDetailScreen extends StatelessWidget {
         const SizedBox(height: 4),
         Text('${data.latestRound}회차까지 분석한 연구 현황입니다.',
             style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12)),
+        const SizedBox(height: 10),
+        // 지방장보고 — 지방장별 지난 회차 추천 채점 · 다음 회차 변경점
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            key: const ValueKey('agent_report_button'),
+            style: FilledButton.styleFrom(
+              backgroundColor: Colors.white,
+              foregroundColor: const Color(0xFF4527A0),
+              visualDensity: VisualDensity.compact,
+            ),
+            onPressed: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const AgentReportScreen())),
+            icon: const Icon(Icons.groups_2_rounded, size: 18),
+            label: const Text('지방장보고', style: TextStyle(fontWeight: FontWeight.w800)),
+          ),
+        ),
       ])),
     ]),
   );

@@ -100,7 +100,10 @@ Widget tierBadge(int tier) {
 // ═══════════════════════ 회차 검증 ═══════════════════════
 class RoundDebriefView extends StatefulWidget {
   final Future<RoundDebrief?> Function()? loader;
-  const RoundDebriefView({super.key, this.loader});
+
+  /// true = 브리핑 목록 안에 펼쳐 넣는 형태 (스크롤 없음)
+  final bool embedded;
+  const RoundDebriefView({super.key, this.loader, this.embedded = false});
   @override
   State<RoundDebriefView> createState() => _RoundDebriefViewState();
 }
@@ -139,6 +142,16 @@ class _RoundDebriefViewState extends State<RoundDebriefView> {
             ),
           );
         }
+        final children = [
+          _header(r),
+          _numbersCard(r),
+          _storesCard(r),
+          _auditCard(r),
+          _hypothesesCard(r),
+          _nextCard(r),
+          _probCard(r),
+        ];
+        if (widget.embedded) return Column(children: children);
         return RefreshIndicator(
           onRefresh: () async {
             setState(
@@ -146,18 +159,7 @@ class _RoundDebriefViewState extends State<RoundDebriefView> {
             );
             await _f;
           },
-          child: ListView(
-            padding: const EdgeInsets.all(16),
-            children: [
-              _header(r),
-              _numbersCard(r),
-              _storesCard(r),
-              _auditCard(r),
-              _hypothesesCard(r),
-              _nextCard(r),
-              _probCard(r),
-            ],
-          ),
+          child: ListView(padding: const EdgeInsets.all(16), children: children),
         );
       },
     );
@@ -935,13 +937,17 @@ class RoundDebriefScreen extends StatelessWidget {
 /// 이번 회차 브리핑 맨 위 — 지난 회차 검증 보고로 가는 박스 링크
 class RoundDebriefLinkCard extends StatefulWidget {
   final Future<RoundDebrief?> Function()? loader;
-  const RoundDebriefLinkCard({super.key, this.loader});
+
+  /// 이미 불러온 보고 (회차별 목록에서 사용) — 있으면 loader 대신 사용
+  final RoundDebrief? report;
+  const RoundDebriefLinkCard({super.key, this.loader, this.report});
   @override
   State<RoundDebriefLinkCard> createState() => _RoundDebriefLinkCardState();
 }
 
 class _RoundDebriefLinkCardState extends State<RoundDebriefLinkCard> {
-  late final Future<RoundDebrief?> _f = (widget.loader ?? RoundDebriefRepository.loadRound)();
+  late final Future<RoundDebrief?> _f =
+      widget.report != null ? Future.value(widget.report) : (widget.loader ?? RoundDebriefRepository.loadRound)();
 
   @override
   Widget build(BuildContext context) {
@@ -964,9 +970,10 @@ class _RoundDebriefLinkCardState extends State<RoundDebriefLinkCard> {
         return Material(
           color: Colors.transparent,
           child: InkWell(
-            key: const ValueKey('round_debrief_link'),
+            key: ValueKey(widget.report == null ? 'round_debrief_link' : 'round_debrief_link_${widget.report!.round}'),
             borderRadius: BorderRadius.circular(14),
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => RoundDebriefScreen(loader: widget.loader))),
+            onTap: () => Navigator.push(context, MaterialPageRoute(
+                builder: (_) => RoundDebriefScreen(loader: r != null ? () async => r : widget.loader))),
             child: Ink(
               padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
@@ -1009,6 +1016,23 @@ class _RoundDebriefLinkCardState extends State<RoundDebriefLinkCard> {
 }
 
 // ═══════════════════════ 지방장보고 ═══════════════════════
+/// 지방장보고 전체 화면 (브리핑 보라색 박스 버튼에서 이동)
+class AgentReportScreen extends StatelessWidget {
+  final Future<AgentDebrief?> Function()? loader;
+  const AgentReportScreen({super.key, this.loader});
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        backgroundColor: const Color(0xFFF5F6FA),
+        appBar: AppBar(
+          backgroundColor: const Color(0xFF00695C),
+          foregroundColor: Colors.white,
+          title: const Text('지방장보고', style: TextStyle(fontWeight: FontWeight.w700)),
+        ),
+        body: AgentReportView(loader: loader),
+      );
+}
+
 class AgentReportView extends StatefulWidget {
   final Future<AgentDebrief?> Function()? loader;
   const AgentReportView({super.key, this.loader});
@@ -1349,6 +1373,95 @@ class AgentReportCard extends StatelessWidget {
         t,
         style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: c),
       ),
+    );
+  }
+}
+
+
+// ═══════════════════════ 요일별 배치 ═══════════════════════
+/// 회차 검증 배치 (추첨일 토요일 기준 한국시간)
+///   토·일 = 브리핑 맨 위에 전체 펼침 · 월·화 = 보라색 박스 링크 · 수요일부터 = '지난 회차 검증' 탭에만
+enum DebriefPlacement { inline, box, tabOnly }
+
+DebriefPlacement debriefPlacement(String? drawDate, DateTime nowUtc) {
+  final d = DateTime.tryParse((drawDate ?? '').replaceAll('.', '-'));
+  if (d == null) return DebriefPlacement.box;
+  final kst = nowUtc.toUtc().add(const Duration(hours: 9));
+  final today = DateTime.utc(kst.year, kst.month, kst.day);
+  final days = today.difference(DateTime.utc(d.year, d.month, d.day)).inDays;
+  if (days <= 1) return DebriefPlacement.inline;
+  if (days <= 3) return DebriefPlacement.box;
+  return DebriefPlacement.tabOnly;
+}
+
+/// 이번 회차 브리핑 맨 위 — 요일에 따라 펼침 / 보라색 박스 / 표시 안 함
+class RoundDebriefTop extends StatefulWidget {
+  final Future<RoundDebrief?> Function()? loader;
+  final DateTime? nowUtc;
+  const RoundDebriefTop({super.key, this.loader, this.nowUtc});
+  @override
+  State<RoundDebriefTop> createState() => _RoundDebriefTopState();
+}
+
+class _RoundDebriefTopState extends State<RoundDebriefTop> {
+  late final Future<RoundDebrief?> _f = (widget.loader ?? RoundDebriefRepository.loadRound)();
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<RoundDebrief?>(
+      future: _f,
+      builder: (context, s) {
+        final r = s.data;
+        if (r == null) return const SizedBox.shrink();
+        switch (debriefPlacement(r.drawDate, widget.nowUtc ?? DateTime.now().toUtc())) {
+          case DebriefPlacement.inline:
+            return Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: RoundDebriefView(key: const ValueKey('debrief_inline'), embedded: true, loader: () async => r),
+            );
+          case DebriefPlacement.box:
+            return Padding(padding: const EdgeInsets.only(bottom: 12), child: RoundDebriefLinkCard(report: r));
+          case DebriefPlacement.tabOnly:
+            return const SizedBox.shrink();
+        }
+      },
+    );
+  }
+}
+
+/// '지난 회차 검증' 탭 — 회차별 보라색 박스 (최신 회차부터)
+class RoundDebriefHistoryView extends StatefulWidget {
+  final Future<List<RoundDebrief>> Function()? loader;
+  const RoundDebriefHistoryView({super.key, this.loader});
+  @override
+  State<RoundDebriefHistoryView> createState() => _RoundDebriefHistoryViewState();
+}
+
+class _RoundDebriefHistoryViewState extends State<RoundDebriefHistoryView> {
+  late Future<List<RoundDebrief>> _f = (widget.loader ?? RoundDebriefRepository.loadHistory)();
+
+  @override
+  Widget build(BuildContext context) {
+    return FutureBuilder<List<RoundDebrief>>(
+      future: _f,
+      builder: (context, s) {
+        if (s.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
+        if (s.hasError) return Center(child: Text('지난 회차 검증을 불러오지 못했습니다: ${s.error}'));
+        final list = s.data ?? const <RoundDebrief>[];
+        return RefreshIndicator(
+          onRefresh: () async {
+            setState(() => _f = (widget.loader ?? RoundDebriefRepository.loadHistory)());
+            await _f;
+          },
+          child: ListView(padding: const EdgeInsets.all(16), children: [
+            _small('회차마다 지난주 브리핑의 추천을 그대로 채점한 기록입니다. 박스를 누르면 전체 검증 보고가 열립니다.'),
+            const SizedBox(height: 10),
+            if (list.isEmpty) const Padding(padding: EdgeInsets.all(20), child: Text('아직 검증 기록이 없습니다.')),
+            for (final r in list)
+              Padding(padding: const EdgeInsets.only(bottom: 10), child: RoundDebriefLinkCard(key: ValueKey('hist_${r.round}'), report: r)),
+          ]),
+        );
+      },
     );
   }
 }

@@ -46,6 +46,45 @@ void main() {
     expect(find.text('⑤ 1247회 변경점'), findsOneWidget);
   });
 
+  test('요일별 배치 — 토·일 펼침 · 월·화 박스 · 수요일부터 탭', () {
+    // 1246회 추첨 2026-10-17(토). kst(일, 시) = 한국시간
+    DateTime kst(int d, int h) => DateTime.utc(2026, 10, d, h).subtract(const Duration(hours: 9));
+    expect(debriefPlacement('2026-10-17', kst(17, 23)), DebriefPlacement.inline); // 토 밤
+    expect(debriefPlacement('2026-10-17', kst(18, 23)), DebriefPlacement.inline); // 일
+    expect(debriefPlacement('2026-10-17', kst(19, 0)), DebriefPlacement.box); // 월 0시
+    expect(debriefPlacement('2026-10-17', kst(20, 23)), DebriefPlacement.box); // 화
+    expect(debriefPlacement('2026-10-17', kst(21, 0)), DebriefPlacement.tabOnly); // 수
+    expect(debriefPlacement(null, kst(21, 0)), DebriefPlacement.box);
+  });
+
+  testWidgets('브리핑 맨 위 — 일요일 펼침 · 월요일 보라색 박스 · 수요일 숨김', (tester) async {
+    phone(tester);
+    final r = RoundDebrief.fromPayload(Map<String, dynamic>.from(fixture()['main'] as Map));
+    Future<void> at(int day) async {
+      await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(
+          child: RoundDebriefTop(key: ValueKey(day), loader: () async => r, nowUtc: DateTime.utc(2026, 10, day, 3))))));
+      await tester.pumpAndSettle();
+    }
+    await at(18);
+    expect(find.byKey(const ValueKey('debrief_inline')), findsOneWidget);
+    await at(19);
+    expect(find.byKey(const ValueKey('round_debrief_link_1246')), findsOneWidget);
+    await at(21);
+    expect(find.byKey(const ValueKey('round_debrief_link_1246')), findsNothing);
+    expect(find.byKey(const ValueKey('debrief_inline')), findsNothing);
+  });
+
+  testWidgets('지난 회차 검증 탭 — 회차별 보라색 박스', (tester) async {
+    phone(tester);
+    final r = RoundDebrief.fromPayload(Map<String, dynamic>.from(fixture()['main'] as Map));
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: RoundDebriefHistoryView(loader: () async => [r]))));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('round_debrief_link_1246')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('round_debrief_link_1246')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('debrief_numbers')), findsOneWidget);
+  });
+
   testWidgets('브리핑 상단 박스 링크 → 회차 검증 화면', (tester) async {
     phone(tester);
     final r = RoundDebrief.fromPayload(Map<String, dynamic>.from(fixture()['main'] as Map));
@@ -59,10 +98,10 @@ void main() {
     expect(find.byKey(const ValueKey('debrief_numbers')), findsOneWidget);
   });
 
-  testWidgets('지방장보고 탭 — 당첨 지역 필터 · 카드 펼치기', (tester) async {
+  testWidgets('지방장보고 화면 — 당첨 지역 필터 · 카드 펼치기', (tester) async {
     phone(tester);
     final a = AgentDebrief.fromPayload(Map<String, dynamic>.from(fixture()['agents'] as Map));
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: AgentReportView(loader: () async => a))));
+    await tester.pumpWidget(MaterialApp(home: AgentReportScreen(loader: () async => a)));
     await tester.pumpAndSettle();
     expect(find.textContaining('지방장 보고 — 1246회'), findsOneWidget);
     final withFirst = a.agents.where((x) => x.hadFirst || x.secondHits > 0).length;
