@@ -26,6 +26,7 @@ import 'agent_research_repository.dart';
 import 'agent_store_evidence.dart';
 import 'final_recommendation_engine.dart';
 import 'number_popularity.dart';
+import 'recommend_release.dart';
 import 'purchase_prediction_engine.dart';
 import 'research_scheduler.dart';
 
@@ -122,6 +123,10 @@ class MasterBriefing {
 
   /// 번호 인기도 (pop-1.0 · 서버 저장본) — 공식 세트 인기도 · 비인기 추천 5세트
   final NumberPopularity? popularity;
+
+  /// 이번 회차 추천번호 공개 상태 (수요일 0시 KST 또는 수동 추천). null = 확인 실패(공개로 취급)
+  final ReleaseState? release;
+  bool get numbersReleased => release?.released ?? true;
   final List<MasterStorePick> stores;
   final List<String> storeEngineRegions;   // Store 엔진 이번 회차 지역 후보
   final int? storeEngineTrainingEnd;
@@ -139,7 +144,7 @@ class MasterBriefing {
   /// 비관리자 요청 → 조회하지 않음 ('관리자 전용')
   final String? deniedMessage;
   const MasterBriefing({
-    required this.targetRound, required this.latestRound, this.official, this.officialError, this.engine, this.purchase, this.popularity,
+    required this.targetRound, required this.latestRound, this.official, this.officialError, this.engine, this.purchase, this.popularity, this.release,
     this.stores = const [], this.storeEngineRegions = const [], this.storeEngineTrainingEnd, this.storeError,
     this.agentRef, this.fallbackReason, this.evidence, this.deniedMessage,
   });
@@ -189,6 +194,10 @@ class MasterBriefingService {
     try { purchase = await ResearchScheduler.instance.purchaseReport(targetRound: target); } catch (e) { debugPrint('[Master] purchase: $e'); }
     NumberPopularity? popularity;
     try { popularity = await NumberPopularity.load(target); } catch (e) { debugPrint('[Master] popularity: $e'); }
+    ReleaseState? release;
+    try {
+      release = await RecommendRelease.state(target, prevDrawDate: recent.isEmpty ? null : recent.first.drawDate);
+    } catch (e) { debugPrint('[Master] release: $e'); }
 
     var regions = <String>[];
     int? storeTe;
@@ -238,7 +247,7 @@ class MasterBriefingService {
 
     _cache = MasterBriefing(
       targetRound: target, latestRound: latest, official: official, officialError: officialError,
-      engine: engine, purchase: purchase, popularity: popularity,
+      engine: engine, purchase: purchase, popularity: popularity, release: release,
       stores: picks, storeEngineRegions: regions, storeEngineTrainingEnd: storeTe, storeError: storeErr,
       agentRef: agentRef, fallbackReason: fallbackReason, evidence: evidence,
     );

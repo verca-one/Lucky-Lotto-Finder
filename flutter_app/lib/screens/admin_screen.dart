@@ -1283,6 +1283,7 @@ class BriefingDetailScreen extends StatelessWidget {
         ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          const ManualRecommendCard(),
           const RoundDebriefTop(),
           _buildHeader(context),
           const SizedBox(height: 16),

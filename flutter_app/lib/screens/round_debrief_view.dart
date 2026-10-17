@@ -1,6 +1,7 @@
 // 브리핑 '회차 검증' · '지방장보고' 탭 — 서버 저장본(research_results db-1.0)만 표시
 import 'package:flutter/material.dart';
 
+import '../services/research/recommend_release.dart';
 import '../services/research/round_debrief.dart';
 import '../widgets/purchase_recommend_card.dart' show lottoBall, statusChip;
 
@@ -110,10 +111,27 @@ class RoundDebriefView extends StatefulWidget {
 
 class _RoundDebriefViewState extends State<RoundDebriefView> {
   late Future<RoundDebrief?> _f;
+  ReleaseState? _release;
   @override
   void initState() {
     super.initState();
     _f = (widget.loader ?? RoundDebriefRepository.loadRound)();
+    _f.then((r) => _loadRelease(r), onError: (_) {});
+    RecommendRelease.changes.addListener(_onRelease);
+  }
+
+  @override
+  void dispose() {
+    RecommendRelease.changes.removeListener(_onRelease);
+    super.dispose();
+  }
+
+  void _onRelease() => _f.then((r) => _loadRelease(r), onError: (_) {});
+
+  Future<void> _loadRelease(RoundDebrief? r) async {
+    if (r == null) return;
+    final s = await RecommendRelease.state(r.next, prevDrawDate: r.drawDate);
+    if (mounted) setState(() => _release = s);
   }
 
   @override
@@ -699,7 +717,8 @@ class _RoundDebriefViewState extends State<RoundDebriefView> {
 
   Widget _nextCard(RoundDebrief r) {
     final o = r.nextOfficial;
-    final sets = ((o['sets'] as List?) ?? const [])
+    final hidden = _release != null && !_release!.released;
+    final sets = hidden ? <Map<String, dynamic>>[] : ((o['sets'] as List?) ?? const [])
         .map((e) => Map<String, dynamic>.from(e as Map))
         .toList();
     final added = ((o['numbers_added'] as List?) ?? const [])
@@ -731,7 +750,9 @@ class _RoundDebriefViewState extends State<RoundDebriefView> {
           const SizedBox(height: 4),
           if (sets.isEmpty)
             _small(
-              '${r.round}회 결과가 엔진에 반영되면 표시됩니다.',
+              hidden
+                  ? '${r.next}회 추천번호는 ${_release!.releaseLabel}에 공개됩니다 (브리핑 맨 위 수동 추천으로 먼저 받을 수 있음).'
+                  : '${r.round}회 결과가 엔진에 반영되면 표시됩니다.',
               color: Colors.orange.shade900,
             )
           else

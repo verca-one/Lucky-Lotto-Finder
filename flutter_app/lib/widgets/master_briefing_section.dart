@@ -7,7 +7,9 @@ import '../services/research/agent_verdicts.dart';
 import '../services/research/final_recommendation_engine.dart';
 import '../services/research/master_briefing_service.dart';
 import '../services/research/number_popularity.dart';
+import '../services/research/recommend_release.dart';
 import '../services/store_map_launcher.dart';
+import '../services/supabase_service.dart';
 import 'agent_store_evidence_widgets.dart';
 import 'purchase_recommend_card.dart' show lottoBall, statusChip, popularityValidationLine;
 import 'store_map_buttons.dart';
@@ -28,6 +30,17 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
   void initState() {
     super.initState();
     _future = MasterBriefingService.instance.load();
+    RecommendRelease.changes.addListener(_reload);
+  }
+
+  @override
+  void dispose() {
+    RecommendRelease.changes.removeListener(_reload);
+    super.dispose();
+  }
+
+  void _reload() {
+    if (mounted) setState(() => _future = MasterBriefingService.instance.load(force: true));
   }
 
   @override
@@ -54,8 +67,9 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
           return _box(Padding(padding: const EdgeInsets.all(14),
               child: Text('주요 브리핑: ${b.deniedMessage}', style: const TextStyle(fontSize: 12))));
         }
-        final showPurchase = b.purchase?.validated == true;
-        final popNo = b.popularity == null ? null : '2';
+        final open = b.numbersReleased;
+        final showPurchase = open && b.purchase?.validated == true;
+        final popNo = b.popularity == null || !open ? null : '2';
         final purchaseNo = '${popNo == null ? 2 : 3}';
         final storeNo = '${(popNo == null ? 2 : 3) + (showPurchase ? 1 : 0)}';
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -77,7 +91,7 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
             PopularityPicksCard(no: popNo, target: b.targetRound, pop: b.popularity!),
           ],
           const SizedBox(height: 10),
-          _purchaseCard(b, purchaseNo),
+          if (open) _purchaseCard(b, purchaseNo),
           const SizedBox(height: 10),
           _storeCard(b, storeNo),
         ]);
@@ -188,7 +202,10 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
           const SizedBox(height: 4),
           Text(e?.note ?? '엔진 예측을 불러오지 못했습니다.', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
           const SizedBox(height: 8),
-          if (e == null || e.baseSets.isEmpty)
+          if (!b.numbersReleased)
+            Text('${b.targetRound}회 번호는 ${b.release?.releaseLabel ?? '수요일 0시'}에 공개됩니다 (수동 추천으로 먼저 받을 수 있음).',
+                style: TextStyle(fontSize: 12, color: Colors.orange.shade900))
+          else if (e == null || e.baseSets.isEmpty)
             Text('${b.targetRound}회 Number 엔진 기본 조합이 아직 없습니다. 새 회차 처리 후 자동 생성됩니다.',
                 style: TextStyle(fontSize: 12, color: Colors.orange.shade900))
           else
@@ -346,8 +363,9 @@ class MasterBriefingCompact extends StatelessWidget {
         }
         // ① 과 같은 공식 최종 예측 1세트
         final eng = b.official?.hasSets == true ? b.official!.rec!.sets.first : null;
-        final pur = b.purchase?.validated == true ? b.purchase!.recommendations.first.numbers : null;
-        final pop = b.popularity?.picks.isNotEmpty == true ? b.popularity!.picks.first.set : null;
+        final open = b.numbersReleased;
+        final pur = open && b.purchase?.validated == true ? b.purchase!.recommendations.first.numbers : null;
+        final pop = open && b.popularity?.picks.isNotEmpty == true ? b.popularity!.picks.first.set : null;
         Widget line(String label, List<int>? nums, Color c) => Padding(
               padding: const EdgeInsets.only(bottom: 4),
               child: Row(children: [
@@ -456,6 +474,119 @@ class PopularityPicksCard extends StatelessWidget {
         Text('마스터, 모든 조합의 1등 확률은 같습니다(1/8,145,060). 이 조합은 확률이 아니라 "당첨 시 나눠 가질 사람 수"를 줄이려는 선택이며, '
             '몫 +N%는 ${pop.trainingEnd}회까지 당첨자 수로 학습한 모델 추정치입니다. 선정: ${pop.pickRule}',
             style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700, height: 1.4)),
+      ]),
+    );
+  }
+}
+
+
+/// 브리핑 맨 위 — 수동 추천 버튼 (수요일 0시 자동 공개 전에 이번 회차 추천번호를 지금 공개)
+class ManualRecommendCard extends StatefulWidget {
+  /// 테스트용: (목표 회차, 직전 회차 추첨일)
+  final Future<(int, String?)> Function()? target;
+  final DateTime? nowUtc;
+  const ManualRecommendCard({super.key, this.target, this.nowUtc});
+  @override
+  State<ManualRecommendCard> createState() => _ManualRecommendCardState();
+}
+
+class _ManualRecommendCardState extends State<ManualRecommendCard> {
+  ReleaseState? _s;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    try {
+      final (target, prevDraw) = await (widget.target ?? _latest)();
+      final s = await RecommendRelease.state(target, prevDrawDate: prevDraw, nowUtc: widget.nowUtc);
+      if (mounted) setState(() => _s = s);
+    } catch (_) {}
+  }
+
+  static Future<(int, String?)> _latest() async {
+    final recent = await SupabaseService.getRecentWinningNumbers(1);
+    if (recent.isEmpty) throw StateError('no rounds');
+    return (recent.first.round + 1, recent.first.drawDate);
+  }
+
+  Future<void> _press() async {
+    final s = _s!;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text('${s.target}회 수동 추천'),
+        content: Text('수요일(${s.releaseLabel}) 공개 전에 ${s.target}회 추천번호를 지금 공개합니다.\n'
+            '번호는 이미 ${s.target - 1}회 결과까지 반영해 계산·사전 등록된 것과 같습니다.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('취소')),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('지금 공개')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    setState(() => _busy = true);
+    OfficialPredictionService.instance.clearCache();
+    await RecommendRelease.releaseNow(s.target);
+    await _load();
+    if (mounted) setState(() => _busy = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = _s;
+    if (s == null) return const SizedBox.shrink();
+    if (s.released) {
+      final how = s.manualAt != null ? '수동 추천으로 공개' : '수요일 자동 공개';
+      return Container(
+        key: const ValueKey('manual_recommend_done'),
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(color: const Color(0xFFE8F5E9), borderRadius: BorderRadius.circular(10)),
+        child: Row(children: [
+          const Icon(Icons.lock_open_rounded, size: 16, color: Color(0xFF2E7D32)),
+          const SizedBox(width: 6),
+          Expanded(child: Text('${s.target}회 추천번호 공개됨 · $how',
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF2E7D32)))),
+        ]),
+      );
+    }
+    return Container(
+      key: const ValueKey('manual_recommend_card'),
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: const Color(0xFFFFB300), width: 1.4),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.schedule_rounded, size: 18, color: Color(0xFFE65100)),
+          const SizedBox(width: 6),
+          Expanded(child: Text('${s.target}회 추천번호 — ${s.releaseLabel} 공개 예정',
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFFE65100)))),
+        ]),
+        const SizedBox(height: 4),
+        Text('지난 회차 검증을 먼저 보고, 추천번호는 수요일에 공개합니다. 그 전에 필요하면 수동 추천을 누르세요.',
+            style: TextStyle(fontSize: 11.5, color: Colors.grey.shade700, height: 1.4)),
+        const SizedBox(height: 10),
+        SizedBox(
+          width: double.infinity,
+          child: FilledButton.icon(
+            key: const ValueKey('manual_recommend_button'),
+            style: FilledButton.styleFrom(backgroundColor: const Color(0xFFE65100)),
+            onPressed: _busy ? null : _press,
+            icon: const Icon(Icons.touch_app_rounded, size: 18),
+            label: Text('수동 추천 · 지금 ${s.target}회 받기', style: const TextStyle(fontWeight: FontWeight.w800)),
+          ),
+        ),
       ]),
     );
   }

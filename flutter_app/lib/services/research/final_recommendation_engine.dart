@@ -29,6 +29,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../rpa_number_core.dart' show rpaActualIndicatorValues, rpaIndicatorBaselines;
 import '../rpa_unified_prediction.dart';
 import '../supabase_service.dart';
+import 'recommend_release.dart';
 import 'research_core.dart';
 import 'research_runtime.dart';
 
@@ -304,6 +305,9 @@ enum OfficialAction {
   /// 추첨 전인데 직전 회차(목표−1)까지 학습한 스냅샷도 기본 후보도 없음 → 직전 회차가 엔진에 반영될 때까지 대기.
   /// 더 이전 회차까지만 학습한 번호를 이 회차 공식 번호로 대신 쓰지 않는다.
   awaitingEngine,
+
+  /// 계산·등록은 끝났지만 앱 공개 전 (수요일 0시 KST 자동 공개 또는 관리자 수동 추천)
+  scheduled,
 }
 
 class OfficialDecision {
@@ -373,6 +377,7 @@ const String kOfficialStatusPostDraw = 'post_draw_no_rebuild';
 const String kOfficialStatusStored = 'stored_no_rebuild';
 const String kOfficialStatusPreparing = 'preparing';
 const String kOfficialStatusAwaitingEngine = 'awaiting_engine';
+const String kOfficialStatusScheduled = 'scheduled';
 const String kOfficialPreparingMessage = '해당 회차 최종 예측 준비 중';
 
 class OfficialPrediction {
@@ -387,6 +392,9 @@ class OfficialPrediction {
 
   /// 조회 시점에 목표 회차가 추첨 전(판매 마감 전)으로 확인됐는지
   final bool isPreDraw;
+
+  /// 공개 예정 표시 ('10/21(수) 0시') — [kOfficialStatusScheduled] 일 때
+  final String? releaseLabel;
   const OfficialPrediction({
     required this.status,
     required this.action,
@@ -394,6 +402,7 @@ class OfficialPrediction {
     required this.isPreDraw,
     this.rec,
     this.latestTrain,
+    this.releaseLabel,
   });
 
   String? get snapshotId => rec?.snapshotId;
@@ -413,6 +422,8 @@ class OfficialPrediction {
   /// 상태 안내 (정상 공식 예측이면 null)
   String? get statusNote => switch (status) {
         kOfficialStatusPreparing => '$targetRound회 $kOfficialPreparingMessage',
+        kOfficialStatusScheduled => '$targetRound회 추천번호는 ${releaseLabel ?? '수요일 0시'}에 공개됩니다 — '
+            '그 전에 필요하면 브리핑 맨 위 [수동 추천]을 누르세요',
         kOfficialStatusAwaitingEngine => '${targetRound - 1}회 결과가 아직 엔진에 반영되지 않았습니다 — 반영 후 $targetRound회 공식 번호가 '
             '만들어집니다 (이전 회차까지만 학습한 번호를 대신 표시하지 않음)',
         kOfficialStatusPostDraw => '추첨 후 조회 — 최신 학습 회차(${latestTrain ?? '-'}회) 기준 스냅샷이 없어 '
@@ -481,9 +492,16 @@ class OfficialPredictionService {
       salesCloseUtc: close,
     );
 
-    OfficialPrediction out(String status, OfficialAction action, FinalRecommendation? rec) => OfficialPrediction(
-        status: status, action: action, rec: rec, targetRound: targetRound, latestTrain: latestTrain,
-        isPreDraw: d.isPreDraw);
+    OfficialPrediction out(String status, OfficialAction action, FinalRecommendation? rec, {String? release}) =>
+        OfficialPrediction(
+            status: status, action: action, rec: rec, targetRound: targetRound, latestTrain: latestTrain,
+            isPreDraw: d.isPreDraw, releaseLabel: release);
+
+    // 앱 공개 시점: 다음 회차 추천은 수요일 0시(KST) 또는 수동 추천 후에만 보여준다 (서버는 제한 없음)
+    if (!ResearchRuntime.serverWriter && d.isPreDraw && latestDrawn == targetRound - 1) {
+      final rs = await RecommendRelease.state(targetRound, prevDrawDate: recent.first.drawDate);
+      if (!rs.released) return out(kOfficialStatusScheduled, OfficialAction.scheduled, null, release: rs.releaseLabel);
+    }
 
     Future<OfficialPrediction> latestStoredOr(String status, OfficialAction action) async {
       if (stored.isEmpty) return out(kOfficialStatusPreparing, OfficialAction.preparing, null);
@@ -512,6 +530,8 @@ class OfficialPredictionService {
         return out(kOfficialStatusPreparing, OfficialAction.preparing, null);
       case OfficialAction.awaitingEngine:
         return out(kOfficialStatusAwaitingEngine, OfficialAction.awaitingEngine, null);
+      case OfficialAction.scheduled:
+        return out(kOfficialStatusScheduled, OfficialAction.scheduled, null);
     }
   }
 }
