@@ -1,61 +1,80 @@
-// 추천번호 공개 시점 — 추첨(토) 후 바로 보이지 않고 수요일 0시(한국시간)에 공개, 그 전엔 관리자가 '수동 추천'으로 공개.
-// 번호 계산·사전 등록(서버)은 그대로이며, 앱 화면에서 보여주는 시점만 정한다. 수동 공개는 이 기기에만 저장된다.
+// 다음 회차 추천번호 엔진 실행 시점 — 추첨(토) 후 바로 예측하지 않고 수요일 0시(KST)에 서버가 자동 실행.
+// 그 전에 필요하면 관리자가 [수동 추천]으로 엔진 실행을 요청한다 (research_engine_requests, 회차당 1번).
+// 앱은 요청 1행만 넣고, 실행은 서버(research_request_poll.py → Research Engine)가 한다. 규칙은 research_release.py 와 같다.
 import 'package:flutter/foundation.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ReleaseState {
   final int target;
 
-  /// 자동 공개 시각(UTC). 직전 회차 추첨일을 모르면 null (= 바로 공개)
+  /// 자동 실행 시각(UTC). 직전 회차 추첨일을 모르면 null (= 제한 없음)
   final DateTime? releaseAtUtc;
 
-  /// 수동 공개 시각 (수동 추천 버튼을 누른 경우)
+  /// 수동 추천 요청 시각 · 서버 처리 상태(pending | dispatched | done)
   final DateTime? manualAt;
+  final String? requestStatus;
+
+  /// 다음 회차 예측이 열렸는지 (수요일 0시가 지났거나 수동 추천 요청이 있음)
   final bool released;
-  const ReleaseState(this.target, this.releaseAtUtc, this.manualAt, this.released);
+  const ReleaseState(this.target, this.releaseAtUtc, this.manualAt, this.released, {this.requestStatus});
 
   /// '10/21(수) 0시'
   String get releaseLabel {
     final r = releaseAtUtc;
-    if (r == null) return '-';
+    if (r == null) return '수요일 0시';
     final k = r.add(const Duration(hours: 9));
     return '${k.month}/${k.day}(수) 0시';
   }
 }
 
 class RecommendRelease {
-  static const _key = 'recommend_manual_release_';
-
-  /// 추천 공개 상태가 바뀌면 증가 (브리핑 화면 새로고침용)
+  /// 수동 추천 요청 등 상태가 바뀌면 증가 (브리핑 화면 새로고침용)
   static final ValueNotifier<int> changes = ValueNotifier(0);
 
-  /// 목표 회차 자동 공개 시각: 직전 회차 추첨일(토) + 4일 = 수요일 0시 KST (= 화요일 15:00 UTC)
+  /// 테스트에서 바꿔 끼우는 서버 접근
+  static Future<Map<String, dynamic>?> Function(int target) fetchRequest = _fetch;
+  static Future<void> Function(int target) insertRequest = _insert;
+
+  /// 목표 회차 자동 실행 시각: 직전 회차 추첨일(토) + 4일 = 수요일 0시 KST (= 화요일 15:00 UTC)
   static DateTime? releaseAtUtc(String? prevDrawDate) {
     final d = DateTime.tryParse((prevDrawDate ?? '').trim().replaceAll('.', '-'));
     if (d == null) return null;
     return DateTime.utc(d.year, d.month, d.day).add(const Duration(days: 4)).subtract(const Duration(hours: 9));
   }
 
-  /// 공개 여부 (순수 계산 — 단위 테스트 대상)
+  /// 예측이 열렸는지 (순수 계산 — 단위 테스트 대상)
   static bool releasedAt({required DateTime? releaseAtUtc, required DateTime? manualAt, required DateTime nowUtc}) =>
       manualAt != null || releaseAtUtc == null || !nowUtc.toUtc().isBefore(releaseAtUtc);
 
   static Future<ReleaseState> state(int target, {String? prevDrawDate, DateTime? nowUtc}) async {
     final at = releaseAtUtc(prevDrawDate);
-    DateTime? manual;
+    Map<String, dynamic>? req;
     try {
-      final p = await SharedPreferences.getInstance();
-      final s = p.getString('$_key$target');
-      manual = s == null ? null : DateTime.tryParse(s);
+      req = await fetchRequest(target);
     } catch (_) {}
+    final manual = req == null ? null : DateTime.tryParse('${req['requested_at']}');
     return ReleaseState(target, at, manual,
-        releasedAt(releaseAtUtc: at, manualAt: manual, nowUtc: nowUtc ?? DateTime.now().toUtc()));
+        releasedAt(releaseAtUtc: at, manualAt: manual, nowUtc: nowUtc ?? DateTime.now().toUtc()),
+        requestStatus: req?['status'] as String?);
   }
 
-  /// 수동 추천 — 수요일 전에 이 회차 추천번호를 지금 공개 (이 기기)
-  static Future<void> releaseNow(int target) async {
-    final p = await SharedPreferences.getInstance();
-    await p.setString('$_key$target', DateTime.now().toUtc().toIso8601String());
+  /// 수동 추천 — 수요일 자동 실행 전에 이 회차 엔진 실행을 서버에 요청 (회차당 1번)
+  static Future<void> requestRun(int target) async {
+    await insertRequest(target);
     changes.value++;
+  }
+
+  static Future<Map<String, dynamic>?> _fetch(int target) async {
+    final rows = await Supabase.instance.client
+        .from('research_engine_requests')
+        .select('target_round,requested_at,status')
+        .eq('target_round', target)
+        .limit(1);
+    final l = List<Map<String, dynamic>>.from(rows as List);
+    return l.isEmpty ? null : l.first;
+  }
+
+  static Future<void> _insert(int target) async {
+    await Supabase.instance.client.from('research_engine_requests').insert({'target_round': target});
   }
 }

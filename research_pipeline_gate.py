@@ -6,6 +6,8 @@
   2. 최신 회차 판매점 크롤링 완료 표시 (round_crawl_status.stores_status = success)
   3. 최신 회차 2등 판매점 기록 있음, 1등 판매점 기록 ≥ 1등 당첨자 수의 80% (research_agent_worker.ready_latest 와 같은 규칙)
   4. 같은 (파이프라인 버전, 목표 회차) 성공 기록 없음 (FORCE=true 면 무시하지 않음 — 성공 기록은 다시 만들지 않는다)
+  5. 예측 실행 시점: 수요일 0시(KST) 이후, 또는 앱 [수동 추천] 요청이 있음 (research_release.py)
+     — 추첨 후 바로 예측하지 않고 지난 회차 검증을 먼저 한다
 준비가 안 됐으면 실행하지 않고 'waiting' 기록만 남긴다. 3시간 넘게 running 인 기록은 failed(timeout)로 정리한다.
 
 출력 (GITHUB_OUTPUT): run, latest, target
@@ -17,6 +19,8 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 import requests
+
+from research_release import prediction_allowed
 
 PIPELINE_VERSION = "sp-1.0"   # tool/server/research_pipeline_test.dart 와 같아야 한다
 STALE_HOURS = 3
@@ -123,13 +127,24 @@ def main():
              {"pipeline_version": f"eq.{PIPELINE_VERSION}", "status": "eq.running", "started_at": f"lt.{cutoff}"},
              {"status": "failed", "error": f"{STALE_HOURS}시간 초과 — 중단된 실행으로 정리", "finished_at": now().isoformat()})
 
-    nums = db.get("lotto_winning_numbers", {"select": "round", "order": "round.desc", "limit": "1"})
+    nums = db.get("lotto_winning_numbers", {"select": "round,draw_date", "order": "round.desc", "limit": "1"})
     if not nums:
         print("당첨번호 데이터 없음")
         output(run="false", latest=0, target=0)
         return
     latest = int(nums[0]["round"])
     target = latest + 1
+
+    def record_waiting(note):
+        prev = db.get("research_pipeline_runs", {"select": "id,status", "pipeline_version": f"eq.{PIPELINE_VERSION}",
+                                                 "target_round": f"eq.{target}", "order": "started_at.desc", "limit": "1"})
+        if prev and prev[0]["status"] == "waiting":
+            db.patch("research_pipeline_runs", {"id": f"eq.{prev[0]['id']}"}, {"error": note, "finished_at": now().isoformat()})
+        else:
+            db.post("research_pipeline_runs", {"pipeline_version": PIPELINE_VERSION, "latest_round": latest,
+                                               "target_round": target, "status": "waiting", "error": note,
+                                               "trigger": os.environ.get("GITHUB_EVENT_NAME"),
+                                               "runner": os.environ.get("GITHUB_RUN_ID"), "finished_at": now().isoformat()})
 
     done = db.get("research_pipeline_runs", {"select": "id", "pipeline_version": f"eq.{PIPELINE_VERSION}",
                                              "target_round": f"eq.{target}", "status": "eq.success", "limit": "1"})
@@ -148,20 +163,18 @@ def main():
     why = readiness(db, latest)
     if why:
         print(f"{latest}회 데이터 준비 안 됨 — 대기: {', '.join(why)}")
-        prev = db.get("research_pipeline_runs", {"select": "id,status", "pipeline_version": f"eq.{PIPELINE_VERSION}",
-                                                 "target_round": f"eq.{target}", "order": "started_at.desc", "limit": "1"})
-        note = "데이터 준비 대기: " + ", ".join(why)
-        if prev and prev[0]["status"] == "waiting":
-            db.patch("research_pipeline_runs", {"id": f"eq.{prev[0]['id']}"}, {"error": note, "finished_at": now().isoformat()})
-        else:
-            db.post("research_pipeline_runs", {"pipeline_version": PIPELINE_VERSION, "latest_round": latest,
-                                               "target_round": target, "status": "waiting", "error": note,
-                                               "trigger": os.environ.get("GITHUB_EVENT_NAME"),
-                                               "runner": os.environ.get("GITHUB_RUN_ID"), "finished_at": now().isoformat()})
+        record_waiting("데이터 준비 대기: " + ", ".join(why))
         output(run="false", latest=latest, target=target)
         return
 
-    print(f"{latest}회 데이터 준비 완료 → {target}회 파이프라인 실행")
+    ok, reason, _ = prediction_allowed(db.get, target, nums[0].get("draw_date"), latest)
+    if not ok:
+        print(f"{latest}회 데이터 준비 완료 · {reason}")
+        record_waiting(reason)
+        output(run="false", latest=latest, target=target)
+        return
+
+    print(f"{latest}회 데이터 준비 완료 · {reason} → {target}회 파이프라인 실행")
     output(run="true", latest=latest, target=target)
 
 

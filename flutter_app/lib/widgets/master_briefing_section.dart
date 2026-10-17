@@ -480,18 +480,22 @@ class PopularityPicksCard extends StatelessWidget {
 }
 
 
-/// 브리핑 맨 위 — 수동 추천 버튼 (수요일 0시 자동 공개 전에 이번 회차 추천번호를 지금 공개)
+/// 브리핑 맨 위 — 수동 추천 버튼: 수요일 0시 자동 실행 전에 다음 회차 추천번호 엔진을 지금 실행 요청
 class ManualRecommendCard extends StatefulWidget {
   /// 테스트용: (목표 회차, 직전 회차 추첨일)
   final Future<(int, String?)> Function()? target;
+
+  /// 테스트용: 목표 회차 공식 추천번호가 이미 만들어졌는지
+  final Future<bool> Function(int target)? generated;
   final DateTime? nowUtc;
-  const ManualRecommendCard({super.key, this.target, this.nowUtc});
+  const ManualRecommendCard({super.key, this.target, this.generated, this.nowUtc});
   @override
   State<ManualRecommendCard> createState() => _ManualRecommendCardState();
 }
 
 class _ManualRecommendCardState extends State<ManualRecommendCard> {
   ReleaseState? _s;
+  bool _made = false;
   bool _busy = false;
 
   @override
@@ -504,7 +508,16 @@ class _ManualRecommendCardState extends State<ManualRecommendCard> {
     try {
       final (target, prevDraw) = await (widget.target ?? _latest)();
       final s = await RecommendRelease.state(target, prevDrawDate: prevDraw, nowUtc: widget.nowUtc);
-      if (mounted) setState(() => _s = s);
+      var made = false;
+      if (s.released) {
+        try {
+          made = await (widget.generated ?? _generated)(target);
+        } catch (_) {}
+      }
+      if (mounted) setState(() {
+        _s = s;
+        _made = made;
+      });
     } catch (_) {}
   }
 
@@ -514,47 +527,72 @@ class _ManualRecommendCardState extends State<ManualRecommendCard> {
     return (recent.first.round + 1, recent.first.drawDate);
   }
 
+  static Future<bool> _generated(int target) async =>
+      (await OfficialPredictionService.instance.load(target, force: true)).hasSets;
+
   Future<void> _press() async {
     final s = _s!;
     final ok = await showDialog<bool>(
       context: context,
       builder: (c) => AlertDialog(
         title: Text('${s.target}회 수동 추천'),
-        content: Text('수요일(${s.releaseLabel}) 공개 전에 ${s.target}회 추천번호를 지금 공개합니다.\n'
-            '번호는 이미 ${s.target - 1}회 결과까지 반영해 계산·사전 등록된 것과 같습니다.'),
+        content: Text('${s.target}회 추천번호 엔진을 지금 실행합니다.\n'
+            '평소 ${s.releaseLabel} 자동 실행을 앞당기는 것이며, 회차당 한 번만 요청할 수 있습니다.\n'
+            '서버에서 실행되어 보통 10~20분 뒤 브리핑에 추천번호가 나옵니다.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('취소')),
-          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('지금 공개')),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('엔진 실행')),
         ],
       ),
     );
-    if (ok != true) return;
+    if (ok != true || !mounted) return;
     setState(() => _busy = true);
-    OfficialPredictionService.instance.clearCache();
-    await RecommendRelease.releaseNow(s.target);
+    try {
+      await RecommendRelease.requestRun(s.target);
+      OfficialPredictionService.instance.clearCache();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('엔진 실행 요청 실패: $e')));
+      }
+    }
     await _load();
     if (mounted) setState(() => _busy = false);
   }
+
+  Widget _note(String key, IconData icon, Color c, Color bg, String text, {bool refresh = false}) => Container(
+        key: ValueKey(key),
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(10)),
+        child: Row(children: [
+          Icon(icon, size: 16, color: c),
+          const SizedBox(width: 6),
+          Expanded(child: Text(text, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: c))),
+          if (refresh)
+            IconButton(
+              visualDensity: VisualDensity.compact, iconSize: 18, tooltip: '새로고침',
+              icon: Icon(Icons.refresh, color: c),
+              onPressed: () {
+                _load();
+                RecommendRelease.changes.value++;
+              },
+            ),
+        ]),
+      );
 
   @override
   Widget build(BuildContext context) {
     final s = _s;
     if (s == null) return const SizedBox.shrink();
     if (s.released) {
-      final how = s.manualAt != null ? '수동 추천으로 공개' : '수요일 자동 공개';
-      return Container(
-        key: const ValueKey('manual_recommend_done'),
-        width: double.infinity,
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(color: const Color(0xFFE8F5E9), borderRadius: BorderRadius.circular(10)),
-        child: Row(children: [
-          const Icon(Icons.lock_open_rounded, size: 16, color: Color(0xFF2E7D32)),
-          const SizedBox(width: 6),
-          Expanded(child: Text('${s.target}회 추천번호 공개됨 · $how',
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Color(0xFF2E7D32)))),
-        ]),
-      );
+      final how = s.manualAt != null ? '수동 추천' : '수요일 자동 실행';
+      if (_made) {
+        return _note('manual_recommend_done', Icons.check_circle_rounded, const Color(0xFF2E7D32), const Color(0xFFE8F5E9),
+            '${s.target}회 추천번호 생성 완료 · $how');
+      }
+      return _note('manual_recommend_waiting', Icons.hourglass_top_rounded, const Color(0xFFE65100), const Color(0xFFFFF3E0),
+          '${s.target}회 엔진 실행 대기 · $how — 서버 실행 후 표시 (보통 10~20분)', refresh: true);
     }
     return Container(
       key: const ValueKey('manual_recommend_card'),
@@ -570,11 +608,11 @@ class _ManualRecommendCardState extends State<ManualRecommendCard> {
         Row(children: [
           const Icon(Icons.schedule_rounded, size: 18, color: Color(0xFFE65100)),
           const SizedBox(width: 6),
-          Expanded(child: Text('${s.target}회 추천번호 — ${s.releaseLabel} 공개 예정',
+          Expanded(child: Text('${s.target}회 추천번호 — ${s.releaseLabel} 엔진 자동 실행',
               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFFE65100)))),
         ]),
         const SizedBox(height: 4),
-        Text('지난 회차 검증을 먼저 보고, 추천번호는 수요일에 공개합니다. 그 전에 필요하면 수동 추천을 누르세요.',
+        Text('추첨 후에는 지난 회차 검증을 먼저 하고, 추천번호 엔진은 수요일에 돌립니다. 그 전에 필요하면 수동 추천으로 지금 실행하세요.',
             style: TextStyle(fontSize: 11.5, color: Colors.grey.shade700, height: 1.4)),
         const SizedBox(height: 10),
         SizedBox(
@@ -583,8 +621,8 @@ class _ManualRecommendCardState extends State<ManualRecommendCard> {
             key: const ValueKey('manual_recommend_button'),
             style: FilledButton.styleFrom(backgroundColor: const Color(0xFFE65100)),
             onPressed: _busy ? null : _press,
-            icon: const Icon(Icons.touch_app_rounded, size: 18),
-            label: Text('수동 추천 · 지금 ${s.target}회 받기', style: const TextStyle(fontWeight: FontWeight.w800)),
+            icon: const Icon(Icons.play_circle_fill_rounded, size: 18),
+            label: Text('수동 추천 · 지금 ${s.target}회 엔진 실행', style: const TextStyle(fontWeight: FontWeight.w800)),
           ),
         ),
       ]),

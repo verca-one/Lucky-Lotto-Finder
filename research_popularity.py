@@ -30,6 +30,7 @@
     판매 마감(토 20:00 KST) 전에만 사전 등록 장부(research_predictions, popularity_pick)에 올린다 — 등록 후 변경 불가.
   · 검증이 통과하지 않으면 추천 5세트를 만들지 않는다.
   · 최신 추첨 회차의 당첨자 수(research_prize_stats)가 들어오기 전에는 아무것도 저장·등록하지 않는다.
+  · 다음 회차 예측 시점(수요일 0시 KST 또는 앱 수동 추천 요청, research_release.py) 전에는 만들지 않는다.
     공식 5세트 인기도도 직전 회차까지 학습한 공식 스냅샷만 대상으로 한다.
 
 사용: python research_popularity.py [--out result.json] [--sets '[[1,2,3,4,5,6]]']   (검증 · DB 쓰기 없음)
@@ -321,6 +322,11 @@ def publish(url, key, dry_run=False):
     now = datetime.now(timezone.utc)
     if data[-1]["round"] != w["round"]:
         print(f"{target}회 대기 — {w['round']}회 당첨자 수 미수집 (저장된 최신 {data[-1]['round']}회). 저장·등록하지 않음")
+        return None
+    from research_release import prediction_allowed
+    ok, reason, _ = prediction_allowed(get, target, w["draw_date"], w["round"])
+    if not ok:
+        print(f"{target}회 {reason} — 저장·등록하지 않음")
         return None
     sc = Scorer(data, prev, seed=SEED + target)
 

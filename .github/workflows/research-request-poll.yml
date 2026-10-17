@@ -1,0 +1,36 @@
+name: Research Request Poll
+
+# 앱 [수동 추천] 요청(research_engine_requests)을 10분마다 확인해 Research Engine 을 바로 실행시킨다.
+# 평소 다음 회차 예측은 수요일 0시(KST) 자동 실행 (research_release.py). 기존 크롤링 워크플로와 무관.
+on:
+  schedule:
+    - cron: '*/10 * * * *'
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: research-request-poll
+  cancel-in-progress: false
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          sparse-checkout: research_request_poll.py
+          sparse-checkout-cone-mode: false
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: Dispatch Research Engine on manual request
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: python research_request_poll.py

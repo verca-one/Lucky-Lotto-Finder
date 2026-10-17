@@ -422,10 +422,10 @@ class OfficialPrediction {
   /// 상태 안내 (정상 공식 예측이면 null)
   String? get statusNote => switch (status) {
         kOfficialStatusPreparing => '$targetRound회 $kOfficialPreparingMessage',
-        kOfficialStatusScheduled => '$targetRound회 추천번호는 ${releaseLabel ?? '수요일 0시'}에 공개됩니다 — '
-            '그 전에 필요하면 브리핑 맨 위 [수동 추천]을 누르세요',
-        kOfficialStatusAwaitingEngine => '${targetRound - 1}회 결과가 아직 엔진에 반영되지 않았습니다 — 반영 후 $targetRound회 공식 번호가 '
-            '만들어집니다 (이전 회차까지만 학습한 번호를 대신 표시하지 않음)',
+        kOfficialStatusScheduled => '$targetRound회 추천번호는 ${releaseLabel ?? '수요일 0시'}에 엔진이 자동으로 만듭니다 — '
+            '그 전에 필요하면 브리핑 맨 위 [수동 추천]으로 지금 실행하세요',
+        kOfficialStatusAwaitingEngine => '$targetRound회 엔진 실행 대기 — ${targetRound - 1}회 결과를 반영한 번호가 만들어지면 표시합니다 '
+            '(이전 회차까지만 학습한 번호를 대신 표시하지 않음)',
         kOfficialStatusPostDraw => '추첨 후 조회 — 최신 학습 회차(${latestTrain ?? '-'}회) 기준 스냅샷이 없어 '
             '저장된 ${trainingEndRound ?? '-'}회 기준 스냅샷을 표시합니다 (추첨 후에는 새로 만들지 않음)',
         kOfficialStatusStored => '최신 학습 기준 스냅샷을 새로 만들지 않아 저장된 ${trainingEndRound ?? '-'}회 기준 스냅샷을 표시합니다',

@@ -21,6 +21,7 @@ on:
     branches: [main]
     paths:
       - 'research_pipeline_gate.py'
+      - 'research_release.py'
       - 'research_public_worker.py'
       - 'research_review_worker.py'
       - 'research_register_official.py'
