@@ -1,4 +1,4 @@
-// 관리자 '연구소' — 연구 화면 모음 (명당 가설 · 전국 지방장 · 엔진 복기 · 실전형 재현 기록 · 예측 연구 현황)
+// 관리자 '연구소' — 연구 화면 모음 (AI 전략기획부 · 명당 가설 · 전국 지방장 · 엔진 복기 · 실전형 재현 기록 · 예측 연구 현황)
 import 'package:flutter/material.dart';
 
 import 'admin_agent_replay_screen.dart';
@@ -6,6 +6,7 @@ import 'admin_agent_research_screen.dart';
 import 'admin_engine_review_screen.dart';
 import 'admin_region_research_screen.dart';
 import 'admin_research_screen.dart';
+import 'admin_strategy_screen.dart';
 
 class ResearchLabEntry {
   final IconData icon;
@@ -17,6 +18,8 @@ class ResearchLabEntry {
 
 /// 연구소 메뉴 항목 (순서 고정)
 final List<ResearchLabEntry> kResearchLabEntries = [
+  ResearchLabEntry(Icons.psychology_alt_rounded, 'AI 전략기획부', 'AI 연구 방향 제시 → 가설 생성 → 비서 검증·유지·폐기 (AI는 제안만)',
+      const Color(0xFF5B2C9F), (_) => const AdminStrategyScreen()),
   ResearchLabEntry(Icons.travel_explore_rounded, '명당 가설 연구소 · 전국 지역 연구',
       '시·군·구 독립 연구 · 지역 간 전이 · 유명/신흥 명당 · 예측 난이도 · 복합 가설', const Color(0xFF0D47A1),
       (_) => const AdminRegionResearchScreen()),

@@ -1,0 +1,43 @@
+name: Research Strategy
+
+# AI 전략기획부(방향 제시) → 가설 공장(비서: 검증·유지·폐기). 매주 일요일 13:00 KST (회차 검증 이후).
+#   research_strategy_ai.py      : ANTHROPIC_API_KEY 가 있을 때만 AI 방향 3개 제안 (회차당 1번), 없으면 건너뜀
+#   research_hypothesis_factory.py: 제안된 가설 검정 · 통과 가설 새 회차 추적 (유지/폐기)
+# AI 는 strategy_directions · strategy_hypotheses(제안)에만 쓴다. 엔진·번호·장부·크롤링과 무관.
+on:
+  schedule:
+    - cron: '0 4 * * 0'
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'research_strategy_ai.py'
+      - 'research_hypothesis_factory.py'
+      - '.github/workflows/research-strategy.yml'
+
+concurrency:
+  group: research-strategy
+  cancel-in-progress: false
+
+jobs:
+  strategy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests numpy scipy anthropic
+      - name: AI 전략기획부 — 방향 제시 (API 키 있을 때만)
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python research_strategy_ai.py
+      - name: 가설 공장 — 비서 검증·유지·폐기
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python research_hypothesis_factory.py
