@@ -1,5 +1,5 @@
 """
-가설 공장 (hf-1.2) — AI 전략기획부(또는 관리자)가 제시한 방향의 가설을 비서가 검증·유지·폐기한다
+가설 공장 (hf-1.3) — AI 전략기획부(또는 관리자)가 제시한 방향의 가설을 비서가 검증·유지·폐기한다
 
 가설 = (조건, 결과, 기대 방향). 예: '홀수 회차(조건)에는 2등 당첨자 쏠림(결과)이 높다(기대)'.
 조건·결과는 아래 VOCAB 목록에서만 고른다 (저장된 DB 데이터로 계산 가능한 것만). 목록 밖이면 'unsupported'(데이터 미확보).
@@ -42,8 +42,11 @@ import numpy as np
 from scipy.stats import mannwhitneyu, norm
 
 import research_review_worker as R
+import research_store_hypotheses as H
 
-VERSION = "hf-1.2"
+STORE = {"sd": None}   # 판매점 가설이 있을 때만 판매점 × 회차 행렬을 읽는다
+
+VERSION = "hf-1.3"
 DISCOVERY = (269, 1000)
 CONFIRM_START = 1001
 ALPHA = 0.05
@@ -92,6 +95,19 @@ SEED = {
     "focus": "calendar",
     "hypotheses": [("round_odd", "R2", "higher"), ("day_odd", "R2", "higher"), ("round_odd", "R1", "higher"),
                    ("day_odd", "win_odd", "higher"), ("first_half", "R1", "higher"), ("summer", "manual_share", "higher")],
+}
+
+
+# 관리자(사장님) 제안 — 판매점 가설 첫 방향 ('직전 1등 판매점 근처' 등)
+STORE_SEED = {
+    "title": "판매점 단위 — 직전 1등 근처 · 잠든 명당 · 상권 · 손님 많은 가게",
+    "rationale": "관리자 제안: 엔진 추천 명당이 매주 같다. 장기 이력 말고 다른 정보(근처 1등 · 지역 흐름 · 상권 · 연금 당첨 가게)가 "
+                 "지방장 기대보다 1등을 더 설명하는지 판매점 단위로 검정한다. 역 근처 · 판매량은 DB 에 없어 데이터 미확보.",
+    "focus": "stores",
+    "hypotheses": [("near_first_prev", "first", "higher"), ("near_first_5", "first", "higher"),
+                   ("region_hot_10", "first", "higher"), ("own_drought_famous", "first", "higher"),
+                   ("pension_winner", "first", "higher"), ("dense_1km", "first", "higher"),
+                   ("emerging", "first", "higher"), ("own_second_10", "first", "higher")],
 }
 
 
@@ -167,7 +183,7 @@ def load_rounds(db):
 KIND_LABEL = {"base": "기본", "revival": "회생", "supplement": "보충회생", "partial": "임시 일부 발췌", "applied": "응용"}
 OUTCOME_FAMILY = {"R1": "pop", "R2": "pop", "R3": "pop", "R4": "pop", "manual_share": "pop",
                   "win_sum": "num", "win_odd": "num", "win_consec": "num", "win_low": "num", "win_high40": "num",
-                  "first_capital_share": "store"}
+                  "first_capital_share": "store", "first": "storehit", "first_second": "storehit"}
 REVIVAL_EVERY = 50        # 회생: 탈락 후 50회차마다, 탈락 뒤 새 회차만으로 재검정
 PARTIAL_EVERY = 25        # 임시 일부 발췌: 25회차마다 최근 100회만 검정
 PARTIAL_WINDOW = 100
@@ -184,17 +200,35 @@ def conds_of(spec):
     return [c for c in (spec.get("condition"), spec.get("condition2")) if c and c != "none"]
 
 
+def is_store(spec):
+    """판매점 단위 가설 (research_store_hypotheses)"""
+    return (spec or {}).get("level") == "store"
+
+
+def vocab(spec):
+    """(조건 어휘, 결과 어휘, 동시 불가 조건쌍)"""
+    if is_store(spec):
+        return H.STORE_CONDITIONS, H.STORE_OUTCOMES, H.EXCLUSIVE
+    return CONDITIONS, OUTCOMES, EXCLUSIVE
+
+
 def valid(spec):
     cs = conds_of(spec)
-    return bool(cs) and all(c in CONDITIONS for c in cs) and spec.get("outcome") in OUTCOMES and spec.get("expect") in EXPECT
+    cv, ov, _ = vocab(spec)
+    return bool(cs) and all(c in cv for c in cs) and spec.get("outcome") in ov and spec.get("expect") in EXPECT
 
 
 def spec_statement(spec):
-    return f"{'이면서 '.join(CONDITIONS[c] for c in conds_of(spec))}일 때 {OUTCOMES[spec['outcome']]}가 {EXPECT[spec['expect']]}"
+    cv, ov, _ = vocab(spec)
+    if is_store(spec):
+        more = "더 많이 나온다" if spec["expect"] == "higher" else "덜 나온다"
+        return f"{' · '.join(cv[c] for c in conds_of(spec))} 판매점에서 {ov[spec['outcome']]}가 지방장 기대보다 {more}"
+    return f"{'이면서 '.join(cv[c] for c in conds_of(spec))}일 때 {ov[spec['outcome']]}가 {EXPECT[spec['expect']]}"
 
 
 def spec_code(spec):
-    return f"{'+'.join(sorted(conds_of(spec)))}|{spec['outcome']}|{spec['expect']}"
+    core = f"{'+'.join(sorted(conds_of(spec)))}|{spec['outcome']}|{spec['expect']}"
+    return f"store:{core}" if is_store(spec) else core
 
 
 def kind_of(h):
@@ -204,6 +238,8 @@ def kind_of(h):
 # ── 검정 ──────────────────────────────────────────────────────────
 def test(rows, spec, lo, hi, min_n=MIN_N):
     cs, o, e = conds_of(spec), spec["outcome"], spec["expect"]
+    if is_store(spec):
+        return H.store_test(STORE["sd"], cs, o, e, lo, hi)
     a, b = [], []
     for x in rows:
         if lo <= x["round"] <= hi and x["out"][o] is not None:
@@ -232,6 +268,11 @@ def bh(pvals):
 
 
 def fmt(t):
+    if t.get("unit") == "store":
+        if t.get("status") == "small":
+            return f"표본 부족(조건 쪽 1등 {t['n_cond']}곳 · 지방장 기대 {t.get('expected_cond', 0)})"
+        return (f"조건 판매점 1등 {t['n_cond']}곳 (지방장 기대 {t['expected_cond']}) · 실제/기대 {t['mean_cond']:.2f} "
+                f"vs 나머지 {t['mean_other']:.2f} (p {t['p']:.3f})")
     if t.get("status") == "small":
         return f"표본 부족(조건 {t['n_cond']}회)"
     return f"조건 {t['n_cond']}회 평균 {t['mean_cond']:.3f} vs 나머지 {t['mean_other']:.3f} (p {t['p']:.3f})"
@@ -259,13 +300,16 @@ def derive(rows, hyps, latest):
     budget = MAX_SUPPLEMENT
     for h in sorted(near, key=lambda h: h["discovery"]["p"]):
         c = h["spec"]["condition"]
-        for c2 in CONDITIONS:
+        cv, _, excl = vocab(h["spec"])
+        for c2 in cv:
             if budget <= 0:
                 break
-            if c2 == c or any({c, c2} <= ex for ex in EXCLUSIVE):
+            if c2 == c or any({c, c2} <= ex for ex in excl):
                 continue
             spec = {"condition": c, "condition2": c2, "outcome": h["spec"]["outcome"], "expect": h["spec"]["expect"],
                     "kind": "supplement", "parent": h["code"]}
+            if is_store(h["spec"]):
+                spec["level"] = "store"
             if child(h, spec, spec_code(spec)):
                 budget -= 1
 
@@ -277,7 +321,7 @@ def derive(rows, hyps, latest):
         for o2, fam in OUTCOME_FAMILY.items():
             if o2 == o or fam != OUTCOME_FAMILY.get(o):
                 continue
-            spec = {k: v for k, v in h["spec"].items() if k in ("condition", "condition2", "expect")}
+            spec = {k: v for k, v in h["spec"].items() if k in ("condition", "condition2", "expect", "level")}
             spec.update(outcome=o2, kind="applied", parent=h["code"])
             child(h, spec, spec_code(spec))
 
@@ -339,7 +383,7 @@ def evaluate(rows, hyps, latest):
                 out.append((h["id"], {"status": "unsupported", "verdict": "검정 불가 — 저장된 데이터로 계산할 수 없는 조건·결과 (데이터 미확보)"}))
             continue
         if h["status"] == "proposed":
-            d = test(rows, s, *DISCOVERY)
+            d = test(rows, s, *(H.DISCOVERY if is_store(s) else DISCOVERY))
             cf = test(rows, s, CONFIRM_START, h["created_round"])
             a = SUPPLEMENT_ALPHA if kind_of(h) == "supplement" else ALPHA
             if d.get("status") == "small" or cf.get("status") == "small":
@@ -418,6 +462,8 @@ def simulate(rows, h, latest):
     s = h["spec"]
     o = s.get("outcome")
     base = {"round": latest, "version": VERSION}
+    if is_store(s):   # 시·군·구 TOP5 를 이 가설로 가중했다면 1등 적중이 늘었나
+        return dict(H.store_simulate(STORE["sd"], conds_of(s), o, s["expect"], CONFIRM_START, latest, latest), version=VERSION)
     if o not in NUM_FEAT:
         return dict(base, status="n/a", note="번호를 고르는 가설이 아님 (당첨자 쏠림·판매점) — 번호 확률 모의 대상 아님")
     cs, e = conds_of(s), s["expect"]
@@ -456,7 +502,7 @@ def sim_candidates(hyps, latest):
     def stale(h):
         sm = h.get("simulation") or {}
         return not sm or latest - (sm.get("round") or 0) >= SIM_REFRESH
-    pool = [h for h in hyps if valid(h["spec"]) and h["spec"].get("outcome") in NUM_FEAT and stale(h)]
+    pool = [h for h in hyps if valid(h["spec"]) and (h["spec"].get("outcome") in NUM_FEAT or is_store(h["spec"])) and stale(h)]
     rank = {"validated": 0, "maintained": 0, "provisional": 0, "proposed": 1}
     pool.sort(key=lambda h: (rank.get(h["status"], 2), (h.get("discovery") or {}).get("p") or 1))
     return pool[:SIM_MAX]
@@ -476,17 +522,28 @@ def _existing(db, params, dry):
         raise
 
 
+def store_seed_specs():
+    return [{"condition": c, "outcome": o, "expect": e, "kind": "base", "level": "store"} for c, o, e in STORE_SEED["hypotheses"]]
+
+
 def ensure_seed(db, latest, dry):
     have = {h["code"] for h in _existing(db, {"select": "code"}, dry)}
+    n = 0
     todo = [t for t in SEED["hypotheses"] if code_of(*t) not in have]
-    if not todo:
-        return 0
-    if dry:
-        return len(todo)
-    did = db.insert("strategy_directions", {"after_round": latest, "source": "manual", "title": SEED["title"],
-                                            "rationale": SEED["rationale"], "focus": SEED["focus"]})
-    add_hypotheses(db, did, todo, latest)
-    return len(todo)
+    if todo:
+        n += len(todo)
+        if not dry:
+            did = db.insert("strategy_directions", {"after_round": latest, "source": "manual", "title": SEED["title"],
+                                                    "rationale": SEED["rationale"], "focus": SEED["focus"]})
+            add_hypotheses(db, did, todo, latest)
+    stodo = [sp for sp in store_seed_specs() if spec_code(sp) not in have]
+    if stodo:
+        n += len(stodo)
+        if not dry:
+            did = db.insert("strategy_directions", {"after_round": latest, "source": "manual", "title": STORE_SEED["title"],
+                                                    "rationale": STORE_SEED["rationale"], "focus": STORE_SEED["focus"]})
+            add_specs(db, did, stodo, latest)
+    return n
 
 
 def add_specs(db, direction_id, specs, latest):
@@ -524,10 +581,14 @@ def run(db, dry=False):
         sim_ok = False
         print("모의 결과 칸 없음 — research_v15_strategy_sim.sql 실행 후 모의 시작")
     if dry and seeded:   # 드라이런: 아직 저장 안 된 기본 가설도 계산해서 보여준다
-        hyps += [{"id": f"seed-{i}", "code": code_of(*t), "direction_id": None,
-                  "spec": {"condition": t[0], "outcome": t[1], "expect": t[2], "kind": "base"},
+        have = {h["code"] for h in hyps}
+        seeds = [{"condition": t[0], "outcome": t[1], "expect": t[2], "kind": "base"} for t in SEED["hypotheses"]] + store_seed_specs()
+        hyps += [{"id": f"seed-{i}", "code": spec_code(sp), "direction_id": None, "spec": sp,
                   "status": "proposed", "forward": None, "verdict": None, "created_round": latest, "last_round": None}
-                 for i, t in enumerate(SEED["hypotheses"])]
+                 for i, sp in enumerate(seeds) if spec_code(sp) not in have]
+    if any(is_store(h.get("spec")) for h in hyps):
+        STORE["sd"] = H.StoreData(db, latest)
+        print(f"판매점 행렬: 판매점 {len(STORE['sd'].codes)}곳 · 연금 이력 매칭 {STORE['sd'].pension_matched}곳")
     now = datetime.now(timezone.utc).isoformat()
 
     # 1) 판정 (기존 가설)

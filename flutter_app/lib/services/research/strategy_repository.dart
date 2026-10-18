@@ -32,8 +32,12 @@ class StageResult {
   final int from, to, nCond, nOther;
   final double? meanCond, meanOther, p;
   final bool small, directionOk;
+
+  /// 판매점 가설: 조건 판매점 1등 수(nCond) vs 지방장 기대(expectedCond), mean = 실제÷기대 배수
+  final bool storeUnit;
+  final double? expectedCond;
   const StageResult(this.from, this.to, this.nCond, this.nOther, this.meanCond, this.meanOther, this.p, this.small,
-      this.directionOk);
+      this.directionOk, {this.storeUnit = false, this.expectedCond});
   static StageResult? fromJson(dynamic v) {
     if (v is! Map || v['n_cond'] == null) return null;
     final j = Map<String, dynamic>.from(v);
@@ -41,6 +45,7 @@ class StageResult {
       (j['from'] as num?)?.toInt() ?? 0, (j['to'] as num?)?.toInt() ?? 0, (j['n_cond'] as num).toInt(),
       (j['n_other'] as num?)?.toInt() ?? 0, (j['mean_cond'] as num?)?.toDouble(), (j['mean_other'] as num?)?.toDouble(),
       (j['p'] as num?)?.toDouble(), j['status'] == 'small', j['direction_ok'] == true,
+      storeUnit: j['unit'] == 'store', expectedCond: (j['expected_cond'] as num?)?.toDouble(),
     );
   }
 
@@ -80,6 +85,9 @@ class StrategyHypothesis {
 
   /// 가설 종류: base(기본) · supplement(보충회생) · revival(회생) · partial(임시 일부 발췌) · applied(응용)
   String get kind => '${spec['kind'] ?? 'base'}';
+
+  /// 판매점 단위 가설 (명당)
+  bool get isStore => spec['level'] == 'store';
 
   /// 파생 원본 가설 코드 (기본 가설이면 null)
   String? get parentCode => spec['parent'] as String?;

@@ -23,12 +23,13 @@ import sys
 import research_hypothesis_factory as F
 import research_review_worker as R
 
-VERSION = "sa-1.2"
+VERSION = "sa-1.3"
 CLAUDE_MODEL = "claude-opus-5-5"
 GEMINI_MODEL = "gemini-3.8-flash"   # 무료 등급 있음 (ai.google.dev 요금표)
 MAX_DIRECTIONS = 5
 DAILY_HYPS = 20           # AI 마다 하루 새 가설 수
 DAILY_APPLIED = 10        # AI 마다 하루 응용 가설 수 (이전 가설에 조건 보충·결과 변경)
+DAILY_STORE = 10          # AI 마다 하루 판매점 가설 수 (명당 — 지방장 기대보다 1등이 더 나오는 판매점 조건)
 FOCUS = ["popularity", "calendar", "sales", "numbers", "stores"]
 
 SYSTEM = """당신은 로또 연구팀의 'AI 전략기획부'입니다. 역할은 다음 주에 검증할 연구 방향을 제시하는 것뿐입니다.
@@ -51,6 +52,9 @@ SYSTEM = """당신은 로또 연구팀의 'AI 전략기획부'입니다. 역할�
 1) 새 가설: 모든 방향을 합쳐 20개 (directions[].hypotheses). 이미 목록에 있는 조합(진행 중이든 기각이든)은 고르지 마세요.
 2) 응용 가설: 10개 (applied). 목록에 있는 이전 가설 하나를 parent_code 로 정확히 적고, 그 가설에 조건을 보태거나(condition2)
    결과를 바꿔서(outcome) 새 조합을 만드세요. 아깝게 기각된 가설(p 가 작았던 것)을 보충하는 쪽이 좋습니다.
+3) 판매점 가설: 10개 (store_direction). 명당 추천이 매주 같아 '어떤 판매점에서 다음 회차 1등이 지방장 기대보다 더 나오나'를
+   판매점 조건 목록(store:)에서 고르세요. 지방장 기대 = 그 판매점의 최근 가중 1·2등 이력이라, 이력만으로 설명되는 것은 통과하지 못합니다.
+   제목·이유를 쓰고, 조건 2개를 겹쳐도 됩니다(condition2). 이미 있는 store: 조합은 고르지 마세요.
 매일 일하므로, 어제까지의 판정과 모의 결과를 보고 아직 안 가 본 쪽을 탐색하세요."""
 
 
@@ -85,6 +89,29 @@ def schema():
                     "additionalProperties": False,
                 },
             },
+            "store_direction": {
+                "type": "object",
+                "properties": {
+                    "title": {"type": "string"},
+                    "rationale": {"type": "string"},
+                    "hypotheses": {
+                        "type": "array",
+                        "items": {
+                            "type": "object",
+                            "properties": {
+                                "condition": {"type": "string", "enum": list(F.H.STORE_CONDITIONS)},
+                                "condition2": {"type": "string", "enum": list(F.H.STORE_CONDITIONS) + ["none"]},
+                                "outcome": {"type": "string", "enum": list(F.H.STORE_OUTCOMES)},
+                                "expect": {"type": "string", "enum": list(F.EXPECT)},
+                            },
+                            "required": ["condition", "condition2", "outcome", "expect"],
+                            "additionalProperties": False,
+                        },
+                    },
+                },
+                "required": ["title", "rationale", "hypotheses"],
+                "additionalProperties": False,
+            },
             "applied": {
                 "type": "array",
                 "items": {
@@ -101,7 +128,7 @@ def schema():
                 },
             },
         },
-        "required": ["directions", "applied"],
+        "required": ["directions", "applied", "store_direction"],
         "additionalProperties": False,
     }
 
@@ -117,6 +144,8 @@ def context(db, latest):
     lines = [f"최신 추첨 회차: {latest}회", "", "[조건 목록]"]
     lines += [f"- {k}: {v}" for k, v in F.CONDITIONS.items()]
     lines += ["", "[결과 목록]"] + [f"- {k}: {v}" for k, v in F.OUTCOMES.items()]
+    lines += ["", "[판매점 조건 목록 — store_direction 용]"] + [f"- {k}: {v}" for k, v in F.H.STORE_CONDITIONS.items()]
+    lines += ["", "[판매점 결과 목록]"] + [f"- {k}: {v}" for k, v in F.H.STORE_OUTCOMES.items()]
     lines += ["", "[기대 방향] higher=높다, lower=낮다", "", "[지난 회차 검증 보고 — 검수 문장]"]
     lines += [f"- {x}" for x in (audit.get("analyst") or []) + (audit.get("mathematician") or [])] or ["- (없음)"]
     # 살아있는 가설은 판정까지, 기각·폐기·데이터 미확보는 코드만 (다시 내지 말라는 표시 — 보내는 자료가 쌓이지 않게)
@@ -270,10 +299,31 @@ def run(db, dry=False):
                 continue
             have.add(F.spec_code(spec))
             applied_saved += F.add_specs(db, parent_dir[par], [spec], latest)
+        # 판매점 가설 (명당) — 방향 1개로 묶어 저장
+        store_saved = 0
+        sd_ = data.get("store_direction") or {}
+        sspecs = []
+        for h in sd_.get("hypotheses") or []:
+            spec = {"condition": h["condition"], "outcome": h["outcome"], "expect": h["expect"], "kind": "base", "level": "store"}
+            if h.get("condition2") not in (None, "none", h["condition"]):
+                spec.update(condition2=h["condition2"], kind="supplement")
+            if not F.valid(spec) or F.spec_code(spec) in have:
+                dup += 1
+                continue
+            if len(sspecs) >= DAILY_STORE:
+                break
+            have.add(F.spec_code(spec))
+            sspecs.append(spec)
+        if sspecs:
+            sdid = db.insert("strategy_directions", {"after_round": latest, "source": "ai", "model": model,
+                                                     "title": (sd_.get("title") or "판매점 가설")[:200],
+                                                     "rationale": (sd_.get("rationale") or "")[:2000], "focus": "stores"})
+            store_saved = F.add_specs(db, sdid, sspecs, latest)
+            saved_d += 1
         stats = dict(usage, provider=name, model=model, version=VERSION, directions=saved_d, hypotheses=saved_h,
-                     applied=applied_saved, duplicates_skipped=dup)
+                     applied=applied_saved, store=store_saved, duplicates_skipped=dup)
         db.insert("strategy_runs", {"kind": "ai_direction", "status": "success", "after_round": latest, "stats": stats})
-        print(f"{latest}회 {name}({model}) 방향 {saved_d}개 · 새 가설 {saved_h}개 · 응용 {applied_saved}개 · 중복 제외 {dup} · 토큰 {usage}")
+        print(f"{latest}회 {name}({model}) 방향 {saved_d}개 · 새 가설 {saved_h}개 · 응용 {applied_saved}개 · 판매점 {store_saved}개 · 중복 제외 {dup} · 토큰 {usage}")
         results[name] = stats
     return results
 

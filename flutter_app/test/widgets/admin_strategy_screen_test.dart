@@ -31,6 +31,14 @@ StrategyData data() {
       'statement': '홀수 회차일 때 2등 당첨자 쏠림가 높다',
       'spec': {'condition': 'round_odd', 'outcome': 'R2', 'expect': 'higher', 'kind': 'partial', 'parent': 'round_odd|R2|higher'},
       'status': 'provisional', 'created_round': 1247, 'verdict': '임시 일부 발췌'}),
+    StrategyHypothesis.fromRow({'id': 'h5', 'direction_id': 'd2', 'code': 'store:near_first_prev|first|higher',
+      'statement': '반경 3km 안 다른 판매점에서 직전 회차 1등 판매점에서 다음 회차 1등가 지방장 기대보다 더 많이 나온다',
+      'spec': {'condition': 'near_first_prev', 'outcome': 'first', 'expect': 'higher', 'kind': 'base', 'level': 'store'},
+      'status': 'rejected', 'created_round': 1247, 'verdict': '기각',
+      'discovery': {'from': 600, 'to': 1000, 'unit': 'store', 'n_cond': 176, 'n_other': 4000, 'expected_cond': 192.3,
+        'mean_cond': 0.915, 'mean_other': 1.005, 'p': 0.895, 'direction_ok': false},
+      'simulation': {'status': 'done', 'unit': 'store', 'hits_hyp': 1134, 'hits_base': 1143, 'lift': 0.99, 'raised': false,
+        'note': '적중 상승 없음 — 시·군·구 TOP5 1등 적중 1134곳 vs 이력만 1143곳'}}),
   ];
   final runs = [StrategyRun.fromRow({'kind': 'ai_direction', 'status': 'skipped', 'after_round': 1246, 'stats': {}, 'note': 'API 키 미등록'}),
     StrategyRun.fromRow({'kind': 'factory', 'status': 'success', 'after_round': 1246, 'stats': {'evaluated': 6}})];
@@ -80,5 +88,23 @@ void main() {
     expect(find.text('새 회차 추적'), findsOneWidget);
     await tester.scrollUntilVisible(find.text('가설 모의'), 200, scrollable: find.byType(Scrollable).last);
     expect(find.text('상승 없음'), findsOneWidget);
+  });
+
+  testWidgets('판매점 가설 — 판매점 배지 · 지방장 기대 대비 · TOP5 모의', (tester) async {
+    tester.view.physicalSize = const Size(1080, 2340);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(MaterialApp(home: AdminStrategyScreen(loader: () async => data())));
+    await tester.pumpAndSettle();
+    final row = find.byKey(const ValueKey('hyp_store:near_first_prev|first|higher'));
+    await tester.scrollUntilVisible(row, 300, scrollable: find.byType(Scrollable).first);
+    expect(find.descendant(of: row, matching: find.text('판매점')), findsOneWidget);
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
+    await tester.tap(row);
+    await tester.pumpAndSettle();
+    expect(find.textContaining('지방장 기대 192.3'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('가설 모의'), 200, scrollable: find.byType(Scrollable).last);
+    expect(find.textContaining('시·군·구 TOP5'), findsWidgets);
   });
 }

@@ -307,21 +307,23 @@ class _AdminStrategyScreenState extends State<AdminStrategyScreen> {
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Text(h.statement, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, height: 1.35)),
               const SizedBox(height: 4),
-              Row(children: [
+              Wrap(spacing: 4, runSpacing: 4, children: [
                 _pill(label, color),
-                if (kind != null) ...[const SizedBox(width: 4), _pill(kind.$1, kind.$2)],
-                if (h.simulated) ...[
-                  const SizedBox(width: 4),
+                if (h.isStore) _pill('판매점', const Color(0xFFE65100), icon: Icons.storefront_rounded),
+                if (kind != null) _pill(kind.$1, kind.$2),
+                if (h.simulated)
                   _pill('모의 ×${h.simLift?.toStringAsFixed(2) ?? '-'}', h.simRaised ? const Color(0xFF2E7D32) : Colors.blueGrey,
                       icon: Icons.casino_outlined),
-                ],
-                const SizedBox(width: 6),
-                if (stage != null && !stage.small && stage.meanCond != null)
-                  Expanded(
-                    child: Text('조건 ${stage.meanCond!.toStringAsFixed(3)} vs 나머지 ${stage.meanOther!.toStringAsFixed(3)}',
-                        style: TextStyle(fontSize: 11, color: Colors.grey.shade700), overflow: TextOverflow.ellipsis),
-                  ),
               ]),
+              if (stage != null && !stage.small && stage.meanCond != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 3),
+                  child: Text(
+                      stage.storeUnit
+                          ? '실제/지방장 기대 ${stage.meanCond!.toStringAsFixed(2)} vs 나머지 ${stage.meanOther!.toStringAsFixed(2)}'
+                          : '조건 ${stage.meanCond!.toStringAsFixed(3)} vs 나머지 ${stage.meanOther!.toStringAsFixed(3)}',
+                      style: TextStyle(fontSize: 11, color: Colors.grey.shade700), overflow: TextOverflow.ellipsis),
+                ),
             ]),
           ),
           Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400),
@@ -402,7 +404,9 @@ class _AdminStrategyScreenState extends State<AdminStrategyScreen> {
       c = const Color(0xFF757575);
       state = '상승 없음';
     }
-    final ps = (s['p_strategy'] as num?)?.toDouble(), pr = (s['p_random'] as num?)?.toDouble();
+    final store = s['unit'] == 'store';
+    final ps = store ? (s['hits_hyp'] as num?)?.toDouble() : ((s['p_strategy'] as num?)?.toDouble() ?? 0) * 100;
+    final pr = store ? (s['hits_base'] as num?)?.toDouble() : ((s['p_random'] as num?)?.toDouble() ?? 0) * 100;
     return Padding(
       padding: const EdgeInsets.only(bottom: 10),
       child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -420,11 +424,12 @@ class _AdminStrategyScreenState extends State<AdminStrategyScreen> {
               _pill(state, c),
             ]),
             const SizedBox(height: 2),
-            Text('이 가설대로 번호를 골랐다면 1001회~ 조건 회차에서 5등 이상(3개 이상 일치)이 무작위보다 많았나',
+            Text(store ? '이 가설로 시·군·구 TOP5를 가중해 골랐다면 1001회~ 1등 적중이 지방장 이력 방식보다 많았나'
+                : '이 가설대로 번호를 골랐다면 1001회~ 조건 회차에서 5등 이상(3개 이상 일치)이 무작위보다 많았나',
                 style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600)),
-            if (ps != null && pr != null) ...[
+            if (s['status'] == 'done' && ps != null && pr != null && pr > 0) ...[
               const SizedBox(height: 6),
-              _compareBar(ps * 100, pr * 100, c),
+              _compareBar(ps, pr, c),
               const SizedBox(height: 4),
             ],
             if (s['note'] != null) Text('${s['note']}', style: TextStyle(fontSize: 11, color: Colors.grey.shade800)),
@@ -492,11 +497,16 @@ class _AdminStrategyScreenState extends State<AdminStrategyScreen> {
               const SizedBox(height: 6),
               _compareBar(r.meanCond!, r.meanOther!, c),
               const SizedBox(height: 4),
-              Text('${r.from}~${r.to}회 · 조건 ${r.nCond}회 vs 나머지 ${r.nOther}회 · p ${r.p?.toStringAsFixed(3) ?? '-'}'
-                  '${ratio == null ? '' : ' · ×${ratio.toStringAsFixed(3)}'}',
+              Text(
+                  r.storeUnit
+                      ? '${r.from}~${r.to}회 · 조건 판매점 1등 ${r.nCond}곳 (지방장 기대 ${r.expectedCond?.toStringAsFixed(1) ?? '-'}) · '
+                          '막대 = 실제÷기대 · p ${r.p?.toStringAsFixed(3) ?? '-'}'
+                      : '${r.from}~${r.to}회 · 조건 ${r.nCond}회 vs 나머지 ${r.nOther}회 · p ${r.p?.toStringAsFixed(3) ?? '-'}'
+                          '${ratio == null ? '' : ' · ×${ratio.toStringAsFixed(3)}'}',
                   style: TextStyle(fontSize: 11, color: Colors.grey.shade800)),
             ] else if (r != null && r.small)
-              Text('조건 회차 ${r.nCond}회 — 15회 이상 쌓이면 판정', style: TextStyle(fontSize: 11, color: Colors.grey.shade800)),
+              Text(r.storeUnit ? '조건 판매점 1등 ${r.nCond}곳 (지방장 기대 ${r.expectedCond?.toStringAsFixed(1) ?? '-'}) — 표본 부족'
+                  : '조건 회차 ${r.nCond}회 — 15회 이상 쌓이면 판정', style: TextStyle(fontSize: 11, color: Colors.grey.shade800)),
           ]),
         ),
       ]),
