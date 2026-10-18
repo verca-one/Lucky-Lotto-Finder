@@ -44,7 +44,8 @@ void main() {
     expect(find.text('브리핑 ③'), findsOneWidget);
     // 구매할 번호(①~③) 15세트 중 5등 1장 — 무작위 대조군의 5등은 참고 구역에서 따로
     expect(find.text('15세트 중 5등 1장'), findsOneWidget);
-    expect(find.text('브리핑 ⑤ 비교 기준'), findsOneWidget);
+    expect(find.text('Number 엔진 기본 조합'), findsNothing); // 구매할 번호가 아니면 검증 화면에도 없음
+    expect(find.text('무작위 대조군'), findsNothing);
     await tester.scrollUntilVisible(find.byKey(const ValueKey('debrief_audit')), 400);
     expect(find.textContaining('실무 분석 관점'), findsOneWidget);
     expect(find.textContaining('수학 관점'), findsOneWidget);

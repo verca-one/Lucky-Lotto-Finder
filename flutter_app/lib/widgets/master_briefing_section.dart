@@ -83,7 +83,7 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
               onPressed: () => setState(() => _future = MasterBriefingService.instance.load(force: true)),
             ),
           ]),
-          Text('추첨 후 회차 검증도 아래 영역(①~⑥)을 같은 번호로 채점합니다.',
+          Text('추첨 후 회차 검증은 아래 구매할 번호(①~③)와 추천 명당(④)만 같은 번호로 채점합니다.',
               style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600)),
           const SizedBox(height: 6),
           BriefingSection(
@@ -112,24 +112,7 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
             ],
           ),
           const SizedBox(height: 12),
-          BriefingSection(
-            key: const ValueKey('reference_section'),
-            title: '참고 — 구매 대상 아님',
-            subtitle: '검증 때 ①~③과 비교하려고 함께 사전 등록한 번호',
-            icon: Icons.science_outlined,
-            color: Colors.blueGrey.shade600,
-            children: [
-          LedgerSetsCard(no: '4', title: '${b.targetRound}회 Number 엔진 기본 조합', chip: '연구용 · 최종 추천 아님',
-              color: Colors.grey.shade700, sets: open ? b.ledger['number_engine'] : null,
-              note: open ? 'Number 엔진이 과거 지표 방향으로 고른 기본 조합입니다. 순방향 검증에서 무작위보다 나은 적중은 확인되지 않았습니다.' : wait),
-          const SizedBox(height: 10),
-          LedgerSetsCard(no: '5', title: '${b.targetRound}회 무작위 대조군', chip: '비교 기준 · 엔진 추천 아님',
-              color: Colors.blueGrey.shade600, sets: open ? b.ledger['random_control'] : null,
-              note: open ? '①~③ 추천이 무작위로 뽑은 번호보다 나은지 비교하려고 함께 사전 등록한 세트입니다.' : wait),
-            ],
-          ),
-          const SizedBox(height: 12),
-          _storeCard(b, '6'),
+          _storeCard(b, '4'),
         ]);
       },
     );

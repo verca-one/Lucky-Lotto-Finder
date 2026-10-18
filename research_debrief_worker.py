@@ -41,8 +41,8 @@ GROUPS = [  # (key, algorithm, 고정 version 또는 None=최신, 이름, 역할
     ("official", "official_final", "fr-1.0", "공식 최종 추천번호", "브리핑 ①"),
     ("popularity", "popularity_pick", "pop-1.0", "비인기 추천조합", "브리핑 ②"),
     ("purchase", "purchase_prediction", None, "구매예측 번호", "브리핑 ③"),
-    ("number_engine", "number_engine", None, "Number 엔진 기본 조합", "브리핑 ④ 연구용"),
-    ("random", "random_control", None, "무작위 대조군", "브리핑 ⑤ 비교 기준"),
+    ("number_engine", "number_engine", None, "Number 엔진 기본 조합", "연구소 기록 (브리핑 아님)"),
+    ("random", "random_control", None, "무작위 대조군", "연구소 기록 (브리핑 아님)"),
 ]
 BRIEFED = ("official", "popularity", "purchase")   # 브리핑이 실제로 추천한 번호 영역
 TIER = {"first": 1, "second": 2}
@@ -381,10 +381,6 @@ def audit(d, nums, stores, popc, agents):
             bs = max(best["sets"], key=lambda s: s["matches"])
             a.append(f"브리핑 추천 중 가장 근접: {best['label']} — {' '.join(map(str, bs['numbers']))} 에서 {bs['matches']}개 일치"
                      f"({', '.join(map(str, bs['hits'])) or '없음'})" + (f" → {R.RANK_LABEL[bs['rank']]}" if bs["rank"] else " · 낙첨") + ".")
-            rnd = g.get("random")
-            if rnd and rnd.get("sets"):
-                a.append(f"비교: ⑤ 무작위 대조군(엔진 추천 아님) 최고 {rnd['best_matches']}개 · 평균 {rnd['mean']:.2f}개 — "
-                         "①~③ 추천이 무작위보다 나았는지 보는 기준입니다.")
             off = g.get("official")
             if off and off.get("sets"):
                 a.append(f"공식 5세트: 최고 {off['best_matches']}개 · 평균 {off['mean']:.2f}개 (무작위 기대 0.80개). "
@@ -402,13 +398,13 @@ def audit(d, nums, stores, popc, agents):
 
     # 수학 관점
     for x in nums["groups"]:
-        if x.get("sets"):
+        if x.get("sets") and x["key"] in BRIEFED:
             m.append(f"{x['label']}: 이번 최고 {x['best_matches']}개 일치 — 무작위 {len(x['sets'])}세트로도 이 이상 나올 확률 "
                      f"{pct(x['p_best_or_more'])}.")
-    k = sum(1 for x in nums["groups"] if x.get("track"))
+    k = sum(1 for x in nums["groups"] if x.get("track") and x["key"] in BRIEFED)
     for x in nums["groups"]:
         t = x.get("track")
-        if not t:
+        if not t or x["key"] not in BRIEFED:
             continue
         sig = t["p_one_sided"] < 0.05 / max(1, k)
         small = t["sets"] < SMALL_SETS
@@ -428,10 +424,10 @@ def audit(d, nums, stores, popc, agents):
         lam = ag["uniform_expected"][2]
         m.append(f"지방장 TOP5 1등 {ag['top_first_hits'][2]}곳: 지역 내 무작위 기준 P(≥관측) {R.poisson_sf(ag['top_first_hits'][2], lam):.3f}. "
                  f"단, 과거 빈도만 써도 {ag['history_top5']}곳 — 판매량이 많은 곳을 고른 효과이며 예측력 우위로 보지 않음.")
-    m.append(f"번호: 모든 조합의 1등 확률은 1/{TOTAL:,}, 한 세트가 3개 이상 맞을 확률 {pct(P_PRIZE, 2)}, 5세트 중 하나라도 {pct(1 - (1 - P_PRIZE) ** 5)}. "
+    m.append(f"번호: 모든 조합의 1등 확률은 1/{TOTAL:,}, 한 세트가 3개 이상 맞을 확률 {pct(P_PRIZE, 2)}, 구매할 번호 15세트 중 하나라도 {pct(1 - (1 - P_PRIZE) ** 15)}. "
              "한 회차 결과로 가설을 채택·폐기하지 않습니다 (누적 검정 기준).")
-    sig_any = any(x.get("track") and x["track"]["sets"] >= SMALL_SETS and x["track"]["p_one_sided"] < 0.05 / max(1, k)
-                  for x in nums["groups"])
+    sig_any = any(x.get("track") and x["key"] in BRIEFED and x["track"]["sets"] >= SMALL_SETS
+                  and x["track"]["p_one_sided"] < 0.05 / max(1, k) for x in nums["groups"])
     verdict = ("누적 성적에서 무작위보다 유의하게 높은 번호 알고리즘이 있습니다 — 표본을 더 쌓아 재확인 필요."
                if sig_any else "번호 알고리즘 중 무작위보다 유의하게 나은 것은 아직 없습니다. 비인기 추천은 확률이 아니라 당첨 시 몫을 노리는 선택입니다.")
     return {"analyst": a, "mathematician": m, "verdict": verdict,

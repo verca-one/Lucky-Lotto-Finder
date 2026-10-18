@@ -290,8 +290,6 @@ class _RoundDebriefViewState extends State<RoundDebriefView> {
           // 브리핑과 같은 구역: 구매할 번호(①~③) · 참고(④⑤, 구매 대상 아님)
           _sectionHead('구매할 번호 채점 (①~③)', _buySummary(r), const Color(0xFFD84315)),
           for (final g in r.groups.where((g) => _briefed.contains(g.key))) _group(g, r),
-          _sectionHead('참고 채점 (④⑤ · 구매 대상 아님)', '①~③과 비교하는 기준', Colors.blueGrey.shade600),
-          for (final g in r.groups.where((g) => !_briefed.contains(g.key))) _group(g, r),
           const SizedBox(height: 4),
           _meanChart(r),
         ],
@@ -416,7 +414,7 @@ class _RoundDebriefViewState extends State<RoundDebriefView> {
 
   Widget _meanChart(RoundDebrief r) {
     // 브리핑 3영역 + 비교 기준(무작위)만 — Number 엔진 연구용은 접힌 칸에서만
-    final gs = r.groups.where((g) => g.mean != null).toList();
+    final gs = r.groups.where((g) => g.mean != null && _briefed.contains(g.key)).toList();
     if (gs.isEmpty) return const SizedBox.shrink();
     const maxV = 3.0;
     return Container(
@@ -514,7 +512,7 @@ class _RoundDebriefViewState extends State<RoundDebriefView> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _title('② 추천 명당 채점'),
+          _title('② 추천 명당 채점 (브리핑 ④)'),
           if (prev.isEmpty)
             _small('지난 회차 브리핑 명당 자료 미확보', color: Colors.orange.shade900)
           else
