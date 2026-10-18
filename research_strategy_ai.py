@@ -14,6 +14,7 @@ AI 전략기획부 (sa-1.1 · Claude · Gemini) — 회차 검증 결과를 읽�
 import argparse
 import json
 import os
+import re
 import sys
 
 import research_hypothesis_factory as F
@@ -149,8 +150,9 @@ def ask_gemini(prompt):
             input=prompt,
             response_format={"type": "text", "mime_type": "application/json", "schema": _strip_additional(schema())},
         )
-    except Exception as e:  # SDK 예외 종류가 버전마다 달라 메시지만 남김 (키 값은 포함되지 않음)
-        raise AiFailed(f"Gemini API 오류: {type(e).__name__}") from e
+    except Exception as e:  # SDK 예외 종류가 버전마다 달라 구글 오류 문장을 남김 (키처럼 보이는 문자열은 가림)
+        msg = re.sub(r"AIza[0-9A-Za-z_\-]{20,}", "AIza***", str(e))[:400]
+        raise AiFailed(f"Gemini API 오류: {type(e).__name__} — {msg}") from e
     status = getattr(it, "status", "completed")
     if status not in ("completed", None):
         raise AiFailed(f"Gemini 응답 상태 {status}")
