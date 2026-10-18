@@ -27,6 +27,7 @@ on:
       - 'research_register_official.py'
       - 'research_popularity.py'
       - 'research_debrief_worker.py'
+      - 'research_weekly_digest.py'
       - 'flutter_app/tool/server/**'
       - '.github/workflows/research-engine.yml'
 
@@ -130,6 +131,13 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: python research_debrief_worker.py
+      - name: Weekly digest — 수요일 취합 (엔진이 다음 회차 구매할 번호를 등록한 시점 스냅샷)
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python research_weekly_digest.py --stage wed
       - name: Publish public summary (3 sets + public study)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

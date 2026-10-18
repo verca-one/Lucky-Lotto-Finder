@@ -13,6 +13,7 @@ import '../services/supabase_service.dart';
 import 'agent_store_evidence_widgets.dart';
 import 'purchase_recommend_card.dart' show lottoBall, statusChip, popularityValidationLine;
 import 'store_map_buttons.dart';
+import 'weekly_check_card.dart';
 
 const _purple = Color(0xFF4527A0);
 
@@ -93,6 +94,7 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
             icon: Icons.shopping_cart_rounded,
             color: const Color(0xFFD84315),
             children: [
+              WeeklyCheckCard(key: ValueKey('weekly_${b.targetRound}'), target: b.targetRound),
               _engineCard(b),
               const SizedBox(height: 10),
               if (!open)
