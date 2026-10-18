@@ -67,11 +67,10 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
           return _box(Padding(padding: const EdgeInsets.all(14),
               child: Text('주요 브리핑: ${b.deniedMessage}', style: const TextStyle(fontSize: 12))));
         }
+        // 고정 영역: ① 공식 · ② 비인기 · ③ 구매예측 · ④ Number 엔진(연구용) · ⑤ 무작위 대조군(비교 기준) · ⑥ 명당
+        // 회차 검증도 같은 번호로 같은 세트를 채점한다 (뒤에서 따로 채점하는 영역 없음)
         final open = b.numbersReleased;
-        final showPurchase = open && b.purchase?.validated == true;
-        final popNo = b.popularity == null || !open ? null : '2';
-        final purchaseNo = '${popNo == null ? 2 : 3}';
-        final storeNo = '${(popNo == null ? 2 : 3) + (showPurchase ? 1 : 0)}';
+        final wait = '${b.targetRound}회 번호는 ${b.release?.releaseLabel ?? '수요일 0시'}에 공개됩니다 (수동 추천으로 먼저 받을 수 있음).';
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             const Text('주요 브리핑', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: _purple)),
@@ -84,20 +83,67 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
               onPressed: () => setState(() => _future = MasterBriefingService.instance.load(force: true)),
             ),
           ]),
+          Text('추첨 후 회차 검증도 아래 영역(①~⑥)을 같은 번호로 채점합니다.',
+              style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600)),
           const SizedBox(height: 6),
-          _engineCard(b),
-          if (popNo != null) ...[
-            const SizedBox(height: 10),
-            PopularityPicksCard(no: popNo, target: b.targetRound, pop: b.popularity!),
-          ],
+          BriefingSection(
+            key: const ValueKey('buy_section'),
+            title: '구매할 번호 — ${b.targetRound}회',
+            subtitle: '① 공식 5세트 + ② 비인기 5세트 + ③ 구매예측 5세트 = 15세트',
+            icon: Icons.shopping_cart_rounded,
+            color: const Color(0xFFD84315),
+            children: [
+              _engineCard(b),
+              const SizedBox(height: 10),
+              if (!open)
+                _areaPlaceholder('2', '${b.targetRound}회 비인기 추천조합', kPopularityColor, wait)
+              else if (b.popularity == null)
+                _areaPlaceholder('2', '${b.targetRound}회 비인기 추천조합', kPopularityColor, '저장본 없음 (당첨자 수 수집 후 서버가 만듭니다)')
+              else
+                PopularityPicksCard(no: '2', target: b.targetRound, pop: b.popularity!),
+              const SizedBox(height: 10),
+              if (!open)
+                _areaPlaceholder('3', '${b.targetRound}회 구매예측 번호', const Color(0xFF00897B), wait)
+              else
+                _purchaseCard(b, '3'),
+              const SizedBox(height: 8),
+              Text('모든 조합의 1등 확률은 같습니다(1/8,145,060). 15세트 중 하나라도 5등 이상일 확률 약 30%.',
+                  style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700)),
+            ],
+          ),
+          const SizedBox(height: 12),
+          BriefingSection(
+            key: const ValueKey('reference_section'),
+            title: '참고 — 구매 대상 아님',
+            subtitle: '검증 때 ①~③과 비교하려고 함께 사전 등록한 번호',
+            icon: Icons.science_outlined,
+            color: Colors.blueGrey.shade600,
+            children: [
+          LedgerSetsCard(no: '4', title: '${b.targetRound}회 Number 엔진 기본 조합', chip: '연구용 · 최종 추천 아님',
+              color: Colors.grey.shade700, sets: open ? b.ledger['number_engine'] : null,
+              note: open ? 'Number 엔진이 과거 지표 방향으로 고른 기본 조합입니다. 순방향 검증에서 무작위보다 나은 적중은 확인되지 않았습니다.' : wait),
           const SizedBox(height: 10),
-          if (open) _purchaseCard(b, purchaseNo),
-          const SizedBox(height: 10),
-          _storeCard(b, storeNo),
+          LedgerSetsCard(no: '5', title: '${b.targetRound}회 무작위 대조군', chip: '비교 기준 · 엔진 추천 아님',
+              color: Colors.blueGrey.shade600, sets: open ? b.ledger['random_control'] : null,
+              note: open ? '①~③ 추천이 무작위로 뽑은 번호보다 나은지 비교하려고 함께 사전 등록한 세트입니다.' : wait),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _storeCard(b, '6'),
         ]);
       },
     );
   }
+
+  /// 영역은 항상 같은 번호로 자리를 지킨다 — 내용이 없거나 공개 전이면 안내만
+  Widget _areaPlaceholder(String no, String title, Color color, String text) => _box(Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          _header(no, title, color),
+          const SizedBox(height: 6),
+          Text(text, style: TextStyle(fontSize: 12, color: Colors.orange.shade900)),
+        ]),
+      ));
 
   Widget _box(Widget child, {Color border = const Color(0xFFEDE7F6)}) => Container(
         width: double.infinity,
@@ -174,8 +220,6 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
                 style: TextStyle(fontSize: 10, color: Colors.grey.shade600, height: 1.4)),
           Text('마스터, ${f.note}', style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700, height: 1.4)),
         ],
-        const SizedBox(height: 4),
-        _numberBaseResearchTile(b),
       ]),
     ));
   }
@@ -220,12 +264,15 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
   // ② 구매예측 번호 — 검증 통과 시에만 표시 (미통과면 카드 자체를 생략)
   Widget _purchaseCard(MasterBriefing b, String no) {
     final p = b.purchase;
-    if (p == null || !p.validated) return const SizedBox.shrink();
     const color = Color(0xFF00897B);
+    if (p == null || p.recommendations.isEmpty) {
+      return _areaPlaceholder(no, '${b.targetRound}회 구매예측 번호', color, '이번 회차 구매예측 저장본 없음');
+    }
     return _box(Padding(
       padding: const EdgeInsets.all(14),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        _header(no, '${b.targetRound}회 구매예측 번호', color, chip: statusChip('검증 통과', color)),
+        _header(no, '${b.targetRound}회 구매예측 번호', color,
+            chip: statusChip(p.validated ? '검증 통과' : '검증 미통과', p.validated ? color : Colors.grey)),
         const SizedBox(height: 4),
         Text('실제 판매 데이터로 검증한 "덜 팔리는 조합" — 당첨 시 상금을 나눌 사람이 적은 번호',
             style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
@@ -628,4 +675,89 @@ class _ManualRecommendCardState extends State<ManualRecommendCard> {
       ]),
     );
   }
+}
+
+
+/// 장부(사전 등록)에 올라간 세트를 그대로 보여주는 영역 카드 — ④ Number 엔진 · ⑤ 무작위 대조군
+class LedgerSetsCard extends StatelessWidget {
+  final String no, title, chip, note;
+  final Color color;
+  final List<List<int>>? sets;
+  const LedgerSetsCard({super.key, required this.no, required this.title, required this.chip, required this.color,
+      required this.sets, required this.note});
+
+  @override
+  Widget build(BuildContext context) {
+    final s = sets;
+    return Container(
+      key: ValueKey('ledger_area_$no'),
+      width: double.infinity,
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(color: const Color(0xFFF7F8FA), borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: const Color(0xFFDDE1E6))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+            width: 22, height: 22, alignment: Alignment.center,
+            decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(6)),
+            child: Text(no, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.w900)),
+          ),
+          const SizedBox(width: 8),
+          Expanded(child: Text(title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800, color: color))),
+          statusChip(chip, color),
+        ]),
+        const SizedBox(height: 6),
+        if (s == null || s.isEmpty)
+          Text(s == null ? note : '이번 회차 사전 등록 세트 없음', style: TextStyle(fontSize: 12, color: Colors.orange.shade900))
+        else ...[
+          for (final e in s.asMap().entries)
+            Container(
+              margin: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+              decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
+              child: Row(children: [
+                SizedBox(width: 18, child: Text('${e.key + 1}', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: color))),
+                Expanded(child: Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: e.value.map((n) => lottoBall(n, size: 26)).toList())),
+              ]),
+            ),
+          Text(note, style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700, height: 1.4)),
+        ],
+      ]),
+    );
+  }
+}
+
+
+/// 브리핑 구역 묶음 — '구매할 번호' · '참고' 를 한눈에 구분
+class BriefingSection extends StatelessWidget {
+  final String title, subtitle;
+  final IconData icon;
+  final Color color;
+  final List<Widget> children;
+  const BriefingSection({super.key, required this.title, required this.subtitle, required this.icon,
+      required this.color, required this.children});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(10, 10, 10, 12),
+        decoration: BoxDecoration(
+          color: color.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: color.withValues(alpha: 0.45), width: 1.4),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Icon(icon, size: 20, color: color),
+            const SizedBox(width: 6),
+            Expanded(child: Text(title, style: TextStyle(fontSize: 15.5, fontWeight: FontWeight.w900, color: color))),
+          ]),
+          Padding(
+            padding: const EdgeInsets.only(left: 26, top: 2, bottom: 8),
+            child: Text(subtitle, style: TextStyle(fontSize: 11, color: Colors.grey.shade700)),
+          ),
+          ...children,
+        ]),
+      );
 }

@@ -287,21 +287,11 @@ class _RoundDebriefViewState extends State<RoundDebriefView> {
           _title('① 추천번호 채점 — 지난주 브리핑 그대로'),
           _small('색이 있는 공 = 맞힌 번호 · 회색 = 빗나간 번호. 기준: 무작위 세트의 평균 일치 0.8개.'),
           const SizedBox(height: 8),
-          // 브리핑이 실제로 추천한 3영역 → 비교용(Number 엔진 연구용·무작위 대조군)은 아래 접힌 칸
+          // 브리핑과 같은 구역: 구매할 번호(①~③) · 참고(④⑤, 구매 대상 아님)
+          _sectionHead('구매할 번호 채점 (①~③)', _buySummary(r), const Color(0xFFD84315)),
           for (final g in r.groups.where((g) => _briefed.contains(g.key))) _group(g, r),
-          if (r.groups.any((g) => !_briefed.contains(g.key)))
-            Theme(
-              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-              child: ExpansionTile(
-                key: const ValueKey('debrief_reference_groups'),
-                tilePadding: EdgeInsets.zero,
-                childrenPadding: EdgeInsets.zero,
-                expandedCrossAxisAlignment: CrossAxisAlignment.start,
-                title: Text('비교용 (브리핑 추천 아님) — Number 엔진 연구용 · 무작위 대조군',
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.grey.shade700)),
-                children: [for (final g in r.groups.where((g) => !_briefed.contains(g.key))) _group(g, r)],
-              ),
-            ),
+          _sectionHead('참고 채점 (④⑤ · 구매 대상 아님)', '①~③과 비교하는 기준', Colors.blueGrey.shade600),
+          for (final g in r.groups.where((g) => !_briefed.contains(g.key))) _group(g, r),
           const SizedBox(height: 4),
           _meanChart(r),
         ],
@@ -392,17 +382,41 @@ class _RoundDebriefViewState extends State<RoundDebriefView> {
 
   /// 그룹별 이번 회차 평균 일치 막대 (무작위 기대 0.8 기준선)
   static const _briefed = {'official', 'popularity', 'purchase'};
+
+  /// 구매할 번호(①~③) 전체 당첨 요약 — '15세트 중 5등 1장'
+  static String _buySummary(RoundDebrief r) {
+    final sets = r.groups.where((g) => _briefed.contains(g.key)).expand((g) => g.sets).toList();
+    if (sets.isEmpty) return '채점할 세트 없음';
+    final won = <int, int>{};
+    for (final s in sets) {
+      if (s.rank > 0) won[s.rank] = (won[s.rank] ?? 0) + 1;
+    }
+    final w = (won.keys.toList()..sort()).map((k) => '${kRankLabel[k]} ${won[k]}장').join(' · ');
+    return '${sets.length}세트 중 ${w.isEmpty ? '당첨 없음' : w}';
+  }
+
+  Widget _sectionHead(String title, String sub, Color c) => Container(
+        key: ValueKey('debrief_head_$title'),
+        width: double.infinity,
+        margin: const EdgeInsets.only(top: 4, bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(color: c.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(8)),
+        child: Row(children: [
+          Expanded(child: Text(title, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: c))),
+          Text(sub, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: c)),
+        ]),
+      );
   static const _roleLabel = {
     'official': '브리핑 ①',
     'popularity': '브리핑 ②',
     'purchase': '브리핑 ③',
-    'number_engine': '① 안 연구용',
-    'random': '브리핑에 없음',
+    'number_engine': '브리핑 ④ 연구용',
+    'random': '브리핑 ⑤ 비교 기준',
   };
 
   Widget _meanChart(RoundDebrief r) {
     // 브리핑 3영역 + 비교 기준(무작위)만 — Number 엔진 연구용은 접힌 칸에서만
-    final gs = r.groups.where((g) => g.mean != null && (_briefed.contains(g.key) || g.key == 'random')).toList();
+    final gs = r.groups.where((g) => g.mean != null).toList();
     if (gs.isEmpty) return const SizedBox.shrink();
     const maxV = 3.0;
     return Container(

@@ -41,8 +41,8 @@ GROUPS = [  # (key, algorithm, 고정 version 또는 None=최신, 이름, 역할
     ("official", "official_final", "fr-1.0", "공식 최종 추천번호", "브리핑 ①"),
     ("popularity", "popularity_pick", "pop-1.0", "비인기 추천조합", "브리핑 ②"),
     ("purchase", "purchase_prediction", None, "구매예측 번호", "브리핑 ③"),
-    ("number_engine", "number_engine", None, "Number 엔진 기본 조합", "비교용 · ① 안 연구용(접힘)"),
-    ("random", "random_control", None, "무작위 대조군", "비교용 · 브리핑에 없음"),
+    ("number_engine", "number_engine", None, "Number 엔진 기본 조합", "브리핑 ④ 연구용"),
+    ("random", "random_control", None, "무작위 대조군", "브리핑 ⑤ 비교 기준"),
 ]
 BRIEFED = ("official", "popularity", "purchase")   # 브리핑이 실제로 추천한 번호 영역
 TIER = {"first": 1, "second": 2}
@@ -383,8 +383,8 @@ def audit(d, nums, stores, popc, agents):
                      f"({', '.join(map(str, bs['hits'])) or '없음'})" + (f" → {R.RANK_LABEL[bs['rank']]}" if bs["rank"] else " · 낙첨") + ".")
             rnd = g.get("random")
             if rnd and rnd.get("sets"):
-                a.append(f"비교: 무작위 대조군(브리핑에 없음) 최고 {rnd['best_matches']}개 · 평균 {rnd['mean']:.2f}개 — "
-                         "추천이 무작위보다 나았는지 보는 기준입니다.")
+                a.append(f"비교: ⑤ 무작위 대조군(엔진 추천 아님) 최고 {rnd['best_matches']}개 · 평균 {rnd['mean']:.2f}개 — "
+                         "①~③ 추천이 무작위보다 나았는지 보는 기준입니다.")
             off = g.get("official")
             if off and off.get("sets"):
                 a.append(f"공식 5세트: 최고 {off['best_matches']}개 · 평균 {off['mean']:.2f}개 (무작위 기대 0.80개). "

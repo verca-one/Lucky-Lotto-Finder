@@ -126,6 +126,9 @@ class MasterBriefing {
 
   /// 이번 회차 추천번호 공개 상태 (수요일 0시 KST 또는 수동 추천). null = 확인 실패(공개로 취급)
   final ReleaseState? release;
+
+  /// 사전 등록 장부(research_predictions)의 이번 회차 세트 — 알고리즘별 최신 버전 (④ Number 엔진 · ⑤ 무작위 대조군 표시용)
+  final Map<String, List<List<int>>> ledger;
   bool get numbersReleased => release?.released ?? true;
   final List<MasterStorePick> stores;
   final List<String> storeEngineRegions;   // Store 엔진 이번 회차 지역 후보
@@ -144,7 +147,7 @@ class MasterBriefing {
   /// 비관리자 요청 → 조회하지 않음 ('관리자 전용')
   final String? deniedMessage;
   const MasterBriefing({
-    required this.targetRound, required this.latestRound, this.official, this.officialError, this.engine, this.purchase, this.popularity, this.release,
+    required this.targetRound, required this.latestRound, this.official, this.officialError, this.engine, this.purchase, this.popularity, this.release, this.ledger = const {},
     this.stores = const [], this.storeEngineRegions = const [], this.storeEngineTrainingEnd, this.storeError,
     this.agentRef, this.fallbackReason, this.evidence, this.deniedMessage,
   });
@@ -198,6 +201,16 @@ class MasterBriefingService {
     try {
       release = await RecommendRelease.state(target, prevDrawDate: recent.isEmpty ? null : recent.first.drawDate);
     } catch (e) { debugPrint('[Master] release: $e'); }
+    final ledger = <String, List<List<int>>>{};
+    try {
+      final rows = await _db.from('research_predictions').select('algorithm,version,sets')
+          .eq('target_round', target).order('version', ascending: true);
+      for (final r in List<Map<String, dynamic>>.from(rows as List)) {
+        ledger['${r['algorithm']}'] = (r['sets'] as List)
+            .map((s) => (s as List).map((n) => (n as num).toInt()).toList()..sort())
+            .toList(); // 버전 오름차순이라 마지막(최신 버전)이 남는다
+      }
+    } catch (e) { debugPrint('[Master] ledger: $e'); }
 
     var regions = <String>[];
     int? storeTe;
@@ -247,7 +260,7 @@ class MasterBriefingService {
 
     _cache = MasterBriefing(
       targetRound: target, latestRound: latest, official: official, officialError: officialError,
-      engine: engine, purchase: purchase, popularity: popularity, release: release,
+      engine: engine, purchase: purchase, popularity: popularity, release: release, ledger: ledger,
       stores: picks, storeEngineRegions: regions, storeEngineTrainingEnd: storeTe, storeError: storeErr,
       agentRef: agentRef, fallbackReason: fallbackReason, evidence: evidence,
     );
