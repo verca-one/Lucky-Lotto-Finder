@@ -53,9 +53,13 @@ class StrategyHypothesis {
   final Map<String, dynamic> spec;
   final StageResult? discovery, confirm, forward;
   final int createdRound;
+
+  /// 가설 모의 — 이 가설대로 번호를 골랐다면 5등 이상이 무작위보다 많았나 (서버 계산)
+  final Map<String, dynamic> simulation;
   const StrategyHypothesis({
     required this.id, required this.statement, required this.status, required this.code, required this.spec,
     required this.createdRound, this.directionId, this.verdict, this.discovery, this.confirm, this.forward,
+    this.simulation = const {},
   });
   factory StrategyHypothesis.fromRow(Map<String, dynamic> r) => StrategyHypothesis(
         id: '${r['id']}', statement: '${r['statement'] ?? ''}', status: '${r['status'] ?? 'proposed'}', code: '${r['code'] ?? ''}',
@@ -63,7 +67,13 @@ class StrategyHypothesis {
         directionId: r['direction_id'] as String?, verdict: r['verdict'] as String?,
         discovery: StageResult.fromJson(r['discovery']), confirm: StageResult.fromJson(r['confirm']),
         forward: StageResult.fromJson(r['forward']),
+        simulation: _m(r['simulation']),
       );
+
+  /// 모의 결과가 있으면 (lift, 상승 여부)
+  bool get simulated => simulation['status'] == 'done';
+  double? get simLift => (simulation['lift'] as num?)?.toDouble();
+  bool get simRaised => simulation['raised'] == true;
 
   /// 화면 표시 상태: 판정 보류(표본 부족)는 proposed 중 verdict 가 '판정 보류'로 시작
   String get displayStatus => status == 'proposed' && (verdict ?? '').startsWith('판정 보류') ? 'pending' : status;

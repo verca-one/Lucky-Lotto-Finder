@@ -1,5 +1,5 @@
 """
-가설 공장 (hf-1.1) — AI 전략기획부(또는 관리자)가 제시한 방향의 가설을 비서가 검증·유지·폐기한다
+가설 공장 (hf-1.2) — AI 전략기획부(또는 관리자)가 제시한 방향의 가설을 비서가 검증·유지·폐기한다
 
 가설 = (조건, 결과, 기대 방향). 예: '홀수 회차(조건)에는 2등 당첨자 쏠림(결과)이 높다(기대)'.
 조건·결과는 아래 VOCAB 목록에서만 고른다 (저장된 DB 데이터로 계산 가능한 것만). 목록 밖이면 'unsupported'(데이터 미확보).
@@ -17,6 +17,10 @@
   · 회생(revival): 기각·폐기 후 50회차마다 '탈락 뒤 새 회차만'으로 재검정 → BH 통과 시 새 회차 추적부터 다시
   · 임시 일부 발췌(partial): 25회차마다 최근 100회만 검정, p<0.01 + BH 통과 시 '임시'(provisional) →
     다음 20회차 추적 후 같은 방향이면 정식(maintained) 승격, 아니면 내림(discarded)
+가설 모의 (simulation, research_v15_strategy_sim.sql)
+  · 번호 특징 가설(당첨번호 합·홀수·연속·1~22·40 이상)을 '그대로 따라 번호를 골랐다면' 확인 구간(1001회~)의 조건 회차에서
+    3개 이상 일치(5등 이상)가 무작위 번호보다 많았는지 계산한다. 회차마다 무작위 3,000세트 중 가설 방향 쪽 절반 vs 전체.
+  · 회차별 차이로 신뢰구간을 내고, 하한이 0 보다 크면 '모의에서 확률 상승'. 당첨자 쏠림·판매점 가설은 번호 확률과 무관해 대상 아님.
 결과는 '경향'에 관한 것이며, 번호 조합의 1등 확률(1/8,145,060)을 바꾸지 않는다.
 
 읽기: research_prize_stats · lotto_winning_numbers · winning_history · lottery_stores (크롤링 테이블은 읽기만)
@@ -28,16 +32,18 @@
 
 import argparse
 import json
+import zlib
 import os
 import sys
 from collections import defaultdict
 from datetime import date, datetime, timezone
 
-from scipy.stats import mannwhitneyu
+import numpy as np
+from scipy.stats import mannwhitneyu, norm
 
 import research_review_worker as R
 
-VERSION = "hf-1.1"
+VERSION = "hf-1.2"
 DISCOVERY = (269, 1000)
 CONFIRM_START = 1001
 ALPHA = 0.05
@@ -126,6 +132,7 @@ def load_rounds(db):
         known = [s for s in f if s]
         x = {
             "round": r["round"],
+            "nums": ns,
             "cond": {
                 "round_odd": r["round"] % 2 == 1, "day_odd": d.day % 2 == 1, "early_month": d.day <= 10,
                 "first_half": d.month <= 6, "summer": d.month in (6, 7, 8), "winter": d.month in (12, 1, 2),
@@ -392,6 +399,69 @@ def evaluate(rows, hyps, latest):
     return out
 
 
+# ── 가설 모의 ─────────────────────────────────────────────────────
+NUM_FEAT = {
+    "win_sum": lambda S: S.sum(1),
+    "win_odd": lambda S: (S % 2).sum(1),
+    "win_consec": lambda S: (np.diff(S, axis=1) == 1).sum(1),
+    "win_low": lambda S: (S <= 22).sum(1),
+    "win_high40": lambda S: (S >= 40).sum(1),
+}
+SIM_SETS = 3000
+SIM_MIN_ROUNDS = 10
+SIM_REFRESH = 10          # 10회차마다 다시 모의
+SIM_MAX = 40              # 한 번 실행에 모의할 가설 수
+
+
+def simulate(rows, h, latest):
+    """이 가설대로 번호를 골랐다면 5등 이상(3개 이상 일치)이 무작위보다 많았나 — 확인 구간의 조건 회차"""
+    s = h["spec"]
+    o = s.get("outcome")
+    base = {"round": latest, "version": VERSION}
+    if o not in NUM_FEAT:
+        return dict(base, status="n/a", note="번호를 고르는 가설이 아님 (당첨자 쏠림·판매점) — 번호 확률 모의 대상 아님")
+    cs, e = conds_of(s), s["expect"]
+    rng = np.random.default_rng(zlib.crc32(h["code"].encode()))
+    diffs, hs, ns_, hb, nb = [], 0, 0, 0, 0
+    for x in rows:
+        if x["round"] < CONFIRM_START or not all(x["cond"][c] for c in cs):
+            continue
+        S = np.sort(np.argsort(rng.random((SIM_SETS, 45)), axis=1)[:, :6] + 1, axis=1)
+        f = NUM_FEAT[o](S)
+        med = np.median(f)
+        sel = f > med if e == "higher" else f < med
+        if not sel.any():
+            continue
+        hit = np.isin(S, x["nums"]).sum(1) >= 3
+        hs += int(hit[sel].sum()); ns_ += int(sel.sum()); hb += int(hit.sum()); nb += SIM_SETS
+        diffs.append(hit[sel].mean() - hit.mean())
+    if len(diffs) < SIM_MIN_ROUNDS:
+        return dict(base, status="small", rounds=len(diffs), note=f"조건 회차 {len(diffs)}회 — {SIM_MIN_ROUNDS}회 이상부터 모의")
+    d = np.array(diffs)
+    se = d.std(ddof=1) / np.sqrt(len(d)) if len(d) > 1 else 0.0
+    md = float(d.mean())
+    lo, hi = md - 1.96 * se, md + 1.96 * se
+    p = float(2 * (1 - norm.cdf(abs(md / se)))) if se > 0 else 1.0
+    ps, pb = hs / ns_, hb / nb
+    up = lo > 0
+    return dict(base, status="done", rounds=len(diffs), sets_strategy=ns_, sets_random=nb,
+                p_strategy=round(ps, 5), p_random=round(pb, 5), lift=round(ps / pb, 4) if pb else None,
+                diff=round(md, 5), ci=[round(lo, 5), round(hi, 5)], p=round(p, 4), raised=up,
+                note=(f"모의에서 확률 상승 — 5등 이상 {ps:.2%} vs 무작위 {pb:.2%} (×{ps / pb:.2f}, {len(diffs)}회차)" if up else
+                      f"확률 상승 없음 — 5등 이상 {ps:.2%} vs 무작위 {pb:.2%} (×{ps / pb:.2f}, {len(diffs)}회차, 차이 p {p:.2f})"))
+
+
+def sim_candidates(hyps, latest):
+    """모의할 가설 — 번호 특징 가설 중 아직 안 했거나 오래된 것. 통과·임시 → 제안 → 아깝게 기각 순"""
+    def stale(h):
+        sm = h.get("simulation") or {}
+        return not sm or latest - (sm.get("round") or 0) >= SIM_REFRESH
+    pool = [h for h in hyps if valid(h["spec"]) and h["spec"].get("outcome") in NUM_FEAT and stale(h)]
+    rank = {"validated": 0, "maintained": 0, "provisional": 0, "proposed": 1}
+    pool.sort(key=lambda h: (rank.get(h["status"], 2), (h.get("discovery") or {}).get("p") or 1))
+    return pool[:SIM_MAX]
+
+
 # ── 저장 ──────────────────────────────────────────────────────────
 SELECT = "id,code,spec,status,discovery,confirm,forward,verdict,created_round,last_round,direction_id"
 
@@ -419,6 +489,14 @@ def ensure_seed(db, latest, dry):
     return len(todo)
 
 
+def add_specs(db, direction_id, specs, latest):
+    """완성된 spec(종류·부모 포함) 목록 저장 — 이미 있는 code 는 건너뜀"""
+    rows = [{"direction_id": direction_id, "code": spec_code(s), "statement": spec_statement(s), "spec": s,
+             "created_round": latest} for s in specs if valid(s)]
+    db.upsert("strategy_hypotheses", rows, "code", ignore=True)
+    return len(rows)
+
+
 def add_hypotheses(db, direction_id, specs, latest):
     """specs: [(condition, outcome, expect)] 또는 [(condition, condition2, outcome, expect)] — 이미 있는 code 는 건너뜀"""
     rows = []
@@ -438,7 +516,13 @@ def run(db, dry=False):
     latest = db.get("lotto_winning_numbers", {"select": "round", "order": "round.desc", "limit": "1"})[0]["round"]
     seeded = ensure_seed(db, latest, dry)
     rows = load_rounds(db)
-    hyps = _existing(db, {"select": SELECT}, dry)
+    try:   # 모의 결과 칸(research_v15_strategy_sim.sql)이 있으면 함께 읽는다
+        hyps = db.get("strategy_hypotheses", {"select": SELECT + ",simulation"})
+        sim_ok = True
+    except RuntimeError:
+        hyps = _existing(db, {"select": SELECT}, dry)
+        sim_ok = False
+        print("모의 결과 칸 없음 — research_v15_strategy_sim.sql 실행 후 모의 시작")
     if dry and seeded:   # 드라이런: 아직 저장 안 된 기본 가설도 계산해서 보여준다
         hyps += [{"id": f"seed-{i}", "code": code_of(*t), "direction_id": None,
                   "spec": {"condition": t[0], "outcome": t[1], "expect": t[2], "kind": "base"},
@@ -480,8 +564,23 @@ def run(db, dry=False):
         keys = ("direction_id", "code", "statement", "spec", "created_round", "status", "discovery", "confirm",
                 "forward", "verdict", "last_round")
         db.upsert("strategy_hypotheses", [dict({k: r.get(k) for k in keys}, updated_at=now) for r in new], "code", ignore=True)
+    # 4) 가설 모의 — 번호 특징 가설을 따라 골랐다면 5등 이상이 무작위보다 많았나
+    simulated, raised = 0, 0
+    if sim_ok or dry:
+        pool = [by_id[h["id"]] for h in hyps] + [dict(r, id=None) for r in new]
+        for h in sim_candidates(pool, latest):
+            sm = simulate(rows, h, latest)
+            simulated += 1
+            raised += bool(sm.get("raised"))
+            print(f"  ~ 모의 {h['code']:40s} {sm.get('note', '')}")
+            if dry:
+                continue
+            if h.get("id"):
+                db.patch("strategy_hypotheses", {"id": f"eq.{h['id']}"}, {"simulation": sm})
+            else:
+                db.patch("strategy_hypotheses", {"code": f"eq.{h['code']}"}, {"simulation": sm})
     stats = {"version": VERSION, "rounds": len(rows), "evaluated": len(updates) + len(new), "seeded": seeded,
-             "derived": dict(made), "by_status": dict(counts)}
+             "derived": dict(made), "by_status": dict(counts), "simulated": simulated, "sim_raised": raised}
     print(json.dumps(stats, ensure_ascii=False))
     if not dry:
         db.insert("strategy_runs", {"kind": "factory", "status": "success", "after_round": latest, "stats": stats})

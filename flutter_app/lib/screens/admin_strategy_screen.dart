@@ -144,11 +144,11 @@ class _AdminStrategyScreenState extends State<AdminStrategyScreen> {
             style: TextStyle(color: Colors.white.withValues(alpha: 0.85), fontSize: 11.5, height: 1.4)),
         const SizedBox(height: 14),
         Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          step(Icons.psychology_alt_rounded, 'AI 방향', '매주 일요일'),
+          step(Icons.psychology_alt_rounded, 'AI 방향', '매일 오후 5시'),
           arrow(),
-          step(Icons.lightbulb_outline_rounded, '가설 생성', '조건·결과·방향'),
+          step(Icons.lightbulb_outline_rounded, '가설 생성', '새 20 · 응용 10'),
           arrow(),
-          step(Icons.fact_check_rounded, '비서 검증', '유지 · 폐기'),
+          step(Icons.fact_check_rounded, '비서 검증', '검정 · 모의'),
         ]),
         const SizedBox(height: 12),
         Container(
@@ -310,6 +310,11 @@ class _AdminStrategyScreenState extends State<AdminStrategyScreen> {
               Row(children: [
                 _pill(label, color),
                 if (kind != null) ...[const SizedBox(width: 4), _pill(kind.$1, kind.$2)],
+                if (h.simulated) ...[
+                  const SizedBox(width: 4),
+                  _pill('모의 ×${h.simLift?.toStringAsFixed(2) ?? '-'}', h.simRaised ? const Color(0xFF2E7D32) : Colors.blueGrey,
+                      icon: Icons.casino_outlined),
+                ],
                 const SizedBox(width: 6),
                 if (stage != null && !stage.small && stage.meanCond != null)
                   Expanded(
@@ -352,6 +357,7 @@ class _AdminStrategyScreenState extends State<AdminStrategyScreen> {
           _stageTile(1, '발견 구간', h.discovery, '269~1000회 — 여기서 차이가 있어야 다음 단계로'),
           _stageTile(2, '확인 구간', h.confirm, '1001회~ — 다중 비교 보정 후에도 재현돼야 통과'),
           _stageTile(3, '새 회차 추적', h.forward, '통과 이후 새로 쌓이는 회차에서도 같은 방향이면 유지, 뒤집히면 폐기'),
+          _simTile(h),
           const SizedBox(height: 12),
           Container(
             padding: const EdgeInsets.all(12),
@@ -372,6 +378,59 @@ class _AdminStrategyScreenState extends State<AdminStrategyScreen> {
               style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
         ]),
       ),
+    );
+  }
+
+  /// ④ 가설 모의 — 이 가설대로 번호를 골랐다면 더 맞았나
+  Widget _simTile(StrategyHypothesis h) {
+    final s = h.simulation;
+    final Color c;
+    final String state;
+    if (s.isEmpty) {
+      c = Colors.grey.shade400;
+      state = '아직';
+    } else if (s['status'] == 'n/a') {
+      c = Colors.grey.shade500;
+      state = '대상 아님';
+    } else if (s['status'] == 'small') {
+      c = const Color(0xFF8D6E63);
+      state = '표본 부족';
+    } else if (h.simRaised) {
+      c = const Color(0xFF2E7D32);
+      state = '확률 상승';
+    } else {
+      c = const Color(0xFF757575);
+      state = '상승 없음';
+    }
+    final ps = (s['p_strategy'] as num?)?.toDouble(), pr = (s['p_random'] as num?)?.toDouble();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Container(
+          width: 26, height: 26, alignment: Alignment.center,
+          decoration: BoxDecoration(color: c, shape: BoxShape.circle),
+          child: const Icon(Icons.casino_outlined, color: Colors.white, size: 15),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              const Text('가설 모의', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900)),
+              const SizedBox(width: 6),
+              _pill(state, c),
+            ]),
+            const SizedBox(height: 2),
+            Text('이 가설대로 번호를 골랐다면 1001회~ 조건 회차에서 5등 이상(3개 이상 일치)이 무작위보다 많았나',
+                style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600)),
+            if (ps != null && pr != null) ...[
+              const SizedBox(height: 6),
+              _compareBar(ps * 100, pr * 100, c),
+              const SizedBox(height: 4),
+            ],
+            if (s['note'] != null) Text('${s['note']}', style: TextStyle(fontSize: 11, color: Colors.grey.shade800)),
+          ]),
+        ),
+      ]),
     );
   }
 

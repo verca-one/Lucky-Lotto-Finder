@@ -1,12 +1,12 @@
 name: Research Strategy
 
-# AI 전략기획부(방향 제시) → 가설 공장(비서: 검증·유지·폐기). 매주 일요일 13:00 KST (회차 검증 이후).
+# AI 전략기획부(방향 제시) → 가설 공장(비서: 검증·유지·폐기). 매일 17:00 KST — 새 가설 하루 5개.
 #   research_strategy_ai.py      : 키가 있는 AI(Claude: ANTHROPIC_API_KEY · Gemini: GEMINI_API_KEY)마다 방향 3개 제안 (회차당 1번씩)
 #   research_hypothesis_factory.py: 제안된 가설 검정 · 통과 가설 새 회차 추적 (유지/폐기)
 # AI 는 strategy_directions · strategy_hypotheses(제안)에만 쓴다. 엔진·번호·장부·크롤링과 무관.
 on:
   schedule:
-    - cron: '0 4 * * 0'
+    - cron: '0 8 * * *'   # 17:00 KST
   workflow_dispatch:
   push:
     branches: [main]

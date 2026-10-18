@@ -20,7 +20,9 @@ StrategyData data() {
       'spec': {'condition': 'sales_surge', 'outcome': 'R1', 'expect': 'higher'}, 'status': 'validated', 'created_round': 1246,
       'discovery': {'from': 269, 'to': 1000, 'n_cond': 60, 'n_other': 600, 'mean_cond': 1.2, 'mean_other': 0.98, 'p': 0.01, 'direction_ok': true},
       'confirm': {'from': 1001, 'to': 1246, 'n_cond': 20, 'n_other': 200, 'mean_cond': 1.15, 'mean_other': 0.99, 'p': 0.02, 'direction_ok': true},
-      'verdict': '검증 통과'}),
+      'verdict': '검증 통과',
+      'simulation': {'status': 'done', 'lift': 0.99, 'raised': false, 'p_strategy': 0.023, 'p_random': 0.0232,
+        'note': '확률 상승 없음 — 5등 이상 2.30% vs 무작위 2.32%'}}),
     StrategyHypothesis.fromRow({'id': 'h3', 'direction_id': 'd1', 'code': 'first_half+winter|R1|higher',
       'statement': '상반기(1~6월)이면서 겨울(12~2월)일 때 1등 당첨자 쏠림가 높다',
       'spec': {'condition': 'first_half', 'condition2': 'winter', 'outcome': 'R1', 'expect': 'higher', 'kind': 'supplement', 'parent': 'round_odd|R2|higher'},
@@ -76,5 +78,7 @@ void main() {
     expect(find.text('발견 구간'), findsOneWidget);
     expect(find.text('확인 구간'), findsOneWidget);
     expect(find.text('새 회차 추적'), findsOneWidget);
+    await tester.scrollUntilVisible(find.text('가설 모의'), 200, scrollable: find.byType(Scrollable).last);
+    expect(find.text('상승 없음'), findsOneWidget);
   });
 }

@@ -1,7 +1,9 @@
 """
 AI 전략기획부 (sa-1.1 · Claude · Gemini) — 회차 검증 결과를 읽고 다음 연구 '방향'만 제시한다
 
-  · AI 가 하는 일: 방향 3개(제목·이유) + 방향마다 가설 최대 3개 (조건·결과·기대 방향은 가설 공장 어휘에서만 고름)
+  · AI 가 하는 일: 매일 오후 5시(KST) — 방향 1~5개(제목·이유) + 새 가설 20개 + 이전 가설을 보충한 응용 가설 10개
+    (조건·결과·기대 방향은 가설 공장 어휘에서만). 이미 있는 가설과 겹치는 제안은 빼고 저장한다.
+    목표: 맞힐 확률을 높일 수 있는 가설 — 비서가 검정과 함께 '가설 모의'(그대로 따라 골랐다면 더 맞았나)로 확인한다
   · AI 가 못 하는 일: 번호·명당·장부·엔진에 접근하거나 바꾸는 것. AI 에게는 도구가 없고, 응답은 정해진 JSON 형식으로만 받아
     strategy_directions · strategy_hypotheses(제안 상태)에만 저장한다. 검증·유지·폐기는 비서(research_hypothesis_factory.py)가 한다.
   · 연결된 AI: ANTHROPIC_API_KEY → Claude(claude-opus-5-5), GEMINI_API_KEY → Gemini(gemini-3.8-flash).
@@ -13,6 +15,7 @@ AI 전략기획부 (sa-1.1 · Claude · Gemini) — 회차 검증 결과를 읽�
 
 import argparse
 import json
+from datetime import datetime, timedelta, timezone
 import os
 import re
 import sys
@@ -20,11 +23,12 @@ import sys
 import research_hypothesis_factory as F
 import research_review_worker as R
 
-VERSION = "sa-1.1"
+VERSION = "sa-1.2"
 CLAUDE_MODEL = "claude-opus-5-5"
 GEMINI_MODEL = "gemini-3.8-flash"   # 무료 등급 있음 (ai.google.dev 요금표)
-MAX_DIRECTIONS = 3
-MAX_HYPS = 3
+MAX_DIRECTIONS = 5
+DAILY_HYPS = 20           # AI 마다 하루 새 가설 수
+DAILY_APPLIED = 10        # AI 마다 하루 응용 가설 수 (이전 가설에 조건 보충·결과 변경)
 FOCUS = ["popularity", "calendar", "sales", "numbers", "stores"]
 
 SYSTEM = """당신은 로또 연구팀의 'AI 전략기획부'입니다. 역할은 다음 주에 검증할 연구 방향을 제시하는 것뿐입니다.
@@ -40,8 +44,14 @@ SYSTEM = """당신은 로또 연구팀의 'AI 전략기획부'입니다. 역할�
 - 비서가 따로 하는 일: 아깝게 기각된 가설에 조건 보태기(보충회생), 탈락 뒤 새 회차로 재검정(회생),
   최근 100회에서만 보이는 효과 임시 채택(임시 일부 발췌), 통과 가설의 다른 결과로 응용 — 같은 것을 중복 제안하지 마세요.
 
-방향 3개를 내고, 방향마다 이유(왜 이 방향이 유망한지, 지난 결과의 어떤 수치를 근거로 했는지)를 한국어로 짧게 쓰고,
-방향마다 가설을 1~3개 고르세요."""
+목표는 '맞힐 확률을 높이는 것'입니다. 비서는 가설을 검정하고, 번호 특징 가설은 '그대로 따라 번호를 골랐다면
+5등 이상이 무작위보다 많았나'를 모의(시뮬레이션)로 확인합니다. 당첨자 쏠림 가설은 당첨 시 나눠 갖는 몫과 관련됩니다.
+
+오늘의 방향을 1~5개 내고, 방향마다 이유(왜 유망한지, 지난 결과의 어떤 수치를 근거로 했는지)를 한국어로 짧게 쓰세요.
+1) 새 가설: 모든 방향을 합쳐 20개 (directions[].hypotheses). 이미 목록에 있는 조합(진행 중이든 기각이든)은 고르지 마세요.
+2) 응용 가설: 10개 (applied). 목록에 있는 이전 가설 하나를 parent_code 로 정확히 적고, 그 가설에 조건을 보태거나(condition2)
+   결과를 바꿔서(outcome) 새 조합을 만드세요. 아깝게 기각된 가설(p 가 작았던 것)을 보충하는 쪽이 좋습니다.
+매일 일하므로, 어제까지의 판정과 모의 결과를 보고 아직 안 가 본 쪽을 탐색하세요."""
 
 
 def schema():
@@ -75,8 +85,23 @@ def schema():
                     "additionalProperties": False,
                 },
             },
+            "applied": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "parent_code": {"type": "string"},
+                        "condition": {"type": "string", "enum": list(F.CONDITIONS)},
+                        "condition2": {"type": "string", "enum": list(F.CONDITIONS) + ["none"]},
+                        "outcome": {"type": "string", "enum": list(F.OUTCOMES)},
+                        "expect": {"type": "string", "enum": list(F.EXPECT)},
+                    },
+                    "required": ["parent_code", "condition", "condition2", "outcome", "expect"],
+                    "additionalProperties": False,
+                },
+            },
         },
-        "required": ["directions"],
+        "required": ["directions", "applied"],
         "additionalProperties": False,
     }
 
@@ -85,7 +110,10 @@ def context(db, latest):
     deb = db.get("research_results", {"select": "payload->audit,payload->round", "research_type": "eq.round_debrief",
                                       "model_version": "eq.db-1.0", "order": "training_end_round.desc", "limit": "1"})
     audit = (deb[0].get("audit") or {}) if deb else {}
-    hyps = db.get("strategy_hypotheses", {"select": "code,statement,status,verdict", "order": "created_at"})
+    try:
+        hyps = db.get("strategy_hypotheses", {"select": "code,statement,status,verdict,simulation", "order": "created_at"})
+    except RuntimeError:
+        hyps = db.get("strategy_hypotheses", {"select": "code,statement,status,verdict", "order": "created_at"})
     lines = [f"최신 추첨 회차: {latest}회", "", "[조건 목록]"]
     lines += [f"- {k}: {v}" for k, v in F.CONDITIONS.items()]
     lines += ["", "[결과 목록]"] + [f"- {k}: {v}" for k, v in F.OUTCOMES.items()]
@@ -96,7 +124,9 @@ def context(db, latest):
     live = [h for h in hyps if h["status"] not in closed]
     dead = [h["code"] for h in hyps if h["status"] in closed]
     lines += ["", "[진행 중 · 통과 · 유지 가설과 판정]"]
-    lines += [f"- [{h['status']}] {h['code']} — {h['statement']} — {h.get('verdict') or ''}" for h in live] or ["- (없음)"]
+    lines += [f"- [{h['status']}] {h['code']} — {h['statement']} — {h.get('verdict') or ''}"
+              + (f" — 모의: {(h.get('simulation') or {}).get('note')}" if (h.get('simulation') or {}).get('note') else "")
+              for h in live] or ["- (없음)"]
     lines += ["", f"[기각·폐기된 조합 {len(dead)}개 — 다시 제안하지 말 것]", ", ".join(dead) or "(없음)"]
     return "\n".join(lines)
 
@@ -182,11 +212,15 @@ def run(db, dry=False):
                                     "note": "API 키 미등록 — 수동 방향만 검증"})
         return None
     results = {}
+    # 하루 1번 (한국시간 기준 오늘 0시 이후에 이미 제안했으면 건너뜀)
+    now_kst = datetime.now(timezone.utc) + timedelta(hours=9)
+    day_start = (datetime(now_kst.year, now_kst.month, now_kst.day, tzinfo=timezone.utc) - timedelta(hours=9)).isoformat()
+    have = {h["code"] for h in db.get("strategy_hypotheses", {"select": "code"})}
     for name, ask in active:
-        done = db.get("strategy_directions", {"select": "id", "source": "eq.ai", "after_round": f"eq.{latest}",
+        done = db.get("strategy_directions", {"select": "id", "source": "eq.ai", "created_at": f"gte.{day_start}",
                                               "model": f"ilike.*{name}*", "limit": "1"})
         if done:
-            print(f"{latest}회 {name} 방향 이미 있음 — 건너뜀")
+            print(f"오늘 {name} 제안 이미 있음 — 건너뜀")
             continue
         try:
             data, model, usage = ask(prompt)
@@ -195,18 +229,51 @@ def run(db, dry=False):
                                         "stats": {"provider": name}, "note": str(e)})
             print(f"{name}: {e}")
             continue
-        saved_d, saved_h = 0, 0
+        saved_d, saved_h, dup = 0, 0, 0
         for d in (data.get("directions") or [])[:MAX_DIRECTIONS]:
+            specs = []
+            for h in d.get("hypotheses") or []:
+                spec = {"condition": h["condition"], "outcome": h["outcome"], "expect": h["expect"]}
+                if h.get("condition2") not in (None, "none", h["condition"]):
+                    spec["condition2"] = h["condition2"]
+                if not F.valid(spec):
+                    continue
+                code = F.spec_code(spec)
+                if code in have:
+                    dup += 1
+                    continue
+                if saved_h + len(specs) >= DAILY_HYPS:
+                    break
+                have.add(code)
+                specs.append((spec["condition"], spec.get("condition2", "none"), spec["outcome"], spec["expect"]))
+            if not specs:
+                continue
             did = db.insert("strategy_directions", {"after_round": latest, "source": "ai", "model": model,
                                                     "title": d["title"][:200], "rationale": d["rationale"][:2000],
                                                     "focus": d.get("focus") if d.get("focus") in FOCUS else None})
-            specs = [(h["condition"], h.get("condition2", "none"), h["outcome"], h["expect"])
-                     for h in (d.get("hypotheses") or [])[:MAX_HYPS]]
             saved_h += F.add_hypotheses(db, did, specs, latest)
             saved_d += 1
-        stats = dict(usage, provider=name, model=model, version=VERSION, directions=saved_d, hypotheses=saved_h)
+        # 응용 가설: 이전 가설(parent_code)에 조건 보충 · 결과 변경 — 부모 가설의 방향 카드 아래로
+        applied_saved = 0
+        parent_dir = {h["code"]: h.get("direction_id") for h in db.get("strategy_hypotheses", {"select": "code,direction_id"})}
+        for a in (data.get("applied") or []):
+            if applied_saved >= DAILY_APPLIED:
+                break
+            par = a.get("parent_code")
+            if par not in parent_dir:
+                continue
+            spec = {"condition": a["condition"], "outcome": a["outcome"], "expect": a["expect"], "kind": "applied", "parent": par}
+            if a.get("condition2") not in (None, "none", a["condition"]):
+                spec["condition2"] = a["condition2"]
+            if not F.valid(spec) or F.spec_code(spec) in have:
+                dup += 1
+                continue
+            have.add(F.spec_code(spec))
+            applied_saved += F.add_specs(db, parent_dir[par], [spec], latest)
+        stats = dict(usage, provider=name, model=model, version=VERSION, directions=saved_d, hypotheses=saved_h,
+                     applied=applied_saved, duplicates_skipped=dup)
         db.insert("strategy_runs", {"kind": "ai_direction", "status": "success", "after_round": latest, "stats": stats})
-        print(f"{latest}회 {name}({model}) 방향 {saved_d}개 · 가설 {saved_h}개 저장 · 토큰 {usage}")
+        print(f"{latest}회 {name}({model}) 방향 {saved_d}개 · 새 가설 {saved_h}개 · 응용 {applied_saved}개 · 중복 제외 {dup} · 토큰 {usage}")
         results[name] = stats
     return results
 
