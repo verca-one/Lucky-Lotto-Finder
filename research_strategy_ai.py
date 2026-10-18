@@ -142,7 +142,9 @@ def ask_claude(prompt):
 def ask_gemini(prompt):
     """Gemini Interactions API (google-genai). → (데이터, 모델, 사용량)"""
     from google import genai
-    client = genai.Client(api_key=os.environ["GEMINI_API_KEY"])
+    raw = os.environ["GEMINI_API_KEY"]
+    m = re.search(r"AIza[0-9A-Za-z_\-]{35}", raw)   # 붙여넣기 때 섞인 보이지 않는 문자·중복 제거
+    client = genai.Client(api_key=m.group(0) if m else raw.strip())
     try:
         it = client.interactions.create(
             model=GEMINI_MODEL,
