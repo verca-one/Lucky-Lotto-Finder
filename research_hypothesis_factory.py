@@ -1,5 +1,5 @@
 """
-가설 공장 (hf-1.0) — AI 전략기획부(또는 관리자)가 제시한 방향의 가설을 비서가 검증·유지·폐기한다
+가설 공장 (hf-1.1) — AI 전략기획부(또는 관리자)가 제시한 방향의 가설을 비서가 검증·유지·폐기한다
 
 가설 = (조건, 결과, 기대 방향). 예: '홀수 회차(조건)에는 2등 당첨자 쏠림(결과)이 높다(기대)'.
 조건·결과는 아래 VOCAB 목록에서만 고른다 (저장된 DB 데이터로 계산 가능한 것만). 목록 밖이면 'unsupported'(데이터 미확보).
@@ -9,8 +9,14 @@
   2. 확인 구간 1001회~가설 생성 회차: 같은 검정, 이번 실행에서 확인 단계에 오른 가설들끼리 BH(FDR 5%) 보정 후 통과
      → 둘 다 통과 = validated(검증 통과), 아니면 rejected(기각)
   3. 통과 이후 새 회차 추적(forward): 조건 회차 10회 이상 쌓이면 기대 방향이 유지되면 maintained(유지), 뒤집히면 discarded(폐기)
-  · 표본(조건/비조건 각 15회) 부족이면 판정 보류
-  · 기각·폐기는 되살리지 않는다 (같은 가설은 code 로 중복 생성 막음)
+  · 표본(조건/비조건 각 15회) 부족이면 '판정 불가'로 닫음 (발견·확인 구간은 고정이라 늘지 않음)
+  · 같은 가설은 code 로 중복 생성 막음
+가설 종류 (spec.kind)
+  · 기본(base) · 응용(applied): 통과·유지 가설에서 같은 조건 · 같은 계열의 다른 결과를 자동 파생 → 1~3 단계 그대로
+  · 보충회생(supplement): 아깝게 기각된 가설(발견 p<0.20, 방향 맞음)에 조건 하나를 보탬 → 발견 기준 p<0.01 로 더 엄격
+  · 회생(revival): 기각·폐기 후 50회차마다 '탈락 뒤 새 회차만'으로 재검정 → BH 통과 시 새 회차 추적부터 다시
+  · 임시 일부 발췌(partial): 25회차마다 최근 100회만 검정, p<0.01 + BH 통과 시 '임시'(provisional) →
+    다음 20회차 추적 후 같은 방향이면 정식(maintained) 승격, 아니면 내림(discarded)
 결과는 '경향'에 관한 것이며, 번호 조합의 1등 확률(1/8,145,060)을 바꾸지 않는다.
 
 읽기: research_prize_stats · lotto_winning_numbers · winning_history · lottery_stores (크롤링 테이블은 읽기만)
@@ -31,7 +37,7 @@ from scipy.stats import mannwhitneyu
 
 import research_review_worker as R
 
-VERSION = "hf-1.0"
+VERSION = "hf-1.1"
 DISCOVERY = (269, 1000)
 CONFIRM_START = 1001
 ALPHA = 0.05
@@ -150,12 +156,53 @@ def load_rounds(db):
     return rows
 
 
+# ── 가설 종류 (spec.kind) ─────────────────────────────────────────
+KIND_LABEL = {"base": "기본", "revival": "회생", "supplement": "보충회생", "partial": "임시 일부 발췌", "applied": "응용"}
+OUTCOME_FAMILY = {"R1": "pop", "R2": "pop", "R3": "pop", "R4": "pop", "manual_share": "pop",
+                  "win_sum": "num", "win_odd": "num", "win_consec": "num", "win_low": "num", "win_high40": "num",
+                  "first_capital_share": "store"}
+REVIVAL_EVERY = 50        # 회생: 탈락 후 50회차마다, 탈락 뒤 새 회차만으로 재검정
+PARTIAL_EVERY = 25        # 임시 일부 발췌: 25회차마다 최근 100회만 검정
+PARTIAL_WINDOW = 100
+PARTIAL_ALPHA = 0.01      # 사후에 고른 구간이라 기준을 더 엄격하게
+PARTIAL_TRACK = 20        # 임시는 다음 20회차만 추적 → 정식 승격 또는 내림
+SUPPLEMENT_ALPHA = 0.01   # 보충회생(조건 2개)은 조합 수가 많아 발견 기준을 더 엄격하게
+NEAR_MISS_P = 0.20        # 보충회생 대상: 발견 구간에서 방향은 맞고 p < 0.20 이었던 기각 가설
+MAX_SUPPLEMENT = 36
+CLOSED = ("rejected", "discarded")
+EXCLUSIVE = [{"summer", "winter"}, {"sales_surge", "sales_drop"}, {"prev_rank1_many", "prev_rank1_few"}]  # 동시에 참일 수 없는 조건
+
+
+def conds_of(spec):
+    return [c for c in (spec.get("condition"), spec.get("condition2")) if c and c != "none"]
+
+
+def valid(spec):
+    cs = conds_of(spec)
+    return bool(cs) and all(c in CONDITIONS for c in cs) and spec.get("outcome") in OUTCOMES and spec.get("expect") in EXPECT
+
+
+def spec_statement(spec):
+    return f"{'이면서 '.join(CONDITIONS[c] for c in conds_of(spec))}일 때 {OUTCOMES[spec['outcome']]}가 {EXPECT[spec['expect']]}"
+
+
+def spec_code(spec):
+    return f"{'+'.join(sorted(conds_of(spec)))}|{spec['outcome']}|{spec['expect']}"
+
+
+def kind_of(h):
+    return (h.get("spec") or {}).get("kind") or "base"
+
+
 # ── 검정 ──────────────────────────────────────────────────────────
-def test(rows, c, o, e, lo, hi):
-    a = [x["out"][o] for x in rows if lo <= x["round"] <= hi and x["cond"][c] and x["out"][o] is not None]
-    b = [x["out"][o] for x in rows if lo <= x["round"] <= hi and not x["cond"][c] and x["out"][o] is not None]
+def test(rows, spec, lo, hi, min_n=MIN_N):
+    cs, o, e = conds_of(spec), spec["outcome"], spec["expect"]
+    a, b = [], []
+    for x in rows:
+        if lo <= x["round"] <= hi and x["out"][o] is not None:
+            (a if all(x["cond"][c] for c in cs) else b).append(x["out"][o])
     res = {"from": lo, "to": hi, "n_cond": len(a), "n_other": len(b)}
-    if len(a) < MIN_N or len(b) < MIN_N:
+    if len(a) < min_n or len(b) < min_n:
         res["status"] = "small"
         return res
     p = mannwhitneyu(a, b, alternative="greater" if e == "higher" else "less").pvalue
@@ -183,31 +230,125 @@ def fmt(t):
     return f"조건 {t['n_cond']}회 평균 {t['mean_cond']:.3f} vs 나머지 {t['mean_other']:.3f} (p {t['p']:.3f})"
 
 
+# ── 파생: 보충회생 · 응용 · 회생 · 임시 일부 발췌 ────────────────────
+def derive(rows, hyps, latest):
+    """새 가설 [(row)] 과 부모 갱신 [(id, patch)]"""
+    codes = {h["code"] for h in hyps}
+    new, parent_patch = [], []
+
+    def child(parent, spec, code, status="proposed", **extra):
+        if code in codes:
+            return None
+        codes.add(code)
+        r = {"direction_id": parent.get("direction_id"), "code": code, "statement": spec_statement(spec),
+             "spec": spec, "created_round": latest, "status": status}
+        r.update(extra)
+        new.append(r)
+        return r
+
+    # 보충회생: 아깝게 기각된 기본·응용 가설에 조건 하나를 보탠다 (부모 발견 p 작은 순, 회당 최대 MAX_SUPPLEMENT)
+    near = [h for h in hyps if h["status"] == "rejected" and kind_of(h) in ("base", "applied") and len(conds_of(h["spec"])) == 1
+            and (h.get("discovery") or {}).get("direction_ok") and (h["discovery"].get("p") or 1) < NEAR_MISS_P]
+    budget = MAX_SUPPLEMENT
+    for h in sorted(near, key=lambda h: h["discovery"]["p"]):
+        c = h["spec"]["condition"]
+        for c2 in CONDITIONS:
+            if budget <= 0:
+                break
+            if c2 == c or any({c, c2} <= ex for ex in EXCLUSIVE):
+                continue
+            spec = {"condition": c, "condition2": c2, "outcome": h["spec"]["outcome"], "expect": h["spec"]["expect"],
+                    "kind": "supplement", "parent": h["code"]}
+            if child(h, spec, spec_code(spec)):
+                budget -= 1
+
+    # 응용: 통과·유지 가설에서 같은 조건 · 같은 계열의 다른 결과
+    for h in hyps:
+        if h["status"] not in ("validated", "maintained"):
+            continue
+        o = h["spec"]["outcome"]
+        for o2, fam in OUTCOME_FAMILY.items():
+            if o2 == o or fam != OUTCOME_FAMILY.get(o):
+                continue
+            spec = {k: v for k, v in h["spec"].items() if k in ("condition", "condition2", "expect")}
+            spec.update(outcome=o2, kind="applied", parent=h["code"])
+            child(h, spec, spec_code(spec))
+
+    live_children = defaultdict(set)
+    for h in hyps:
+        if h["status"] in ("validated", "maintained", "provisional", "proposed"):
+            par = (h.get("spec") or {}).get("parent")
+            if par:
+                live_children[par].add(kind_of(h))
+
+    # 회생: 탈락 뒤 새 회차만으로 재검정 (50회차마다) / 임시 일부 발췌: 최근 100회만 (25회차마다)
+    rv_queue, pt_queue = [], []
+    for h in hyps:
+        if h["status"] not in CLOSED or kind_of(h) == "partial" or not valid(h["spec"]):
+            continue
+        fw = dict(h.get("forward") or {})
+        dead_at = fw.get("closed_at") or h.get("last_round") or h["created_round"]
+        upd = {}
+        if "revival" not in live_children[h["code"]] and latest - fw.get("rv_checked", dead_at) >= REVIVAL_EVERY:
+            t = test(rows, h["spec"], dead_at + 1, latest)
+            if t.get("status") != "small":
+                upd["rv_checked"] = latest
+                if t["direction_ok"]:
+                    rv_queue.append((h, t))
+        if "partial" not in live_children[h["code"]] and latest - fw.get("pt_checked", dead_at) >= PARTIAL_EVERY:
+            t = test(rows, h["spec"], latest - PARTIAL_WINDOW + 1, latest)
+            if t.get("status") != "small":
+                upd["pt_checked"] = latest
+                if t["direction_ok"] and t["p"] < PARTIAL_ALPHA:
+                    pt_queue.append((h, t))
+        if upd:
+            parent_patch.append((h["id"], {"forward": dict(fw, closed_at=dead_at, **upd)}))
+    if rv_queue:
+        for (h, t), ok in zip(rv_queue, bh([t["p"] for _, t in rv_queue])):
+            if ok:
+                spec = dict(h["spec"], kind="revival", parent=h["code"])
+                child(h, spec, f"{spec_code(h['spec'])}#rv{latest}", status="validated", discovery=t,
+                      forward={"start": latest + 1},
+                      verdict=f"회생 — 탈락 뒤 새 회차({t['from']}~{t['to']}회)에서 효과가 나타남: {fmt(t)}. 새 회차 추적부터 다시")
+    if pt_queue:
+        for (h, t), ok in zip(pt_queue, bh([t["p"] for _, t in pt_queue])):
+            if ok:
+                spec = dict(h["spec"], kind="partial", parent=h["code"])
+                child(h, spec, f"{spec_code(h['spec'])}#pt{latest}", status="provisional", discovery=t,
+                      forward={"start": latest + 1, "until": latest + PARTIAL_TRACK},
+                      verdict=f"임시 일부 발췌 — 전체 기간엔 없지만 최근 {PARTIAL_WINDOW}회({t['from']}~{t['to']}회)에서만 효과: "
+                              f"{fmt(t)}. 다음 {PARTIAL_TRACK}회차 추적 후 정식 승격 또는 내림")
+    return new, parent_patch
+
+
 def evaluate(rows, hyps, latest):
     """가설 상태 갱신 목록 [(id, patch)]"""
     out = []
     confirm_queue = []
     for h in hyps:
         s = h["spec"]
-        c, o, e = s.get("condition"), s.get("outcome"), s.get("expect")
-        if c not in CONDITIONS or o not in OUTCOMES or e not in EXPECT:
+        if not valid(s):
             if h["status"] != "unsupported":
                 out.append((h["id"], {"status": "unsupported", "verdict": "검정 불가 — 저장된 데이터로 계산할 수 없는 조건·결과 (데이터 미확보)"}))
             continue
         if h["status"] == "proposed":
-            d = test(rows, c, o, e, *DISCOVERY)
-            cf = test(rows, c, o, e, CONFIRM_START, h["created_round"])
+            d = test(rows, s, *DISCOVERY)
+            cf = test(rows, s, CONFIRM_START, h["created_round"])
+            a = SUPPLEMENT_ALPHA if kind_of(h) == "supplement" else ALPHA
             if d.get("status") == "small" or cf.get("status") == "small":
-                out.append((h["id"], {"discovery": d, "confirm": cf, "last_round": latest,
-                                      "verdict": f"판정 보류 — 발견 {fmt(d)} · 확인 {fmt(cf)}"}))
-            elif not (d["p"] < ALPHA and d["direction_ok"]):
+                # 발견·확인 구간은 고정이라 표본이 더 늘지 않는다 → 판정 불가로 닫는다 (회생·임시 발췌 검사는 계속)
                 out.append((h["id"], {"status": "rejected", "discovery": d, "confirm": cf, "last_round": latest,
-                                      "verdict": f"기각 — 발견 구간에서 차이 없음: {fmt(d)}"}))
+                                      "forward": {"closed_at": latest},
+                                      "verdict": f"판정 불가 — 조건이 드물어 표본 부족: 발견 {fmt(d)} · 확인 {fmt(cf)}"}))
+            elif not (d["p"] < a and d["direction_ok"]):
+                out.append((h["id"], {"status": "rejected", "discovery": d, "confirm": cf, "last_round": latest,
+                                      "forward": {"closed_at": latest},
+                                      "verdict": f"기각 — 발견 구간에서 차이 없음 (기준 p<{a}): {fmt(d)}"}))
             else:
                 confirm_queue.append((h, d, cf))
         elif h["status"] in ("validated", "maintained"):
             start = (h.get("forward") or {}).get("start") or (h["last_round"] or h["created_round"]) + 1
-            fw = test(rows, c, o, e, start, latest)
+            fw = test(rows, s, start, latest)
             fw["start"] = start
             patch = {"forward": fw, "last_round": latest}
             if fw.get("n_cond", 0) >= FORWARD_MIN and fw.get("status") != "small":
@@ -215,9 +356,27 @@ def evaluate(rows, hyps, latest):
                     patch.update(status="maintained", verdict=f"유지 — 통과 이후 새 회차에서도 같은 방향: {fmt(fw)}")
                 else:
                     patch.update(status="discarded", verdict=f"폐기 — 통과 이후 새 회차에서 방향이 뒤집힘: {fmt(fw)}")
+                    patch["forward"] = dict(fw, closed_at=latest)
             else:
-                patch["verdict"] = (h.get("verdict") or "") if h["status"] == "maintained" else \
-                    f"검증 통과 · 새 회차 추적 중 (조건 회차 {fw.get('n_cond', 0)}/{FORWARD_MIN})"
+                base = (h.get("verdict") or "검증 통과").split(" · 새 회차 추적 중")[0]
+                patch["verdict"] = base if h["status"] == "maintained" else \
+                    f"{base} · 새 회차 추적 중 (조건 회차 {fw.get('n_cond', 0)}/{FORWARD_MIN})"
+            out.append((h["id"], patch))
+        elif h["status"] == "provisional":
+            f0 = h.get("forward") or {}
+            start, until = f0.get("start", latest + 1), f0.get("until", latest)
+            fw = test(rows, s, start, latest, min_n=5)
+            fw.update(start=start, until=until)
+            patch = {"forward": fw, "last_round": latest}
+            if latest >= until:
+                if fw.get("status") != "small" and fw["direction_ok"]:
+                    patch.update(status="maintained", verdict=f"임시 → 정식 승격 — 추적 {PARTIAL_TRACK}회차 동안 같은 방향: {fmt(fw)}")
+                else:
+                    patch.update(status="discarded", verdict=f"임시 기한 만료 — 추적 {PARTIAL_TRACK}회차에서 유지 안 됨: {fmt(fw)}")
+                    patch["forward"] = dict(fw, closed_at=latest)
+            else:
+                patch["verdict"] = (h.get("verdict") or "").split(" · 임시 추적")[0] + \
+                    f" · 임시 추적 {max(0, latest - start + 1)}/{PARTIAL_TRACK}회"
             out.append((h["id"], patch))
     if confirm_queue:
         ok = bh([cf["p"] for _, _, cf in confirm_queue])
@@ -225,14 +384,18 @@ def evaluate(rows, hyps, latest):
             if passed and cf["direction_ok"]:
                 out.append((h["id"], {"status": "validated", "discovery": d, "confirm": cf, "last_round": latest,
                                       "forward": {"start": latest + 1},
-                                      "verdict": f"검증 통과 — 발견 {fmt(d)} · 확인 {fmt(cf)} (다중 비교 보정 통과). 새 회차 추적 시작"}))
+                                      "verdict": f"검증 통과 — 발견 {fmt(d)} · 확인 {fmt(cf)} (다중 비교 보정 통과)"}))
             else:
                 out.append((h["id"], {"status": "rejected", "discovery": d, "confirm": cf, "last_round": latest,
+                                      "forward": {"closed_at": latest},
                                       "verdict": f"기각 — 발견 구간은 통과했지만 확인 구간에서 재현 안 됨: {fmt(cf)}"}))
     return out
 
 
 # ── 저장 ──────────────────────────────────────────────────────────
+SELECT = "id,code,spec,status,discovery,confirm,forward,verdict,created_round,last_round,direction_id"
+
+
 def _existing(db, params, dry):
     """전략 테이블 조회 — 드라이런에서 테이블이 아직 없으면 빈 목록"""
     try:
@@ -257,10 +420,16 @@ def ensure_seed(db, latest, dry):
 
 
 def add_hypotheses(db, direction_id, specs, latest):
-    """specs: [(condition, outcome, expect)] — 이미 있는 code 는 건너뜀"""
-    rows = [{"direction_id": direction_id, "code": code_of(c, o, e), "statement": statement(c, o, e),
-             "spec": {"condition": c, "outcome": o, "expect": e}, "created_round": latest}
-            for c, o, e in specs if c in CONDITIONS and o in OUTCOMES and e in EXPECT]
+    """specs: [(condition, outcome, expect)] 또는 [(condition, condition2, outcome, expect)] — 이미 있는 code 는 건너뜀"""
+    rows = []
+    for t in specs:
+        c, c2, o, e = (t[0], None, t[1], t[2]) if len(t) == 3 else t
+        spec = {"condition": c, "outcome": o, "expect": e, "kind": "base"}
+        if c2 and c2 != "none" and c2 != c:
+            spec.update(condition2=c2, kind="supplement")
+        if valid(spec):
+            rows.append({"direction_id": direction_id, "code": spec_code(spec), "statement": spec_statement(spec),
+                         "spec": spec, "created_round": latest})
     db.upsert("strategy_hypotheses", rows, "code", ignore=True)
     return len(rows)
 
@@ -269,22 +438,50 @@ def run(db, dry=False):
     latest = db.get("lotto_winning_numbers", {"select": "round", "order": "round.desc", "limit": "1"})[0]["round"]
     seeded = ensure_seed(db, latest, dry)
     rows = load_rounds(db)
-    hyps = _existing(db, {"select": "id,code,spec,status,forward,verdict,created_round,last_round",
-                          "status": "in.(proposed,validated,maintained,unsupported)"}, dry)
+    hyps = _existing(db, {"select": SELECT}, dry)
     if dry and seeded:   # 드라이런: 아직 저장 안 된 기본 가설도 계산해서 보여준다
-        hyps += [{"id": f"seed-{i}", "code": code_of(*t), "spec": {"condition": t[0], "outcome": t[1], "expect": t[2]},
+        hyps += [{"id": f"seed-{i}", "code": code_of(*t), "direction_id": None,
+                  "spec": {"condition": t[0], "outcome": t[1], "expect": t[2], "kind": "base"},
                   "status": "proposed", "forward": None, "verdict": None, "created_round": latest, "last_round": None}
                  for i, t in enumerate(SEED["hypotheses"])]
-    updates = evaluate(rows, hyps, latest)
     now = datetime.now(timezone.utc).isoformat()
+
+    # 1) 판정 (기존 가설)
+    updates = evaluate(rows, hyps, latest)
+    # 2) 판정 결과를 반영한 상태로 파생 (보충회생 · 응용 · 회생 · 임시 일부 발췌)
+    by_id = {h["id"]: h for h in hyps}
+    for hid, patch in updates:
+        by_id[hid].update(patch)
+    new, parent_patch = derive(rows, hyps, latest)
+    # 3) 새로 만든 '제안' 가설도 바로 판정
+    new_proposed = [dict(r, id=f"new-{i}", last_round=None, forward=r.get("forward")) for i, r in enumerate(new)
+                    if r["status"] == "proposed"]
+    new_updates = {u[0]: u[1] for u in evaluate(rows, new_proposed, latest)}
+    for r, tmp in zip([r for r in new if r["status"] == "proposed"], new_proposed):
+        r.update(new_updates.get(tmp["id"], {}))
+
     counts = defaultdict(int)
     for hid, patch in updates:
         counts[patch.get("status", "updated")] += 1
-        code = next((h["code"] for h in hyps if h["id"] == hid), hid)
-        print(f"  {code:40s} → {patch.get('status', '(유지)')} · {patch.get('verdict', '')}")
+        code = by_id[hid]["code"]
+        if "status" in patch:
+            print(f"  {code:44s} → {patch['status']} · {patch.get('verdict', '')}")
         if not dry:
             db.patch("strategy_hypotheses", {"id": f"eq.{hid}"}, dict(patch, updated_at=now))
-    stats = {"version": VERSION, "rounds": len(rows), "evaluated": len(updates), "seeded": seeded, "by_status": dict(counts)}
+    for hid, patch in parent_patch:
+        if not dry:
+            db.patch("strategy_hypotheses", {"id": f"eq.{hid}"}, patch)
+    made = defaultdict(int)
+    for r in new:
+        made[r["spec"]["kind"]] += 1
+        counts[r["status"]] += 1
+        print(f"  + [{KIND_LABEL[r['spec']['kind']]}] {r['code']:40s} → {r['status']} · {r.get('verdict', '')}")
+    if new and not dry:
+        keys = ("direction_id", "code", "statement", "spec", "created_round", "status", "discovery", "confirm",
+                "forward", "verdict", "last_round")
+        db.upsert("strategy_hypotheses", [dict({k: r.get(k) for k in keys}, updated_at=now) for r in new], "code", ignore=True)
+    stats = {"version": VERSION, "rounds": len(rows), "evaluated": len(updates) + len(new), "seeded": seeded,
+             "derived": dict(made), "by_status": dict(counts)}
     print(json.dumps(stats, ensure_ascii=False))
     if not dry:
         db.insert("strategy_runs", {"kind": "factory", "status": "success", "after_round": latest, "stats": stats})

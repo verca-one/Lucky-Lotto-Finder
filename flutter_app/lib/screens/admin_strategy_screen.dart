@@ -16,7 +16,17 @@ const _manual = Color(0xFF455A64);
       'rejected' => ('기각', const Color(0xFF757575), Icons.block_rounded),
       'discarded' => ('폐기', const Color(0xFFC62828), Icons.delete_outline_rounded),
       'unsupported' => ('데이터 미확보', const Color(0xFFEF6C00), Icons.help_outline_rounded),
+      'provisional' => ('임시', const Color(0xFFF9A825), Icons.timelapse_rounded),
       _ => (s, Colors.grey, Icons.circle_outlined),
+    };
+
+/// 가설 종류 표시 (이름, 색) — 기본은 표시 안 함
+(String, Color)? strategyKindStyle(String k) => switch (k) {
+      'revival' => ('회생', const Color(0xFF0277BD)),
+      'supplement' => ('보충회생', const Color(0xFF5E35B1)),
+      'partial' => ('임시 일부 발췌', const Color(0xFFF9A825)),
+      'applied' => ('응용', const Color(0xFF00897B)),
+      _ => null,
     };
 
 const _focusLabel = {'popularity': '인기도', 'calendar': '달력', 'sales': '판매액', 'numbers': '번호', 'stores': '판매점'};
@@ -43,7 +53,7 @@ class _AdminStrategyScreenState extends State<AdminStrategyScreen> {
   String _stage = 'all'; // all | open | passed | closed
 
   static const _stages = {
-    'open': {'proposed', 'pending', 'unsupported'},
+    'open': {'proposed', 'pending', 'unsupported', 'provisional'},
     'passed': {'validated', 'maintained'},
     'closed': {'rejected', 'discarded'},
   };
@@ -83,7 +93,7 @@ class _AdminStrategyScreenState extends State<AdminStrategyScreen> {
               const SizedBox(height: 8),
               if (dirs.isEmpty)
                 const Padding(padding: EdgeInsets.all(28), child: Center(child: Text('아직 제시된 방향이 없습니다.'))),
-              for (final dir in dirs) _directionCard(dir, d.of(dir.id)),
+              for (final dir in dirs) _directionCard(dir, d.of(dir.id), d),
             ]),
           );
         },
@@ -159,7 +169,7 @@ class _AdminStrategyScreenState extends State<AdminStrategyScreen> {
   Widget _pipeline(StrategyData d) {
     final tiles = [
       ('검증 대기', d.count({'proposed'}), 'proposed'),
-      ('판정 보류', d.count({'pending'}), 'pending'),
+      ('임시', d.count({'provisional'}), 'provisional'),
       ('검증 통과', d.count({'validated'}), 'validated'),
       ('유지', d.count({'maintained'}), 'maintained'),
       ('기각', d.count({'rejected'}), 'rejected'),
@@ -199,10 +209,45 @@ class _AdminStrategyScreenState extends State<AdminStrategyScreen> {
     ]);
   }
 
-  Widget _directionCard(StrategyDirection dir, List<StrategyHypothesis> all) {
+  /// 가설 + 그 아래 파생 가설들 (한 단계씩 들여쓰기, 파생이 많으면 접어서)
+  List<Widget> _tree(StrategyHypothesis h, List<StrategyHypothesis> pool, StrategyData d, int depth) {
+    final kids = pool.where((k) => k.parentCode == h.code).toList();
+    final row = Padding(padding: EdgeInsets.only(left: depth * 14.0), child: _hypRow(h, d));
+    if (kids.isEmpty) return [row];
+    final byKind = <String, int>{};
+    for (final k in kids) {
+      byKind[k.kind] = (byKind[k.kind] ?? 0) + 1;
+    }
+    final summary = byKind.entries.map((e) => '${strategyKindStyle(e.key)?.$1 ?? e.key} ${e.value}').join(' · ');
+    return [
+      row,
+      Padding(
+        padding: EdgeInsets.only(left: depth * 14.0 + 14, bottom: 6),
+        child: Theme(
+          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+          child: ExpansionTile(
+            key: ValueKey('kids_${h.code}'),
+            dense: true,
+            tilePadding: const EdgeInsets.symmetric(horizontal: 8),
+            childrenPadding: EdgeInsets.zero,
+            backgroundColor: const Color(0xFFF7F6FC),
+            collapsedBackgroundColor: const Color(0xFFF7F6FC),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            collapsedShape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            leading: const Icon(Icons.account_tree_outlined, size: 18, color: Color(0xFF5E35B1)),
+            title: Text('파생 가설 ${kids.length}건 — $summary',
+                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Color(0xFF5E35B1))),
+            children: [for (final k in kids) ..._tree(k, pool, d, 0)],
+          ),
+        ),
+      ),
+    ];
+  }
+
+  Widget _directionCard(StrategyDirection dir, List<StrategyHypothesis> all, StrategyData d) {
     final hyps = _stage == 'all' ? all : all.where((h) => _stages[_stage]!.contains(h.displayStatus)).toList();
     if (_stage != 'all' && hyps.isEmpty) return const SizedBox.shrink();
-    final c = dir.isAi ? _ai : _manual;
+    final c = dir.aiName == 'Gemini' ? const Color(0xFF1A73E8) : (dir.isAi ? _ai : _manual);
     return Container(
       key: ValueKey('direction_${dir.id}'),
       margin: const EdgeInsets.only(bottom: 12),
@@ -221,7 +266,8 @@ class _AdminStrategyScreenState extends State<AdminStrategyScreen> {
           expandedCrossAxisAlignment: CrossAxisAlignment.start,
           title: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Wrap(spacing: 6, runSpacing: 4, children: [
-              _pill(dir.isAi ? 'AI 제안' : '관리자 제안', c, icon: dir.isAi ? Icons.auto_awesome_rounded : Icons.person_rounded),
+              _pill(dir.isAi ? '${dir.aiName} 제안' : '관리자 제안', dir.aiName == 'Gemini' ? const Color(0xFF1A73E8) : c,
+                  icon: dir.isAi ? Icons.auto_awesome_rounded : Icons.person_rounded),
               _pill('${dir.afterRound}회 검증 후', Colors.blueGrey),
               if (dir.focus != null) _pill(_focusLabel[dir.focus] ?? dir.focus!, Colors.indigo),
             ]),
@@ -233,20 +279,22 @@ class _AdminStrategyScreenState extends State<AdminStrategyScreen> {
           children: [
             const Divider(height: 18),
             if (hyps.isEmpty) Text('가설 없음', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
-            for (final h in hyps) _hypRow(h),
+            for (final h in hyps.where((h) => h.parentCode == null || !hyps.any((p) => p.code == h.parentCode)))
+              ..._tree(h, hyps, d, 0),
           ],
         ),
       ),
     );
   }
 
-  Widget _hypRow(StrategyHypothesis h) {
+  Widget _hypRow(StrategyHypothesis h, StrategyData d) {
     final (label, color, icon) = strategyStatusStyle(h.displayStatus);
+    final kind = strategyKindStyle(h.kind);
     final stage = h.forward ?? h.confirm ?? h.discovery;
     return InkWell(
       key: ValueKey('hyp_${h.code}'),
       borderRadius: BorderRadius.circular(12),
-      onTap: () => _detail(h),
+      onTap: () => _detail(h, d),
       child: Container(
         margin: const EdgeInsets.only(bottom: 8),
         padding: const EdgeInsets.all(10),
@@ -261,6 +309,7 @@ class _AdminStrategyScreenState extends State<AdminStrategyScreen> {
               const SizedBox(height: 4),
               Row(children: [
                 _pill(label, color),
+                if (kind != null) ...[const SizedBox(width: 4), _pill(kind.$1, kind.$2)],
                 const SizedBox(width: 6),
                 if (stage != null && !stage.small && stage.meanCond != null)
                   Expanded(
@@ -276,8 +325,11 @@ class _AdminStrategyScreenState extends State<AdminStrategyScreen> {
     );
   }
 
-  void _detail(StrategyHypothesis h) {
+  void _detail(StrategyHypothesis h, StrategyData d) {
     final (label, color, icon) = strategyStatusStyle(h.displayStatus);
+    final kind = strategyKindStyle(h.kind);
+    final parent = d.byCode(h.parentCode);
+    final kids = d.childrenOf(h.code);
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -286,7 +338,12 @@ class _AdminStrategyScreenState extends State<AdminStrategyScreen> {
         expand: false,
         initialChildSize: 0.7,
         builder: (c, ctrl) => ListView(controller: ctrl, padding: const EdgeInsets.fromLTRB(18, 0, 18, 24), children: [
-          Row(children: [Icon(icon, color: color), const SizedBox(width: 6), _pill(label, color)]),
+          Row(children: [
+            Icon(icon, color: color),
+            const SizedBox(width: 6),
+            _pill(label, color),
+            if (kind != null) ...[const SizedBox(width: 6), _pill(kind.$1, kind.$2)],
+          ]),
           const SizedBox(height: 10),
           Text(h.statement, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: _ink, height: 1.35)),
           const SizedBox(height: 6),
@@ -302,11 +359,38 @@ class _AdminStrategyScreenState extends State<AdminStrategyScreen> {
             child: Text('비서 판정: ${h.verdict ?? '아직 판정 전'}',
                 style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: color, height: 1.45)),
           ),
+          if (parent != null || kids.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            const Text('계보', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: _ink)),
+            const SizedBox(height: 6),
+            if (parent != null) _lineRow('원본', parent),
+            _lineRow('이 가설', h, current: true),
+            for (final k in kids) _lineRow(strategyKindStyle(k.kind)?.$1 ?? '파생', k, indent: true),
+          ],
           const SizedBox(height: 10),
           Text('경향에 관한 검정입니다. 어떤 결과가 나와도 번호 조합의 1등 확률(1/8,145,060)은 바뀌지 않습니다.',
               style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
         ]),
       ),
+    );
+  }
+
+  /// 계보 한 줄 — 원본 → 이 가설 → 파생
+  Widget _lineRow(String role, StrategyHypothesis x, {bool current = false, bool indent = false}) {
+    final (label, color, _) = strategyStatusStyle(x.displayStatus);
+    return Container(
+      margin: EdgeInsets.only(bottom: 6, left: indent ? 18 : 0),
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(
+        color: current ? const Color(0xFFEDE7F6) : const Color(0xFFF7F7F9),
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SizedBox(width: 72, child: Text(role, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: _ink))),
+        Expanded(child: Text(x.statement, style: const TextStyle(fontSize: 11.5, height: 1.35))),
+        const SizedBox(width: 6),
+        _pill(label, color),
+      ]),
     );
   }
 

@@ -18,6 +18,13 @@ class StrategyDirection {
         createdAt: DateTime.tryParse('${r['created_at']}'),
       );
   bool get isAi => source == 'ai';
+
+  /// 'Claude' · 'Gemini' · null(관리자)
+  String? get aiName {
+    if (!isAi) return null;
+    final m = (model ?? '').toLowerCase();
+    return m.contains('gemini') ? 'Gemini' : (m.contains('claude') ? 'Claude' : 'AI');
+  }
 }
 
 /// 가설 검정 한 단계 (발견 · 확인 · 새 회차 추적)
@@ -60,6 +67,12 @@ class StrategyHypothesis {
 
   /// 화면 표시 상태: 판정 보류(표본 부족)는 proposed 중 verdict 가 '판정 보류'로 시작
   String get displayStatus => status == 'proposed' && (verdict ?? '').startsWith('판정 보류') ? 'pending' : status;
+
+  /// 가설 종류: base(기본) · supplement(보충회생) · revival(회생) · partial(임시 일부 발췌) · applied(응용)
+  String get kind => '${spec['kind'] ?? 'base'}';
+
+  /// 파생 원본 가설 코드 (기본 가설이면 null)
+  String? get parentCode => spec['parent'] as String?;
 }
 
 class StrategyRun {
@@ -80,6 +93,8 @@ class StrategyData {
   const StrategyData(this.directions, this.hypotheses, this.runs);
 
   List<StrategyHypothesis> of(String directionId) => hypotheses.where((h) => h.directionId == directionId).toList();
+  StrategyHypothesis? byCode(String? code) => code == null ? null : hypotheses.where((h) => h.code == code).firstOrNull;
+  List<StrategyHypothesis> childrenOf(String code) => hypotheses.where((h) => h.parentCode == code).toList();
   StrategyRun? lastRun(String kind) => runs.where((r) => r.kind == kind).firstOrNull;
   int count(Set<String> statuses) => hypotheses.where((h) => statuses.contains(h.displayStatus)).length;
 }

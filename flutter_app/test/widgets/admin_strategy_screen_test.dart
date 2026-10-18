@@ -21,6 +21,14 @@ StrategyData data() {
       'discovery': {'from': 269, 'to': 1000, 'n_cond': 60, 'n_other': 600, 'mean_cond': 1.2, 'mean_other': 0.98, 'p': 0.01, 'direction_ok': true},
       'confirm': {'from': 1001, 'to': 1246, 'n_cond': 20, 'n_other': 200, 'mean_cond': 1.15, 'mean_other': 0.99, 'p': 0.02, 'direction_ok': true},
       'verdict': '검증 통과'}),
+    StrategyHypothesis.fromRow({'id': 'h3', 'direction_id': 'd1', 'code': 'first_half+winter|R1|higher',
+      'statement': '상반기(1~6월)이면서 겨울(12~2월)일 때 1등 당첨자 쏠림가 높다',
+      'spec': {'condition': 'first_half', 'condition2': 'winter', 'outcome': 'R1', 'expect': 'higher', 'kind': 'supplement', 'parent': 'round_odd|R2|higher'},
+      'status': 'rejected', 'created_round': 1247, 'verdict': '기각'}),
+    StrategyHypothesis.fromRow({'id': 'h4', 'direction_id': 'd1', 'code': 'round_odd|R2|higher#pt1247',
+      'statement': '홀수 회차일 때 2등 당첨자 쏠림가 높다',
+      'spec': {'condition': 'round_odd', 'outcome': 'R2', 'expect': 'higher', 'kind': 'partial', 'parent': 'round_odd|R2|higher'},
+      'status': 'provisional', 'created_round': 1247, 'verdict': '임시 일부 발췌'}),
   ];
   final runs = [StrategyRun.fromRow({'kind': 'ai_direction', 'status': 'skipped', 'after_round': 1246, 'stats': {}, 'note': 'API 키 미등록'}),
     StrategyRun.fromRow({'kind': 'factory', 'status': 'success', 'after_round': 1246, 'stats': {'evaluated': 6}})];
@@ -37,7 +45,25 @@ void main() {
     expect(find.textContaining('API 키 미등록'), findsOneWidget);
     expect(find.text('AI 제안'), findsWidgets);
     expect(find.byKey(const ValueKey('hyp_round_odd|R2|higher')), findsOneWidget);
+    // 원본 아래 파생 가설 묶음 (보충회생 1 · 임시 일부 발췌 1)
+    expect(find.textContaining('파생 가설 2건'), findsOneWidget);
+    await tester.ensureVisible(find.byKey(const ValueKey('kids_round_odd|R2|higher')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('kids_round_odd|R2|higher')));
+    await tester.pumpAndSettle();
+    expect(find.text('임시'), findsWidgets);
+    expect(find.text('보충회생'), findsOneWidget);
+    // 원본 상세: 계보
+    await tester.ensureVisible(find.byKey(const ValueKey('hyp_round_odd|R2|higher')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('hyp_round_odd|R2|higher')));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.text('계보'), 200, scrollable: find.byType(Scrollable).last);
+    expect(find.text('계보'), findsOneWidget);
+    await tester.tapAt(const Offset(20, 20)); // 시트 닫기
+    await tester.pumpAndSettle();
     // 통과·유지만
+    await tester.scrollUntilVisible(find.byKey(const ValueKey('stage_passed')), -300, scrollable: find.byType(Scrollable).first);
     await tester.tap(find.byKey(const ValueKey('stage_passed')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('hyp_round_odd|R2|higher')), findsNothing);
