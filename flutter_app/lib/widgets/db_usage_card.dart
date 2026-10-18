@@ -42,7 +42,7 @@ class _DbUsageCardState extends State<DbUsageCard> {
     _future = _repo.loadDbUsage();
   }
 
-  void _refresh() => setState(() => _future = _repo.loadDbUsage(force: true));
+  void _refresh() => setState(() { _future = _repo.loadDbUsage(force: true); });
 
   @override
   Widget build(BuildContext context) {

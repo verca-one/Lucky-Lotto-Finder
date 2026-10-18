@@ -59,7 +59,7 @@ class _AdminStrategyScreenState extends State<AdminStrategyScreen> {
   };
 
   Future<void> _reload() async {
-    setState(() => _f = (widget.loader ?? StrategyRepository.load)());
+    setState(() { _f = (widget.loader ?? StrategyRepository.load)(); });
     await _f;
   }
 

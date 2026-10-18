@@ -1,5 +1,6 @@
 // 브리핑 '회차 검증' · '지방장보고' 탭 — 서버 저장본(research_results db-1.0)만 표시
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/research/recommend_release.dart';
 import '../services/research/round_debrief.dart';
@@ -1460,27 +1461,104 @@ class RoundDebriefTop extends StatefulWidget {
   State<RoundDebriefTop> createState() => _RoundDebriefTopState();
 }
 
+/// 지난 회차 보고를 '안건넘김' 했는지 (이 기기 저장) — 넘기면 '지난 회차 검증' 탭에만 남는다
+class DebriefHandover {
+  static const _key = 'debrief_handover_';
+  static Future<bool> done(int round) async {
+    try {
+      return (await SharedPreferences.getInstance()).getBool('$_key$round') ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  static Future<void> mark(int round) async => (await SharedPreferences.getInstance()).setBool('$_key$round', true);
+}
+
 class _RoundDebriefTopState extends State<RoundDebriefTop> {
-  late final Future<RoundDebrief?> _f = (widget.loader ?? RoundDebriefRepository.loadRound)();
+  late Future<(RoundDebrief?, bool)> _f = _load();
+
+  @override
+  void initState() {
+    super.initState();
+    RecommendRelease.changes.addListener(_reload); // 수동 엔진 실행 → 보고도 자동으로 넘김
+  }
+
+  @override
+  void dispose() {
+    RecommendRelease.changes.removeListener(_reload);
+    super.dispose();
+  }
+
+  void _reload() {
+    if (mounted) setState(() { _f = _load(); });
+  }
+
+  /// (보고, 넘겼는지) — 안건넘김 버튼을 눌렀거나 다음 회차 엔진을 수동 실행 요청했으면 넘긴 것으로 본다
+  Future<(RoundDebrief?, bool)> _load() async {
+    final r = await (widget.loader ?? RoundDebriefRepository.loadRound)();
+    if (r == null) return (null, true);
+    var handed = await DebriefHandover.done(r.round);
+    if (!handed) {
+      try {
+        final rs = await RecommendRelease.state(r.next, prevDrawDate: r.drawDate, nowUtc: widget.nowUtc);
+        handed = rs.manualAt != null;
+      } catch (_) {}
+    }
+    return (r, handed);
+  }
+
+  Future<void> _handOver(RoundDebrief r) async {
+    await DebriefHandover.mark(r.round);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${r.round}회 보고를 넘겼습니다 — 상단 \'지난 회차 검증\' 탭에서 볼 수 있습니다')));
+    setState(() { _f = Future.value((r, true)); });
+  }
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<RoundDebrief?>(
+    return FutureBuilder<(RoundDebrief?, bool)>(
       future: _f,
       builder: (context, s) {
-        final r = s.data;
-        if (r == null) return const SizedBox.shrink();
-        switch (debriefPlacement(r.drawDate, widget.nowUtc ?? DateTime.now().toUtc())) {
-          case DebriefPlacement.inline:
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 12),
-              child: RoundDebriefView(key: const ValueKey('debrief_inline'), embedded: true, loader: () async => r),
-            );
-          case DebriefPlacement.box:
-            return Padding(padding: const EdgeInsets.only(bottom: 12), child: RoundDebriefLinkCard(report: r));
-          case DebriefPlacement.tabOnly:
-            return const SizedBox.shrink();
-        }
+        final (r, handed) = s.data ?? (null, true);
+        if (r == null || handed) return const SizedBox.shrink();
+        final place = debriefPlacement(r.drawDate, widget.nowUtc ?? DateTime.now().toUtc());
+        if (place == DebriefPlacement.tabOnly) return const SizedBox.shrink();
+        // 상자: 머리줄(제목 · 안건넘김) + 토·일은 보고 전체, 월·화는 링크 상자
+        return Container(
+          key: const ValueKey('debrief_box'),
+          margin: const EdgeInsets.only(bottom: 12),
+          padding: const EdgeInsets.fromLTRB(10, 10, 10, 4),
+          decoration: BoxDecoration(
+            color: const Color(0xFFF3EFFC),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: _purple.withValues(alpha: 0.45), width: 1.4),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              const Icon(Icons.fact_check_rounded, color: _purple, size: 20),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text('${r.round}회 보고 — 지난주 추천 검증',
+                    style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w900, color: _purple)),
+              ),
+              FilledButton.icon(
+                key: const ValueKey('debrief_handover'),
+                style: FilledButton.styleFrom(backgroundColor: _purple, visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 12)),
+                onPressed: () => _handOver(r),
+                icon: const Icon(Icons.move_down_rounded, size: 16),
+                label: const Text('안건넘김', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5)),
+              ),
+            ]),
+            const SizedBox(height: 8),
+            if (place == DebriefPlacement.inline)
+              RoundDebriefView(key: const ValueKey('debrief_inline'), embedded: true, loader: () async => r)
+            else
+              Padding(padding: const EdgeInsets.only(bottom: 8), child: RoundDebriefLinkCard(report: r)),
+          ]),
+        );
       },
     );
   }
@@ -1507,7 +1585,7 @@ class _RoundDebriefHistoryViewState extends State<RoundDebriefHistoryView> {
         final list = s.data ?? const <RoundDebrief>[];
         return RefreshIndicator(
           onRefresh: () async {
-            setState(() => _f = (widget.loader ?? RoundDebriefRepository.loadHistory)());
+            setState(() { _f = (widget.loader ?? RoundDebriefRepository.loadHistory)(); });
             await _f;
           },
           child: ListView(padding: const EdgeInsets.all(16), children: [

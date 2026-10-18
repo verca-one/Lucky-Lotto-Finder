@@ -5,7 +5,9 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_app/screens/round_debrief_view.dart';
 import 'package:flutter_app/services/research/round_debrief.dart';
+import 'package:flutter_app/services/research/recommend_release.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 Map<String, dynamic> fixture() =>
     jsonDecode(File('test/fixtures/debrief_1246.json').readAsStringSync()) as Map<String, dynamic>;
@@ -66,6 +68,8 @@ void main() {
 
   testWidgets('브리핑 맨 위 — 일요일 펼침 · 월요일 보라색 박스 · 수요일 숨김', (tester) async {
     phone(tester);
+    SharedPreferences.setMockInitialValues({});
+    RecommendRelease.fetchRequest = (t) async => null;
     final r = RoundDebrief.fromPayload(Map<String, dynamic>.from(fixture()['main'] as Map));
     Future<void> at(int day) async {
       await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(
@@ -79,6 +83,33 @@ void main() {
     await at(21);
     expect(find.byKey(const ValueKey('round_debrief_link_1246')), findsNothing);
     expect(find.byKey(const ValueKey('debrief_inline')), findsNothing);
+  });
+
+  testWidgets('보고 상자 — 안건넘김 누르면 사라지고, 다음 회차 수동 엔진 실행 요청이 있으면 처음부터 넘김', (tester) async {
+    phone(tester);
+    SharedPreferences.setMockInitialValues({});
+    RecommendRelease.fetchRequest = (t) async => null;
+    final r = RoundDebrief.fromPayload(Map<String, dynamic>.from(fixture()['main'] as Map));
+    Widget app() => MaterialApp(home: Scaffold(body: SingleChildScrollView(
+        child: RoundDebriefTop(key: UniqueKey(), loader: () async => r, nowUtc: DateTime.utc(2026, 10, 18, 3)))));
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('debrief_box')), findsOneWidget);
+    expect(find.text('1246회 보고 — 지난주 추천 검증'), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('debrief_handover')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('debrief_box')), findsNothing);
+    // 새로 열어도 넘긴 상태 유지
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('debrief_box')), findsNothing);
+    // 다른 기기(넘김 기록 없음)라도 1247회 수동 엔진 실행 요청이 있으면 넘김
+    SharedPreferences.setMockInitialValues({});
+    RecommendRelease.fetchRequest = (t) async => {'target_round': t, 'requested_at': '2026-10-18T06:00:00Z', 'status': 'pending'};
+    await tester.pumpWidget(app());
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('debrief_box')), findsNothing);
+    RecommendRelease.fetchRequest = (t) async => null;
   });
 
   testWidgets('지난 회차 검증 탭 — 회차별 보라색 박스', (tester) async {

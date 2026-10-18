@@ -41,7 +41,7 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
   }
 
   void _reload() {
-    if (mounted) setState(() => _future = MasterBriefingService.instance.load(force: true));
+    if (mounted) setState(() { _future = MasterBriefingService.instance.load(force: true); });
   }
 
   @override
@@ -81,7 +81,7 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
             IconButton(
               visualDensity: VisualDensity.compact, iconSize: 18, tooltip: '새로고침',
               icon: const Icon(Icons.refresh, color: _purple),
-              onPressed: () => setState(() => _future = MasterBriefingService.instance.load(force: true)),
+              onPressed: () => setState(() { _future = MasterBriefingService.instance.load(force: true); }),
             ),
           ]),
           Text('추첨 후 회차 검증은 아래 구매할 번호(①~③)와 추천 명당(④)만 같은 번호로 채점합니다.',

@@ -11,6 +11,7 @@ import '../services/route/external_nav.dart';
 import '../services/route/region_research_repository.dart';
 import '../widgets/admin_region_store_widgets.dart';
 import '../widgets/agent_store_evidence_widgets.dart';
+import '../widgets/nearby_agent_picks.dart';
 
 const _orange = Color(0xFFE65100);
 
@@ -140,6 +141,9 @@ class _NearbyEngineStoresScreenState extends State<NearbyEngineStoresScreen> {
             ]),
           ),
         if (_error != null) _errorBox(_error!),
+        // 내 시·군·구만이 아니라 반경 안 이웃 지역 지방장 추천까지 넓게 (예: 수원 → 용인·오산·안양)
+        if (_me != null) NearbyAgentPicksSection(key: ValueKey('nearby_${_me!.latitude}_${_me!.longitude}'),
+            me: _me!, target: widget.targetRound),
         if (r != null) ...[
           _contextCard(r),
           RegionStoresMap(

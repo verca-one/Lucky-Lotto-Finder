@@ -597,7 +597,7 @@ class _AgentCentralViewState extends State<AgentCentralView> {
     _future = _repo.loadLatestCentral(model: widget.model);
   }
 
-  void _refresh() => setState(() => _future = _repo.loadLatestCentral(force: true, model: widget.model));
+  void _refresh() => setState(() { _future = _repo.loadLatestCentral(force: true, model: widget.model); });
 
   Widget _card(String title, List<Widget> body, {Widget? trailing}) => Container(
         width: double.infinity,

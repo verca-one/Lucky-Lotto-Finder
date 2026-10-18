@@ -138,7 +138,7 @@ class _RpaStoredPredictionCardState extends State<RpaStoredPredictionCard> {
             IconButton(
               visualDensity: VisualDensity.compact, iconSize: 18, tooltip: '새로고침',
               icon: const Icon(Icons.refresh, color: _blue),
-              onPressed: () => setState(() => _future = _load(widget.targetRound, force: true)),
+              onPressed: () => setState(() { _future = _load(widget.targetRound, force: true); }),
             ),
           ]);
           if (snap.connectionState != ConnectionState.done) {
