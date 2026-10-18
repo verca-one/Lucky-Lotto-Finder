@@ -287,7 +287,21 @@ class _RoundDebriefViewState extends State<RoundDebriefView> {
           _title('① 추천번호 채점 — 지난주 브리핑 그대로'),
           _small('색이 있는 공 = 맞힌 번호 · 회색 = 빗나간 번호. 기준: 무작위 세트의 평균 일치 0.8개.'),
           const SizedBox(height: 8),
-          for (final g in r.groups) _group(g, r),
+          // 브리핑이 실제로 추천한 3영역 → 비교용(Number 엔진 연구용·무작위 대조군)은 아래 접힌 칸
+          for (final g in r.groups.where((g) => _briefed.contains(g.key))) _group(g, r),
+          if (r.groups.any((g) => !_briefed.contains(g.key)))
+            Theme(
+              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                key: const ValueKey('debrief_reference_groups'),
+                tilePadding: EdgeInsets.zero,
+                childrenPadding: EdgeInsets.zero,
+                expandedCrossAxisAlignment: CrossAxisAlignment.start,
+                title: Text('비교용 (브리핑 추천 아님) — Number 엔진 연구용 · 무작위 대조군',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: Colors.grey.shade700)),
+                children: [for (final g in r.groups.where((g) => !_briefed.contains(g.key))) _group(g, r)],
+              ),
+            ),
           const SizedBox(height: 4),
           _meanChart(r),
         ],
@@ -312,7 +326,7 @@ class _RoundDebriefViewState extends State<RoundDebriefView> {
                   ),
                 ),
               ),
-              statusChip(g.role, Colors.grey.shade700),
+              statusChip(_roleLabel[g.key] ?? g.role, Colors.grey.shade700),
             ],
           ),
           if (g.sets.isEmpty)
@@ -377,8 +391,18 @@ class _RoundDebriefViewState extends State<RoundDebriefView> {
   );
 
   /// 그룹별 이번 회차 평균 일치 막대 (무작위 기대 0.8 기준선)
+  static const _briefed = {'official', 'popularity', 'purchase'};
+  static const _roleLabel = {
+    'official': '브리핑 ①',
+    'popularity': '브리핑 ②',
+    'purchase': '브리핑 ③',
+    'number_engine': '① 안 연구용',
+    'random': '브리핑에 없음',
+  };
+
   Widget _meanChart(RoundDebrief r) {
-    final gs = r.groups.where((g) => g.mean != null).toList();
+    // 브리핑 3영역 + 비교 기준(무작위)만 — Number 엔진 연구용은 접힌 칸에서만
+    final gs = r.groups.where((g) => g.mean != null && (_briefed.contains(g.key) || g.key == 'random')).toList();
     if (gs.isEmpty) return const SizedBox.shrink();
     const maxV = 3.0;
     return Container(
@@ -403,7 +427,7 @@ class _RoundDebriefViewState extends State<RoundDebriefView> {
                   SizedBox(
                     width: 92,
                     child: Text(
-                      g.label,
+                      g.key == 'random' ? '무작위(비교)' : g.label,
                       style: const TextStyle(fontSize: 10.5),
                       overflow: TextOverflow.ellipsis,
                     ),

@@ -40,10 +40,11 @@ VAR0 = 6 * (6 / 45) * (39 / 45) * (39 / 44)                  # 초기하 분산 
 GROUPS = [  # (key, algorithm, 고정 version 또는 None=최신, 이름, 역할)
     ("official", "official_final", "fr-1.0", "공식 최종 추천번호", "브리핑 ①"),
     ("popularity", "popularity_pick", "pop-1.0", "비인기 추천조합", "브리핑 ②"),
-    ("purchase", "purchase_prediction", None, "구매예측 번호", "브리핑 구매예측"),
-    ("number_engine", "number_engine", None, "Number 엔진 기본 조합", "연구용"),
-    ("random", "random_control", None, "무작위 대조군", "비교 기준"),
+    ("purchase", "purchase_prediction", None, "구매예측 번호", "브리핑 ③"),
+    ("number_engine", "number_engine", None, "Number 엔진 기본 조합", "비교용 · ① 안 연구용(접힘)"),
+    ("random", "random_control", None, "무작위 대조군", "비교용 · 브리핑에 없음"),
 ]
+BRIEFED = ("official", "popularity", "purchase")   # 브리핑이 실제로 추천한 번호 영역
 TIER = {"first": 1, "second": 2}
 SMALL_SETS = 100                                             # 누적 세트가 이보다 적으면 유의성 판정 보류
 
@@ -374,12 +375,16 @@ def audit(d, nums, stores, popc, agents):
         a.append(f"{D}회 당첨번호 {' '.join(map(str, nums['actual']))} + {nums['bonus']}: 연속 쌍 {t['consec']}개 · 범위 {t['span']} · "
                  f"10단위 {t['decades']}구간 · 합 {t['sum']}. 과거 {tr['past_rounds']}회 중 연속 쌍이 이만큼 이상인 회차 {pct(sh.get('consec_ge', 0))}, "
                  f"범위가 이만큼 좁은 회차 {pct(sh.get('span_le', 0))}.")
-        scored = [x for x in nums["groups"] if x.get("sets")]
+        scored = [x for x in nums["groups"] if x.get("sets") and x["key"] in BRIEFED]
         if scored:
             best = max(scored, key=lambda x: (x["best_matches"], x["mean"]))
             bs = max(best["sets"], key=lambda s: s["matches"])
-            a.append(f"가장 근접: {best['label']} — {' '.join(map(str, bs['numbers']))} 에서 {bs['matches']}개 일치"
+            a.append(f"브리핑 추천 중 가장 근접: {best['label']} — {' '.join(map(str, bs['numbers']))} 에서 {bs['matches']}개 일치"
                      f"({', '.join(map(str, bs['hits'])) or '없음'})" + (f" → {R.RANK_LABEL[bs['rank']]}" if bs["rank"] else " · 낙첨") + ".")
+            rnd = g.get("random")
+            if rnd and rnd.get("sets"):
+                a.append(f"비교: 무작위 대조군(브리핑에 없음) 최고 {rnd['best_matches']}개 · 평균 {rnd['mean']:.2f}개 — "
+                         "추천이 무작위보다 나았는지 보는 기준입니다.")
             off = g.get("official")
             if off and off.get("sets"):
                 a.append(f"공식 5세트: 최고 {off['best_matches']}개 · 평균 {off['mean']:.2f}개 (무작위 기대 0.80개). "

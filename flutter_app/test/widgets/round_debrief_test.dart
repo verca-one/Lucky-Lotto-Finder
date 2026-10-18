@@ -39,6 +39,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('1246회 검증 보고'), findsOneWidget);
     expect(find.byKey(const ValueKey('debrief_numbers')), findsOneWidget);
+    // 브리핑 3영역은 펼쳐 보이고, 비교용(Number 엔진·무작위 대조군)은 접힌 칸 안
+    expect(find.text('브리핑 ①'), findsOneWidget);
+    expect(find.text('브리핑 ③'), findsOneWidget);
+    expect(find.text('무작위 대조군'), findsNothing);
+    expect(find.byKey(const ValueKey('debrief_reference_groups')), findsOneWidget);
     await tester.scrollUntilVisible(find.byKey(const ValueKey('debrief_audit')), 400);
     expect(find.textContaining('실무 분석 관점'), findsOneWidget);
     expect(find.textContaining('수학 관점'), findsOneWidget);
