@@ -84,8 +84,13 @@ def context(db, latest):
     lines += ["", "[결과 목록]"] + [f"- {k}: {v}" for k, v in F.OUTCOMES.items()]
     lines += ["", "[기대 방향] higher=높다, lower=낮다", "", "[지난 회차 검증 보고 — 검수 문장]"]
     lines += [f"- {x}" for x in (audit.get("analyst") or []) + (audit.get("mathematician") or [])] or ["- (없음)"]
-    lines += ["", "[지금까지의 가설과 판정]"]
-    lines += [f"- [{h['status']}] {h['code']} — {h['statement']} — {h.get('verdict') or ''}" for h in hyps] or ["- (없음)"]
+    # 살아있는 가설은 판정까지, 기각·폐기·데이터 미확보는 코드만 (다시 내지 말라는 표시 — 보내는 자료가 쌓이지 않게)
+    closed = {"rejected", "discarded", "unsupported"}
+    live = [h for h in hyps if h["status"] not in closed]
+    dead = [h["code"] for h in hyps if h["status"] in closed]
+    lines += ["", "[진행 중 · 통과 · 유지 가설과 판정]"]
+    lines += [f"- [{h['status']}] {h['code']} — {h['statement']} — {h.get('verdict') or ''}" for h in live] or ["- (없음)"]
+    lines += ["", f"[기각·폐기된 조합 {len(dead)}개 — 다시 제안하지 말 것]", ", ".join(dead) or "(없음)"]
     return "\n".join(lines)
 
 
