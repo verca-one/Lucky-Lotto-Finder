@@ -222,7 +222,7 @@ def spec_statement(spec):
     cv, ov, _ = vocab(spec)
     if is_store(spec):
         more = "더 많이 나온다" if spec["expect"] == "higher" else "덜 나온다"
-        return f"{' · '.join(cv[c] for c in conds_of(spec))} 판매점에서 {ov[spec['outcome']]}가 지방장 기대보다 {more}"
+        return f"{' · '.join(cv[c] for c in conds_of(spec))} 판매점에서 {ov[spec['outcome']]}이 지방장 기대보다 {more}"
     return f"{'이면서 '.join(cv[c] for c in conds_of(spec))}일 때 {ov[spec['outcome']]}가 {EXPECT[spec['expect']]}"
 
 
