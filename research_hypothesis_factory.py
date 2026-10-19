@@ -509,6 +509,46 @@ def sim_candidates(hyps, latest):
 
 
 # ── 저장 ──────────────────────────────────────────────────────────
+def py(x):
+    """numpy 값(bool_·int64·float64)을 JSON 으로 저장 가능한 파이썬 값으로"""
+    if isinstance(x, dict):
+        return {k: py(v) for k, v in x.items()}
+    if isinstance(x, (list, tuple)):
+        return [py(v) for v in x]
+    if isinstance(x, np.bool_):
+        return bool(x)
+    if isinstance(x, np.integer):
+        return int(x)
+    if isinstance(x, np.floating):
+        return float(x)
+    return x
+
+
+class SafeDb:
+    """쓰기 전에 값을 파이썬 값으로 바꾸고 JSON 검사 — 드라이런에서도 검사해 저장 형식 오류를 미리 잡는다"""
+
+    def __init__(self, db):
+        self._db = db
+
+    def __getattr__(self, name):
+        return getattr(self._db, name)
+
+    def patch(self, table, params, row):
+        row = py(row)
+        json.dumps(row, ensure_ascii=False)
+        return self._db.patch(table, params, row)
+
+    def upsert(self, table, rows, on, ignore=False):
+        rows = py(rows)
+        json.dumps(rows, ensure_ascii=False)
+        return self._db.upsert(table, rows, on, ignore)
+
+    def insert(self, table, row):
+        row = py(row)
+        json.dumps(row, ensure_ascii=False)
+        return self._db.insert(table, row)
+
+
 SELECT = "id,code,spec,status,discovery,confirm,forward,verdict,created_round,last_round,direction_id"
 
 
@@ -570,6 +610,7 @@ def add_hypotheses(db, direction_id, specs, latest):
 
 
 def run(db, dry=False):
+    db = SafeDb(db)
     latest = db.get("lotto_winning_numbers", {"select": "round", "order": "round.desc", "limit": "1"})[0]["round"]
     seeded = ensure_seed(db, latest, dry)
     rows = load_rounds(db)
