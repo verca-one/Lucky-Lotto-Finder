@@ -164,14 +164,21 @@ def purchase_row(src, target):
 
 
 def choose_study(payload, keep_key=None):
-    """공개 후보 중 1개. keep_key 가 여전히 후보면 유지, 아니면 검증 진행도(검증 표본 수)가 큰 것."""
+    """공개 후보 중 1개. keep_key 가 여전히 후보면 유지, 아니면 검증 진행도(검증 표본 수)가 큰 것.
+    진행 중(연구 중·검증 중) 연구가 하나도 없으면 추천번호에 적용 중인 검증 완료 연구를 공개한다 (검증 실패는 공개 안 함)."""
     cands = []
     for key in ("popularity", "empirical", "volume"):
         m = payload.get(key) or {}
         if study_status(m) in PUBLIC_STATUSES:
             cands.append((key, m))
     if not cands:
-        return None
+        # 진행 중인 연구가 없으면 → 추천번호에 실제 적용 중인 '검증 완료' 연구 (구매예측번호의 근거)
+        done = [k for k in ("popularity", "empirical", "volume") if study_status(payload.get(k) or {}) == "검증 완료"]
+        if not done:
+            return None
+        if "popularity" in done and payload.get("ranking_source") == "popularity":
+            return "popularity"
+        return done[0]
     for key, m in cands:
         if key == keep_key:
             return key
@@ -222,7 +229,7 @@ def run(db):
     else:
         key = choose_study(payload, keep)
     if key is None:
-        print("  공개 연구: 후보 없음 ('연구 중' 상태 연구 없음) — 공개 연구를 만들지 않음")
+        print("  공개 연구: 후보 없음 (진행 중·검증 완료 연구 없음) — 공개 연구를 만들지 않음")
         return result
     s = study_summary(key, payload.get(key) or {}, payload)
     db.patch("research_public_study", {"target_round": f"eq.{target}", "study_key": f"neq.{key}"}, {"is_active": False})
