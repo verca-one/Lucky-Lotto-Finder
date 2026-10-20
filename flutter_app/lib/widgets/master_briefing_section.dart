@@ -11,6 +11,7 @@ import '../services/research/recommend_release.dart';
 import '../services/store_map_launcher.dart';
 import '../services/supabase_service.dart';
 import 'agent_store_evidence_widgets.dart';
+import 'briefing_store_widgets.dart';
 import 'purchase_recommend_card.dart' show lottoBall, statusChip, popularityValidationLine;
 import 'store_map_buttons.dart';
 import 'weekly_check_card.dart';
@@ -333,12 +334,13 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
                 Row(children: [
                   Text('${e.key + 1}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: color)),
                   const SizedBox(width: 8),
-                  Expanded(child: Text(r.store.name, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800))),
-                  Text('1등 $first · 2등 $second', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+                  Expanded(child: Text(r.store.name, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800))),
+                  FavoriteStoreStar(code: r.store.code, name: r.store.name),
                 ]),
-                const SizedBox(height: 2),
                 Text(r.store.address, style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600), maxLines: 1, overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
+                StoreWinHistoryPanel(history: h, firstCount: first, secondCount: second, latestRound: b.targetRound - 1),
+                const SizedBox(height: 6),
                 Text('선정: ${e.value.why}', style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: color)),
                 if (se != null) ...[
                   const SizedBox(height: 3),
@@ -368,6 +370,9 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
               ]),
             );
           }),
+        const SizedBox(height: 4),
+        BriefingFavoriteStores(pickCodes: {for (final p in b.stores) p.ranked.store.code}),
+        const SizedBox(height: 8),
         Text('마스터, ${b.agentPipeline ? MasterBriefing.storeDisclaimer : MasterBriefing.legacyDisclaimer}',
             style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700, height: 1.4)),
       ]),
