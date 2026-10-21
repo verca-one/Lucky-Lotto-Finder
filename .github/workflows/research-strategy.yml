@@ -3,6 +3,7 @@ name: Research Strategy
 # AI 전략기획부(방향 제시) → 가설 공장(비서: 검증·유지·폐기·모의). 매일 17:00 KST — 새 가설 20 · 응용 10 · 판매점 10.
 #   research_strategy_ai.py      : 키가 있는 AI(Claude: ANTHROPIC_API_KEY · Gemini: GEMINI_API_KEY)마다 하루 1번 제안
 #   research_hypothesis_factory.py: 제안된 가설 검정 · 통과 가설 새 회차 추적 (유지/폐기)
+#   research_store_hypothesis_apply.py: 검증 통과 판매점 가설을 다음 회차 판매점 예측에 반영 (적중 예측 순위 · 브리핑 ④)
 # AI 는 strategy_directions · strategy_hypotheses(제안)에만 쓴다. 엔진·번호·장부·크롤링과 무관.
 on:
   schedule:
@@ -14,6 +15,7 @@ on:
       - 'research_strategy_ai.py'
       - 'research_hypothesis_factory.py'
       - 'research_store_hypotheses.py'
+      - 'research_store_hypothesis_apply.py'
       - '.github/workflows/research-strategy.yml'
 
 concurrency:
@@ -43,3 +45,10 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: python research_hypothesis_factory.py
+      - name: 판매점 가설 적용 — 적중 예측 순위 (지방장 확률 × 검증 가설 배수)
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python research_store_hypothesis_apply.py

@@ -446,6 +446,9 @@ class RegionEngineInputs {
 
   /// 지방장 점수 (store_code → 점수). 비어 있으면 기존 가중치 그대로.
   final Map<String, AgentStoreScore> agentScores;
+
+  /// 가설 공장 검증 통과 판매점 가설 (store_code → 가설 이름, hs-apply). 있으면 판매점 가설 검증 통과로 본다.
+  final Map<String, List<String>> factoryVerified;
   const RegionEngineInputs({
     this.history = const {},
     this.historyLoaded = false,
@@ -458,7 +461,15 @@ class RegionEngineInputs {
     this.latestRound,
     this.researchState = ResearchAvailability.notApplied,
     this.agentScores = const {},
+    this.factoryVerified = const {},
   });
+
+  RegionEngineInputs withFactoryVerified(Map<String, List<String>> v) => RegionEngineInputs(
+        history: history, historyLoaded: historyLoaded, cycles: cycles, storeHypotheses: storeHypotheses,
+        transitions: transitions, mndHypothesisCount: mndHypothesisCount, mndVerified: mndVerified,
+        lastFirstRoundByRegion: lastFirstRoundByRegion, latestRound: latestRound, researchState: researchState,
+        agentScores: agentScores, factoryVerified: v,
+      );
 }
 
 // ═══════════════════════════════════════════════════════════════════════
@@ -567,7 +578,7 @@ class RegionStoreRanker {
       final sh = inputs.storeHypotheses[s.code] ?? const <RegionHypothesis>[];
       final storePassed = sh.any((h) => h.passed);
       final mndPass = inputs.mndVerified.contains(s.code);
-      final verifiedStoreHyp = storePassed || mndPass;
+      final verifiedStoreHyp = storePassed || mndPass || inputs.factoryVerified.containsKey(s.code);
       final cycleScore =
           (cycle != null && cycle.famousOrEmerging && verifiedStoreHyp) ? 1.0 : 0.0;
       final fire = s.regionId == null

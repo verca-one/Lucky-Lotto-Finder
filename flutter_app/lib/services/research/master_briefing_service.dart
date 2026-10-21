@@ -29,6 +29,7 @@ import 'number_popularity.dart';
 import 'recommend_release.dart';
 import 'purchase_prediction_engine.dart';
 import 'research_scheduler.dart';
+import 'store_hit_ranking.dart';
 
 /// 명당 선정 경로
 enum MasterPickSource { agentFocus, agentStoreTop, legacy }
@@ -41,8 +42,16 @@ class MasterStorePick {
   final AgentFocusRegion? focus;
   final AgentDelivery? delivery;
   final AgentCentralStore? central;
+
+  /// 지방장 1등 추정 확률 · 검증 가설 배수 · 반영 확률 (hs-apply). 자료 없으면 null / 1.
+  final double? pFirst;
+  final double factor;
+  final List<StoreHitHypothesis> hypotheses;
   const MasterStorePick(this.ranked, this.why, this.regionId,
-      {this.source = MasterPickSource.legacy, this.focus, this.delivery, this.central});
+      {this.source = MasterPickSource.legacy, this.focus, this.delivery, this.central,
+      this.pFirst, this.factor = 1, this.hypotheses = const []});
+
+  double? get pAdj => pFirst == null ? null : pFirst! * factor;
 }
 
 /// 지방장 파이프라인 후보 (순수 선택 결과)
@@ -66,6 +75,27 @@ class AgentPickCandidate {
 }
 
 String _f(double? v, [int d = 2]) => v == null ? '-' : v.toStringAsFixed(d);
+
+/// 지방장별 납품 중 '1등 추정 확률(p_first, 없으면 점수) × 검증 가설 배수'가 가장 높은 1곳 (같으면 납품 순위, 순수 함수)
+Map<String, AgentDelivery> pickByHit(List<AgentDelivery> deliveries, double Function(String code) factorOf) {
+  final out = <String, AgentDelivery>{};
+  double v(AgentDelivery x) => (x.pFirst ?? x.score ?? 0) * factorOf(x.storeCode);
+  for (final x in [...deliveries]..sort((a, b) => a.rank.compareTo(b.rank))) {
+    final cur = out[x.agentId];
+    if (cur == null || v(x) > v(cur)) out[x.agentId] = x;
+  }
+  return out;
+}
+
+/// 선정 이유에 검증 가설 반영 내용을 붙인다
+String _withHit(AgentPickCandidate c, StoreHitRanking? hit) {
+  if (hit == null) return c.why;
+  final f = hit.factorOf(c.code);
+  final moved = c.delivery != null && c.delivery!.rank > 1;
+  if (f <= 1 && !moved) return c.why;
+  return '${c.why.replaceFirst('지방장 납품 1위', moved ? '지방장 납품 ${c.delivery!.rank}위' : '지방장 납품 1위')}'
+      '${f > 1 ? ' · 검증 가설 ×${f.toStringAsFixed(2)} 반영' : ''}${moved ? ' → 가설 반영 후 지역 1위' : ''}';
+}
 
 /// 주목 지역 상위 [topRegions]곳의 지방장 1위 납품 → 부족하면 전국 상위 후보로 채움 (최대 [max]곳, 순수 함수)
 List<AgentPickCandidate> selectAgentPicks({
@@ -144,12 +174,15 @@ class MasterBriefing {
   /// 명당별 지방장 근거 (조회 실패 시 null)
   final AgentEvidenceBundle? evidence;
 
+  /// 전국 판매점 적중 예측 순위 (지방장 확률 × 검증 가설 배수, hs-apply). 서버 결과 없으면 null.
+  final StoreHitRanking? hitRanking;
+
   /// 비관리자 요청 → 조회하지 않음 ('관리자 전용')
   final String? deniedMessage;
   const MasterBriefing({
     required this.targetRound, required this.latestRound, this.official, this.officialError, this.engine, this.purchase, this.popularity, this.release, this.ledger = const {},
     this.stores = const [], this.storeEngineRegions = const [], this.storeEngineTrainingEnd, this.storeError,
-    this.agentRef, this.fallbackReason, this.evidence, this.deniedMessage,
+    this.agentRef, this.fallbackReason, this.evidence, this.deniedMessage, this.hitRanking,
   });
 
   bool get agentPipeline => agentRef != null && stores.any((s) => s.source != MasterPickSource.legacy);
@@ -219,6 +252,12 @@ class MasterBriefingService {
     AgentLiveRef? agentRef;
     String? fallbackReason;
     AgentEvidenceBundle? evidence;
+    StoreHitRanking? hit;
+    try {
+      hit = await StoreHitRanking.load(target);
+    } catch (e) {
+      debugPrint('[Master] hit ranking: $e');
+    }
     // Store 엔진 이번 회차 지역 후보 (참고 신호로 함께 표시)
     try {
       final sp = await _db.from('rpa_store_predictions').select('training_end_round,candidate_regions')
@@ -232,7 +271,7 @@ class MasterBriefingService {
     }
     // 1) 지방장 파이프라인
     try {
-      final r = await _pickAgentStores();
+      final r = await _pickAgentStores(hit);
       agentRef = r.$1;
       picks = r.$2;
       fallbackReason = r.$3;
@@ -262,14 +301,14 @@ class MasterBriefingService {
       targetRound: target, latestRound: latest, official: official, officialError: officialError,
       engine: engine, purchase: purchase, popularity: popularity, release: release, ledger: ledger,
       stores: picks, storeEngineRegions: regions, storeEngineTrainingEnd: storeTe, storeError: storeErr,
-      agentRef: agentRef, fallbackReason: fallbackReason, evidence: evidence,
+      agentRef: agentRef, fallbackReason: fallbackReason, evidence: evidence, hitRanking: hit,
     );
     _cachedAt = DateTime.now();
     return _cache!;
   }
 
   /// 지방장 파이프라인 선정. (기준, 명당, 대체 사유). 자료가 없으면 명당 빈 목록 + 사유.
-  Future<(AgentLiveRef?, List<MasterStorePick>, String?)> _pickAgentStores() async {
+  Future<(AgentLiveRef?, List<MasterStorePick>, String?)> _pickAgentStores(StoreHitRanking? hit) async {
     final repo = AgentResearchRepository();
     final live = await repo.latestLive();
     final ref = live.data;
@@ -279,11 +318,10 @@ class MasterBriefingService {
     final sortedFocus = [...central.focusRegions]
       ..sort((a, b) => (a.rank ?? 1 << 30).compareTo(b.rank ?? 1 << 30));
     final topIds = sortedFocus.take(5).map((f) => f.regionId).where((s) => s.isNotEmpty).toList();
-    final d = await repo.loadDeliveriesForAgents(topIds, target: ref.target, model: ref.model, rank: 1);
-    final rank1 = <String, AgentDelivery>{};
-    for (final x in d.data) {
-      rank1.putIfAbsent(x.agentId, () => x);
-    }
+    // 지방장 납품 TOP5 중 '1등 추정 확률 × 검증 가설 배수'가 가장 높은 곳 (가설 결과 없으면 납품 1위)
+    final d = await repo.loadDeliveriesForAgents(topIds, target: ref.target, model: ref.model);
+    final hitOk = hit != null && hit.targetRound == ref.target;
+    final rank1 = pickByHit(d.data, hitOk ? hit.factorOf : (_) => 1.0);
     final cands = selectAgentPicks(focus: central.focusRegions, rank1ByAgent: rank1, storeTop: central.storeTop);
     if (cands.isEmpty) return (ref, <MasterStorePick>[], '주목 지역 납품·전국 상위 후보 없음');
 
@@ -308,14 +346,23 @@ class MasterBriefingService {
     }
     if (stores.isEmpty) return (ref, <MasterStorePick>[], '선정 판매점 정보(lottery_stores) 없음');
     final regionIds = stores.map((s) => s.regionId).whereType<String>().toSet();
-    final inputs = await RegionResearchRepository().loadEngineInputs(stores, regionIds);
+    var inputs = await RegionResearchRepository().loadEngineInputs(stores, regionIds);
+    if (hitOk) {
+      inputs = inputs.withFactoryVerified({
+        for (final c in codes)
+          if (hit.factorOf(c) > 1) c: [for (final h in hit.hypothesesOf(c)) h.label],
+      });
+    }
     final ranked = {for (final r in RegionStoreRanker.rank(stores: stores, inputs: inputs)) r.store.code: r};
     final picks = <MasterStorePick>[
       for (final c in cands)
         if (ranked[c.code] != null)
-          MasterStorePick(ranked[c.code]!, c.why, c.regionId ?? ranked[c.code]!.store.regionId,
-              source: c.source, focus: c.focus, delivery: c.delivery, central: c.central),
-    ];
+          MasterStorePick(ranked[c.code]!, _withHit(c, hitOk ? hit : null), c.regionId ?? ranked[c.code]!.store.regionId,
+              source: c.source, focus: c.focus, delivery: c.delivery, central: c.central,
+              pFirst: c.delivery?.pFirst ?? c.central?.pFirst,
+              factor: hitOk ? hit.factorOf(c.code) : 1.0,
+              hypotheses: hitOk ? hit.hypothesesOf(c.code) : const []),
+    ]..sort((a, b) => (b.pAdj ?? -1).compareTo(a.pAdj ?? -1)); // 적중 예측 높은 순
     return (ref, picks, picks.isEmpty ? '선정 판매점 정보 없음' : null);
   }
 

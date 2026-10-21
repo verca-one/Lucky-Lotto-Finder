@@ -339,6 +339,8 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
                 ]),
                 Text(r.store.address, style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600), maxLines: 1, overflow: TextOverflow.ellipsis),
                 const SizedBox(height: 6),
+                StoreHitLine(pFirst: e.value.pFirst, factor: e.value.factor, hypotheses: e.value.hypotheses),
+                const SizedBox(height: 6),
                 StoreWinHistoryPanel(history: h, firstCount: first, secondCount: second, latestRound: b.targetRound - 1),
                 const SizedBox(height: 6),
                 Text('선정: ${e.value.why}', style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: color)),
@@ -371,6 +373,9 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
             );
           }),
         const SizedBox(height: 4),
+        StoreHitRankingCard(ranking: b.hitRanking, targetRound: b.targetRound,
+            pickCodes: {for (final p in b.stores) p.ranked.store.code}),
+        const SizedBox(height: 8),
         BriefingFavoriteStores(pickCodes: {for (final p in b.stores) p.ranked.store.code}),
         const SizedBox(height: 8),
         Text('마스터, ${b.agentPipeline ? MasterBriefing.storeDisclaimer : MasterBriefing.legacyDisclaimer}',

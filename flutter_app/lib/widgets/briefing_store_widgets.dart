@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../models/lottery_store.dart';
 import '../screens/favorites_screen.dart';
 import '../services/favorites_notifier.dart';
+import '../services/research/store_hit_ranking.dart';
 import '../services/route/region_research_repository.dart' show StoreWinHistory;
 import '../services/supabase_service.dart';
 
@@ -316,5 +317,199 @@ class _BriefingFavoriteStoresState extends State<BriefingFavoriteStores> {
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
         decoration: BoxDecoration(color: n > 0 ? c.withValues(alpha: 0.12) : Colors.grey.shade100, borderRadius: BorderRadius.circular(6)),
         child: Text('$label $n', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: n > 0 ? c : Colors.grey)),
+      );
+}
+
+String pct(double p) => '${(p * 100).toStringAsFixed(p >= 0.01 ? 2 : 3)}%';
+
+/// 추천 명당 한 곳의 적중 예측 줄 — 지방장 1등 추정 확률 × 검증 가설 배수
+class StoreHitLine extends StatelessWidget {
+  final double? pFirst;
+  final double factor;
+  final List<StoreHitHypothesis> hypotheses;
+  const StoreHitLine({super.key, required this.pFirst, this.factor = 1, this.hypotheses = const []});
+
+  @override
+  Widget build(BuildContext context) {
+    if (pFirst == null) return const SizedBox.shrink();
+    final adj = pFirst! * factor;
+    return Container(
+      key: const ValueKey('store_hit_line'),
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(color: const Color(0xFFE8F5E9), borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: const Color(0xFF2E7D32).withValues(alpha: 0.3))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.trending_up_rounded, size: 16, color: Color(0xFF2E7D32)),
+          const SizedBox(width: 4),
+          const Text('다음 회차 1등 예측', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: Color(0xFF2E7D32))),
+          const Spacer(),
+          Text(pct(adj), style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900, color: Color(0xFF1B5E20))),
+        ]),
+        Text(
+            factor > 1
+                ? '지방장 추정 ${pct(pFirst!)} × 검증 가설 ×${factor.toStringAsFixed(2)}'
+                : '지방장 추정 ${pct(pFirst!)} · 맞는 검증 가설 없음',
+            style: TextStyle(fontSize: 10.5, color: Colors.green.shade900)),
+        for (final h in hypotheses.take(2))
+          Text('· ${h.label} (${h.outcomeLabel} 실제÷기대 ×${h.factor.toStringAsFixed(2)})',
+              style: TextStyle(fontSize: 10, color: Colors.green.shade800)),
+      ]),
+    );
+  }
+}
+
+/// 전국 판매점 적중 예측 높은 순 (hs-apply) — 지방장 1등 추정 확률 × 검증 통과 판매점 가설 배수
+class StoreHitRankingCard extends StatefulWidget {
+  final StoreHitRanking? ranking;
+  final int targetRound;
+
+  /// 이번 주 추천 명당 코드 (목록에 표시)
+  final Set<String> pickCodes;
+  const StoreHitRankingCard({super.key, required this.ranking, required this.targetRound, this.pickCodes = const {}});
+  @override
+  State<StoreHitRankingCard> createState() => _StoreHitRankingCardState();
+}
+
+class _StoreHitRankingCardState extends State<StoreHitRankingCard> {
+  bool _all = false;
+  bool _online = false;
+  static const _preview = 20;
+  static const _green = Color(0xFF1B5E20);
+
+  @override
+  Widget build(BuildContext context) {
+    final r = widget.ranking;
+    final box = BoxDecoration(
+      color: const Color(0xFFF1F8E9),
+      borderRadius: BorderRadius.circular(12),
+      border: Border.all(color: const Color(0xFF558B2F).withValues(alpha: 0.4)),
+    );
+    if (r == null || r.targetRound != widget.targetRound || r.ranking.isEmpty) {
+      return Container(
+        key: const ValueKey('store_hit_ranking_empty'),
+        width: double.infinity, padding: const EdgeInsets.all(12), decoration: box,
+        child: Text('${widget.targetRound}회 적중 예측 순위는 서버 계산 후 표시됩니다 (가설 공장 실행 뒤 · 매일 17시).',
+            style: TextStyle(fontSize: 11.5, color: Colors.grey.shade700)),
+      );
+    }
+    final list = r.ranking.where((e) => _online || !e.isOnline).toList();
+    final shown = _all ? list : list.take(_preview).toList();
+    final moved = r.ranking.where((e) => e.rank != e.baseRank).length;
+    return Container(
+      key: const ValueKey('store_hit_ranking'),
+      width: double.infinity, padding: const EdgeInsets.all(12), decoration: box,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          const Icon(Icons.leaderboard_rounded, color: _green, size: 20),
+          const SizedBox(width: 4),
+          Expanded(child: Text('적중 예측 높은 순 — ${r.targetRound}회 전국',
+              style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: _green))),
+        ]),
+        const SizedBox(height: 2),
+        Text('지방장 1등 추정 확률 × 검증 통과 판매점 가설 배수(여러 개면 가장 큰 것) · ${r.storesScored}곳 계산 · '
+            '가설 반영으로 순위가 바뀐 곳 $moved곳 (상위 ${r.ranking.length}곳 중)',
+            style: TextStyle(fontSize: 10.5, color: Colors.grey.shade800)),
+        const SizedBox(height: 6),
+        _hypBox(r),
+        const SizedBox(height: 8),
+        Row(children: [
+          Text('순위', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: Colors.grey.shade700)),
+          const Spacer(),
+          FilterChip(
+            key: const ValueKey('hit_online_filter'),
+            label: const Text('인터넷 판매 포함', style: TextStyle(fontSize: 10.5)),
+            selected: _online, visualDensity: VisualDensity.compact,
+            onSelected: (v) => setState(() => _online = v),
+          ),
+        ]),
+        for (final e in shown) _row(e),
+        if (list.length > _preview)
+          Center(
+            child: TextButton(
+              onPressed: () => setState(() => _all = !_all),
+              child: Text(_all ? '접기' : '${list.length - _preview}곳 더 보기', style: const TextStyle(fontSize: 12)),
+            ),
+          ),
+        Text('확률은 지방장 모델 추정값입니다. 판매점별 판매량 자료가 없어, 많이 파는 가게일수록 높게 나옵니다. '
+            '이 가게에서 산 복권 한 장의 1등 확률(1/8,145,060)은 어디서 사도 같습니다.',
+            style: TextStyle(fontSize: 10, height: 1.4, color: Colors.grey.shade700)),
+      ]),
+    );
+  }
+
+  Widget _hypBox(StoreHitRanking r) {
+    if (r.hypotheses.isEmpty) {
+      return Text('반영된 검증 가설 없음 — 지방장 확률 그대로 순위', style: TextStyle(fontSize: 11, color: Colors.grey.shade700));
+    }
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(8),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('반영한 검증 가설 ${r.hypotheses.length}개 (가설 공장 · 확인 구간 1001회~ 실제÷기대)',
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+        for (final h in r.hypotheses)
+          Padding(
+            padding: const EdgeInsets.only(top: 2),
+            child: Text('×${h.factor.toStringAsFixed(2)}  ${h.label} → ${h.outcomeLabel} · 지금 해당 ${h.storesNow}곳'
+                '${h.simHyp != null && h.simBase != null ? ' · 과거 모의 적중 ${h.simHyp} vs ${h.simBase}' : ''}',
+                style: TextStyle(fontSize: 10.5, color: Colors.grey.shade800)),
+          ),
+        const SizedBox(height: 3),
+        Text(
+            r.simRaisedCount > 0
+                ? '과거 모의에서 적중이 오른 가설 ${r.simRaisedCount}개'
+                : '과거 모의(시·군·구 TOP5)에서는 이 가설들로 1등 적중이 늘지 않았습니다 — 유명 명당은 이미 이력 점수로 상위라 순위 변화가 적습니다.',
+            style: TextStyle(fontSize: 10, color: r.simRaisedCount > 0 ? Colors.green.shade800 : Colors.brown.shade600)),
+      ]),
+    );
+  }
+
+  Widget _row(StoreHitEntry e) {
+    final pick = widget.pickCodes.contains(e.code);
+    final up = e.baseRank - e.rank;
+    return Container(
+      margin: const EdgeInsets.only(top: 6),
+      padding: const EdgeInsets.fromLTRB(8, 6, 0, 6),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: pick ? const Color(0xFFE65100) : Colors.grey.shade300, width: pick ? 1.4 : 1),
+      ),
+      child: Row(children: [
+        SizedBox(
+          width: 28,
+          child: Text('${e.rank}', textAlign: TextAlign.center,
+              style: TextStyle(fontSize: e.rank <= 3 ? 16 : 13.5, fontWeight: FontWeight.w900,
+                  color: e.rank <= 3 ? _gold : Colors.grey.shade800)),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Wrap(spacing: 4, runSpacing: 2, crossAxisAlignment: WrapCrossAlignment.center, children: [
+              Text(e.name, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800)),
+              if (pick) _tag('이번 주 추천', const Color(0xFFE65100)),
+              if (e.boosted) _tag('가설 ×${e.factor.toStringAsFixed(2)}', const Color(0xFF2E7D32)),
+              if (up != 0) _tag(up > 0 ? '▲$up' : '▼${-up}', up > 0 ? const Color(0xFF1565C0) : Colors.grey),
+            ]),
+            Text('${e.region.isEmpty ? e.address : e.region} · 1등 ${e.first} · 2등 ${e.second}',
+                maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600)),
+          ]),
+        ),
+        Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
+          Text(pct(e.pAdj), style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: _green)),
+          if (e.boosted) Text('기본 ${pct(e.pFirst)}', style: TextStyle(fontSize: 9.5, color: Colors.grey.shade600)),
+        ]),
+        FavoriteStoreStar(code: e.code, name: e.name),
+      ]),
+    );
+  }
+
+  Widget _tag(String t, Color c) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
+        decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(6)),
+        child: Text(t, style: const TextStyle(fontSize: 9.5, color: Colors.white, fontWeight: FontWeight.w800)),
       );
 }
