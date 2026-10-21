@@ -293,6 +293,12 @@ class _RoundDebriefViewState extends State<RoundDebriefView> {
           for (final g in r.groups.where((g) => _briefed.contains(g.key))) _group(g, r),
           const SizedBox(height: 4),
           _meanChart(r),
+          for (final g in r.groups.where((g) => g.key == 'hypothesis' && g.sets.isNotEmpty)) ...[
+            const SizedBox(height: 8),
+            _sectionHead('가설 트랙 채점 (⑤ · 가설 기반)', '${g.sets.where((s) => s.matches >= 3).length}세트 5등 이상',
+                const Color(0xFF6A1B9A)),
+            _group(g, r),
+          ],
         ],
       ),
     );
@@ -409,8 +415,9 @@ class _RoundDebriefViewState extends State<RoundDebriefView> {
     'official': '브리핑 ①',
     'popularity': '브리핑 ②',
     'purchase': '브리핑 ③',
-    'number_engine': '브리핑 ④ 연구용',
-    'random': '브리핑 ⑤ 비교 기준',
+    'number_engine': '연구소 기록',
+    'random': '연구소 기록 · 비교 기준',
+    'hypothesis': '브리핑 ⑤ 가설',
   };
 
   Widget _meanChart(RoundDebrief r) {
@@ -550,6 +557,21 @@ class _RoundDebriefViewState extends State<RoundDebriefView> {
             '(모델 추정 기대 1등 ${(r.stores['prev_expected_first'] as num? ?? 0).toStringAsFixed(2)}곳)',
             weight: FontWeight.w700,
           ),
+          if (r.hypothesisStoresPrev.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            _small('⑤ 가설 명당 — 1등 ${r.stores['hypothesis_hits_first'] ?? 0}곳 · 2등 ${r.stores['hypothesis_hits_second'] ?? 0}곳',
+                weight: FontWeight.w800, color: const Color(0xFF6A1B9A)),
+            for (final h in r.hypothesisStoresPrev)
+              Padding(
+                padding: const EdgeInsets.only(top: 4),
+                child: Row(children: [
+                  tierBadge((h['tier'] as num?)?.toInt() ?? 0),
+                  const SizedBox(width: 8),
+                  Expanded(child: _small('${h['name'] ?? h['code']} · ${h['region'] ?? ''}${h['why'] == null ? '' : ' — ${h['why']}'}')),
+                ]),
+              ),
+            const SizedBox(height: 6),
+          ],
           if (top != null && uni != null)
             _small(
               '지방장 238명 TOP5 안 1등 ${top[2]}곳 · 지역 내 무작위 기대 ${uni[2].toStringAsFixed(2)}곳 · 과거 빈도만 써도 ${ag['history_top5']}곳 · '

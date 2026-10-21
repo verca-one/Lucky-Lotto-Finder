@@ -43,6 +43,7 @@ GROUPS = [  # (key, algorithm, 고정 version 또는 None=최신, 이름, 역할
     ("purchase", "purchase_prediction", None, "구매예측 번호", "브리핑 ③"),
     ("number_engine", "number_engine", None, "Number 엔진 기본 조합", "연구소 기록 (브리핑 아님)"),
     ("random", "random_control", None, "무작위 대조군", "연구소 기록 (브리핑 아님)"),
+    ("hypothesis", "hypothesis_track", "ht-1.0", "가설 트랙 (제미나이 가설)", "브리핑 ⑤ 가설 기반"),
 ]
 BRIEFED = ("official", "popularity", "purchase")   # 브리핑이 실제로 추천한 번호 영역
 TIER = {"first": 1, "second": 2}
@@ -283,7 +284,16 @@ def stores_block(d):
               for c, t in tier.items() if t == 1]
     sm = (d["agent_round"] or {}).get("summary") or {}
     exp_pick = sum(p.get("p_first") or 0 for p in prev)
+    tr = d.get("track") or {}
+    hyp_prev = []
+    for o in tr.get("stores") or []:
+        u = (tr.get("used") or [])
+        why = [u[k]["statement"] for k in o.get("hyps", []) if 0 <= k < len(u)]
+        hyp_prev.append({"code": o["store_code"], "name": o.get("name"), "region": o.get("region"),
+                         "p_first": o.get("p_adj"), "why": why[0] if why else None, "tier": tier.get(o["store_code"], 0)})
     return {"briefing_prev": prev, "briefing_next": nxt, "dropped": dropped,
+            "hypothesis_prev": hyp_prev, "hypothesis_hits_first": sum(x["tier"] == 1 for x in hyp_prev),
+            "hypothesis_hits_second": sum(x["tier"] == 2 for x in hyp_prev),
             "prev_hits_first": sum(p["tier"] == 1 for p in prev), "prev_hits_second": sum(p["tier"] == 2 for p in prev),
             "prev_expected_first": round(exp_pick, 3),
             "first_stores": firsts, "first_count": len(firsts), "second_count": sum(1 for t in tier.values() if t == 2),
@@ -469,6 +479,9 @@ def run(db, D=None):
     if D is None:
         D = db.get("lotto_winning_numbers", {"select": "round", "order": "round.desc", "limit": "1"})[0]["round"]
     d = load(db, D)
+    tr = db.get("research_results", {"select": "payload", "research_type": "eq.hypothesis_track", "model_version": "eq.ht-1.0",
+                                      "target_round": f"eq.{d['D']}", "limit": "1"})
+    d["track"] = tr[0]["payload"] if tr else None
     nums = numbers_block(d)
     stores = stores_block(d)
     agents = agents_block(d)

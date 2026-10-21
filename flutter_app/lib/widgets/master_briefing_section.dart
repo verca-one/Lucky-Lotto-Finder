@@ -12,6 +12,7 @@ import '../services/store_map_launcher.dart';
 import '../services/supabase_service.dart';
 import 'agent_store_evidence_widgets.dart';
 import 'briefing_store_widgets.dart';
+import 'hypothesis_track_card.dart';
 import 'purchase_recommend_card.dart' show lottoBall, statusChip, popularityValidationLine;
 import 'store_map_buttons.dart';
 import 'weekly_check_card.dart';
@@ -116,6 +117,8 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
           ),
           const SizedBox(height: 12),
           _storeCard(b, '4'),
+          const SizedBox(height: 12),
+          HypothesisTrackCard(key: ValueKey('track_${b.targetRound}'), target: b.targetRound, released: open),
         ]);
       },
     );

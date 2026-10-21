@@ -4,6 +4,7 @@ name: Research Strategy
 #   research_strategy_ai.py      : 키가 있는 AI(Claude: ANTHROPIC_API_KEY · Gemini: GEMINI_API_KEY)마다 하루 1번 제안
 #   research_hypothesis_factory.py: 제안된 가설 검정 · 통과 가설 새 회차 추적 (유지/폐기)
 #   research_store_hypothesis_apply.py: 검증 통과 판매점 가설을 다음 회차 판매점 예측에 반영 (적중 예측 순위 · 브리핑 ④)
+#   research_hypothesis_track.py : 가설 트랙 — 제미나이 가설을 최근 200회 기준으로 바로 써서 번호 5세트·명당 5곳 (브리핑 ⑤, 공개 후·마감 전)
 # AI 는 strategy_directions · strategy_hypotheses(제안)에만 쓴다. 엔진·번호·장부·크롤링과 무관.
 on:
   schedule:
@@ -16,6 +17,7 @@ on:
       - 'research_hypothesis_factory.py'
       - 'research_store_hypotheses.py'
       - 'research_store_hypothesis_apply.py'
+      - 'research_hypothesis_track.py'
       - '.github/workflows/research-strategy.yml'
 
 concurrency:
@@ -52,3 +54,10 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: python research_store_hypothesis_apply.py
+      - name: 가설 트랙 — 제미나이 가설 바로 실전 (번호 5세트 · 명당 5곳, 공개 후 · 마감 전 사전 등록)
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python research_hypothesis_track.py

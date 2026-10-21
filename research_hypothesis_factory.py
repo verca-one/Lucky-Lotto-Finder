@@ -32,6 +32,7 @@
 
 import argparse
 import json
+import re
 import zlib
 import os
 import sys
@@ -111,8 +112,17 @@ STORE_SEED = {
 }
 
 
+def josa(word, pair=("이", "가")):
+    """받침에 맞는 조사 ('쏠림이' · '개수가'). 끝 괄호 설명은 무시"""
+    w = re.sub(r"\s*\([^)]*\)\s*$", "", word).strip()
+    ch = w[-1] if w else ""
+    if "가" <= ch <= "힣":
+        return pair[0] if (ord(ch) - 0xAC00) % 28 else pair[1]
+    return pair[1]
+
+
 def statement(c, o, e):
-    return f"{CONDITIONS[c]}일 때 {OUTCOMES[o]}가 {EXPECT[e]}"
+    return f"{CONDITIONS[c]}일 때 {OUTCOMES[o]}{josa(OUTCOMES[o])} {EXPECT[e]}"
 
 
 def code_of(c, o, e):
@@ -223,7 +233,8 @@ def spec_statement(spec):
     if is_store(spec):
         more = "더 많이 나온다" if spec["expect"] == "higher" else "덜 나온다"
         return f"{' · '.join(cv[c] for c in conds_of(spec))} 판매점에서 {ov[spec['outcome']]}이 지방장 기대보다 {more}"
-    return f"{'이면서 '.join(cv[c] for c in conds_of(spec))}일 때 {ov[spec['outcome']]}가 {EXPECT[spec['expect']]}"
+    o = ov[spec['outcome']]
+    return f"{'이면서 '.join(cv[c] for c in conds_of(spec))}일 때 {o}{josa(o)} {EXPECT[spec['expect']]}"
 
 
 def spec_code(spec):
@@ -549,7 +560,7 @@ class SafeDb:
         return self._db.insert(table, row)
 
 
-SELECT = "id,code,spec,status,discovery,confirm,forward,verdict,created_round,last_round,direction_id"
+SELECT = "id,code,statement,spec,status,discovery,confirm,forward,verdict,created_round,last_round,direction_id"
 
 
 def _existing(db, params, dry):
@@ -627,6 +638,20 @@ def run(db, dry=False):
         hyps += [{"id": f"seed-{i}", "code": spec_code(sp), "direction_id": None, "spec": sp,
                   "status": "proposed", "forward": None, "verdict": None, "created_round": latest, "last_round": None}
                  for i, sp in enumerate(seeds) if spec_code(sp) not in have]
+    # 문장 정리 (조사 등) — 문장은 spec 으로 만든 것이라 spec 기준으로 다시 맞춘다
+    fixed = 0
+    for h in hyps:
+        try:
+            st = spec_statement(h["spec"]) if h.get("spec") and valid(h["spec"]) else None
+        except Exception:
+            st = None
+        if st and h.get("statement") and st != h["statement"] and not str(h["id"]).startswith("seed-"):
+            fixed += 1
+            if not dry:
+                db.patch("strategy_hypotheses", {"id": f"eq.{h['id']}"}, {"statement": st})
+            h["statement"] = st
+    if fixed:
+        print(f"가설 문장 정리 {fixed}건")
     if any(is_store(h.get("spec")) for h in hyps):
         STORE["sd"] = H.StoreData(db, latest)
         print(f"판매점 행렬: 판매점 {len(STORE['sd'].codes)}곳 · 연금 이력 매칭 {STORE['sd'].pension_matched}곳")

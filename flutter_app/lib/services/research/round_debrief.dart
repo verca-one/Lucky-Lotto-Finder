@@ -189,6 +189,7 @@ class RoundDebrief {
   List<DebriefStore> get storesNext =>
       _maps(stores['briefing_next']).map(DebriefStore.fromJson).toList();
   List<Map<String, dynamic>> get storesDropped => _maps(stores['dropped']);
+  List<Map<String, dynamic>> get hypothesisStoresPrev => _maps(stores['hypothesis_prev']);
   List<Map<String, dynamic>> get firstStores => _maps(stores['first_stores']);
   List<String> get analyst =>
       ((audit['analyst'] as List?) ?? const []).map((e) => '$e').toList();
