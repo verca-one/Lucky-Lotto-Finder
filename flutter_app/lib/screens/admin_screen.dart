@@ -7,6 +7,7 @@ import '../services/rpa_unified_prediction.dart' show kRpaActiveModelVersion;
 import 'admin_lotto_round_screen.dart';
 import 'admin_lotto_store_screen.dart';
 import 'admin_pension_round_screen.dart';
+import 'admin_pension_numbers_input_screen.dart';
 import 'admin_pension_store_screen.dart';
 import 'admin_coupon_screen.dart';
 import 'admin_report_screen.dart';
@@ -103,6 +104,15 @@ class _AdminScreenState extends State<AdminScreen> {
                       color: Colors.purple,
                       onTap: () => Navigator.push(context,
                           MaterialPageRoute(builder: (_) => const AdminLottoRoundScreen())),
+                    ),
+                    const SizedBox(height: 8),
+                    _buildAdminMenuItem(
+                      icon: Icons.card_giftcard,
+                      title: '연금복권 당첨번호 입력',
+                      subtitle: '회차별 1등 조·6자리·보너스 입력 (과거 회차까지) → 연금 엔진·가설 트랙',
+                      color: const Color(0xFFEF6C00),
+                      onTap: () => Navigator.push(context,
+                          MaterialPageRoute(builder: (_) => const AdminPensionNumbersInputScreen())),
                     ),
                     const SizedBox(height: 8),
                     _buildAdminMenuItem(
