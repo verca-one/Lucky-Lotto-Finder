@@ -14,8 +14,6 @@ import 'admin_report_screen.dart';
 import 'admin_crawl_status_screen.dart';
 import 'admin_review_screen.dart';
 import 'admin_badge_status_screen.dart';
-import 'admin_recommend_stores_screen.dart';
-import 'admin_pattern_analysis_screen.dart';
 import 'admin_rpa_screen.dart';
 import 'admin_region_research_screen.dart';
 import '../widgets/master_briefing_section.dart';
@@ -69,8 +67,8 @@ class _AdminScreenState extends State<AdminScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ── 랜덤확률분석엔진 (최상단) ──────────────────────────
-            _RpaEngineCard(onTap: () {
+            // ── 엔진 브리핑 직원 (최상단) ──────────────────────────
+            _BriefingCard(onDetail: () {
               Navigator.push(
                 context,
                 MaterialPageRoute(builder: (_) => const AdminRpaScreen()),
@@ -79,14 +77,6 @@ class _AdminScreenState extends State<AdminScreen> {
             const SizedBox(height: 8),
             // ── DB 사용량 (Worker 측정값, 경고 시 배너) ─────────────
             const DbUsageCard(),
-            const SizedBox(height: 8),
-            // ── 엔진 브리핑 직원 ───────────────────────────────────
-            _BriefingCard(onDetail: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const AdminRpaScreen()),
-              );
-            }),
             const SizedBox(height: 12),
 
             // ── 핵심 메뉴 ─────────────────────────────────────────
@@ -118,30 +108,12 @@ class _AdminScreenState extends State<AdminScreen> {
                     ),
                     const SizedBox(height: 8),
                     _buildAdminMenuItem(
-                      icon: Icons.analytics_rounded,
-                      title: '패턴 분석',
-                      subtitle: '엔진 번호추천 · 당첨흐름 · 자리별 패턴',
-                      color: Colors.indigo,
-                      onTap: () => Navigator.push(context,
-                          MaterialPageRoute(builder: (_) => const AdminPatternAnalysisScreen())),
-                    ),
-                    const SizedBox(height: 8),
-                    _buildAdminMenuItem(
                       icon: Icons.biotech_rounded,
                       title: '연구소',
-                      subtitle: '명당 가설 연구소 · 전국 지방장 연구소 · 엔진 복기 연구소 · 지방장 실전형 재현 기록 · 예측 연구 현황',
+                      subtitle: 'AI 전략기획부 · 명당 가설 · 지방장 · 엔진 복기 · 예측 연구 현황 · 패턴 분석 · 추천 판매점',
                       color: const Color(0xFF1A237E),
                       onTap: () => Navigator.push(context,
                           MaterialPageRoute(builder: (_) => const AdminResearchLabScreen())),
-                    ),
-                    const SizedBox(height: 8),
-                    _buildAdminMenuItem(
-                      icon: Icons.recommend,
-                      title: '추천 판매점',
-                      subtitle: '당첨주기 기반 이번 회차 유력 판매점',
-                      color: Colors.deepOrange,
-                      onTap: () => Navigator.push(context,
-                          MaterialPageRoute(builder: (_) => const AdminRecommendStoresScreen())),
                     ),
                     const SizedBox(height: 8),
                     _buildAdminMenuItem(
@@ -249,6 +221,14 @@ class _AdminScreenState extends State<AdminScreen> {
                 ),
               ),
             ),
+            const SizedBox(height: 12),
+            // ── 랜덤확률분석엔진 (관리평가 아래) ──────────────────────
+            _RpaEngineCard(onTap: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const AdminRpaScreen()),
+              );
+            }),
             const SizedBox(height: 16),
           ],
         ),

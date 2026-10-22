@@ -1,9 +1,11 @@
-// 관리자 '연구소' — 연구 화면 모음 (AI 전략기획부 · 명당 가설 · 전국 지방장 · 엔진 복기 · 실전형 재현 기록 · 예측 연구 현황)
+// 관리자 '연구소' — 연구 화면 모음 (AI 전략기획부 · 명당 가설 · 전국 지방장 · 엔진 복기 · 실전형 재현 기록 · 예측 연구 현황 · 패턴 분석 · 추천 판매점)
 import 'package:flutter/material.dart';
 
 import 'admin_agent_replay_screen.dart';
 import 'admin_agent_research_screen.dart';
 import 'admin_engine_review_screen.dart';
+import 'admin_pattern_analysis_screen.dart';
+import 'admin_recommend_stores_screen.dart';
 import 'admin_region_research_screen.dart';
 import 'admin_research_screen.dart';
 import 'admin_strategy_screen.dart';
@@ -31,6 +33,10 @@ final List<ResearchLabEntry> kResearchLabEntries = [
       const Color(0xFF37474F), (_) => const AdminAgentReplayScreen()),
   ResearchLabEntry(Icons.science_rounded, '예측 연구 현황', '추첨예측 · 구매예측 · 판매점 분석 · 예측력 검증 · 서버 연구 실행 상태',
       const Color(0xFF283593), (_) => const AdminResearchScreen()),
+  ResearchLabEntry(Icons.analytics_rounded, '패턴 분석', '엔진 번호추천 · 당첨흐름 · 자리별 패턴',
+      Colors.indigo, (_) => const AdminPatternAnalysisScreen()),
+  ResearchLabEntry(Icons.recommend, '추천 판매점', '당첨주기 기반 이번 회차 유력 판매점',
+      Colors.deepOrange, (_) => const AdminRecommendStoresScreen()),
 ];
 
 class AdminResearchLabScreen extends StatelessWidget {
