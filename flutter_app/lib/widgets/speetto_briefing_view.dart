@@ -33,10 +33,10 @@ class SpeettoBriefingView extends StatelessWidget {
       _area('2', '게임별 판매 현황 (출고율 · 남은 1등)', admin
           ? '데이터 미확보 — 출고율이 높은데 1등이 많이 남은 게임일수록 한 장의 기대가 올라갑니다. 서버 수집 승인 후 표시합니다.'
           : '게임별 남은 1등 정보를 준비하고 있습니다.'),
-      const SizedBox(height: 12),
-      _area('3', '스피또 가설 트랙 — 제미나이', admin
-          ? '위 두 데이터가 생기면 제미나이 스피또 가설로 게임·명당을 고릅니다.'
-          : '준비 중입니다.'),
+      if (admin) ...[
+        const SizedBox(height: 12),
+        _area('3', '스피또 가설 트랙 — 제미나이', '위 두 데이터가 생기면 제미나이 스피또 가설로 게임·명당을 고릅니다.'),
+      ],
       if (admin) ...[
         const SizedBox(height: 12),
         Text('기존 스피또 크롤러·테이블은 건드리지 않습니다. 새 수집은 서버(GitHub Actions)에서 별도 파일로만 하며, 승인 후 진행합니다.',

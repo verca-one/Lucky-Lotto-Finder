@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../screens/admin_pension_numbers_input_screen.dart';
 import '../services/research/pension_briefing.dart';
+import 'winning_number_boxes.dart';
 
 const kPensionColor = Color(0xFFEF6C00);
 
@@ -30,10 +31,13 @@ Widget pensionTicket(PensionTicket t, {Color color = kPensionColor}) => Containe
     );
 
 class PensionBriefingView extends StatefulWidget {
-  /// true = 관리자(연구 저장본 · 입력 메뉴 바로가기) / false = 일반 모드(공개 요약)
+  /// true = 관리자(연구 저장본 · 입력 메뉴 바로가기 · 명당 · 가설 트랙) / false = 일반 모드(당첨번호 + 연금 번호 엔진만)
   final bool admin;
   final Future<PensionBriefing?> Function()? loader;
-  const PensionBriefingView({super.key, this.admin = true, this.loader});
+
+  /// 일반 모드 상단 당첨번호 (테스트용)
+  final Future<PensionLatestWinning?> Function()? winningLoader;
+  const PensionBriefingView({super.key, this.admin = true, this.loader, this.winningLoader});
   @override
   State<PensionBriefingView> createState() => _PensionBriefingViewState();
 }
@@ -61,6 +65,7 @@ class _PensionBriefingViewState extends State<PensionBriefingView> {
         builder: (context, snap) {
           if (snap.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
           final b = snap.data;
+          if (!widget.admin) return _public(b, snap.hasError);
           return ListView(padding: const EdgeInsets.all(16), children: [
             _hero(b),
             const SizedBox(height: 12),
@@ -86,6 +91,23 @@ class _PensionBriefingViewState extends State<PensionBriefingView> {
       ),
     );
   }
+
+  /// 일반 모드: 최신 당첨번호(상단) → 연금 번호 엔진
+  Widget _public(PensionBriefing? b, bool error) => ListView(padding: EdgeInsets.zero, children: [
+        PensionWinningHeader(loader: widget.winningLoader),
+        Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            if (b == null || error)
+              _note('연금복권 추천번호를 준비하고 있습니다.')
+            else
+              _engine(b),
+            const SizedBox(height: 12),
+            Text(b?.disclaimer.isNotEmpty == true ? b!.disclaimer : '추천번호는 과거 당첨번호 기록에 기반한 참고용입니다. 연금복권 한 장의 1등 확률(1/5,000,000)은 어떤 번호든 같습니다.',
+                style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700, height: 1.4)),
+          ]),
+        ),
+      ]);
 
   Widget _hero(PensionBriefing? b) => Container(
         width: double.infinity,
@@ -146,7 +168,7 @@ class _PensionBriefingViewState extends State<PensionBriefingView> {
                   _small('최근 1등 조 빈도: ${b.groupCounts.entries.map((e) => '${e.key}조 ${e.value}').join(' · ')}'),
               ])
             : Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                _note(b.engineNote ?? '당첨번호 데이터를 모으는 중입니다.'),
+                _note(widget.admin ? (b.engineNote ?? '당첨번호 데이터를 모으는 중입니다.') : '연금 번호 엔진을 준비하고 있습니다 (당첨번호 기록을 모으는 중).'),
                 if (widget.admin) ...[
                   const SizedBox(height: 8),
                   OutlinedButton.icon(

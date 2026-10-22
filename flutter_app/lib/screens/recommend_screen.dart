@@ -12,6 +12,7 @@ import 'purchase_public_content.dart';
 import '../models/lotto_winning_number.dart';
 import '../widgets/pension_briefing_view.dart';
 import '../widgets/speetto_briefing_view.dart';
+import '../widgets/winning_number_boxes.dart';
 import '../services/supabase_service.dart';
 
 /// 추천 탭 '번호 추천' 메뉴 항목
@@ -323,45 +324,8 @@ class RecommendScreenState extends State<RecommendScreen> {
         Text(r.drawDate,
             style: const TextStyle(fontSize: 11, color: Colors.white60)),
         const SizedBox(height: 12),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.start,
-          children: [
-            ...nums.asMap().entries.map((e) => Padding(
-              padding: const EdgeInsets.only(right: 6),
-              child: _lottoball(e.value),
-            )),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 4),
-              child: Text('+', style: TextStyle(color: Colors.white54, fontSize: 18,
-                  fontWeight: FontWeight.w300)),
-            ),
-            _lottoball(r.bonusNumber, bonus: true),
-          ],
-        ),
+        LottoWinningBoxes(numbers: nums, bonus: r.bonusNumber),
       ],
-    );
-  }
-
-  Color _ballColor(int n) {
-    if (n <= 10) return const Color(0xFFFFB300);
-    if (n <= 20) return const Color(0xFF42A5F5);
-    if (n <= 30) return const Color(0xFFEF5350);
-    if (n <= 40) return const Color(0xFF9E9E9E);
-    return const Color(0xFF66BB6A);
-  }
-
-  Widget _lottoball(int n, {bool bonus = false}) {
-    final bg = bonus ? Colors.orange.shade600 : _ballColor(n);
-    return Container(
-      width: 38, height: 38,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: bg,
-        shape: BoxShape.circle,
-        boxShadow: [BoxShadow(color: bg.withValues(alpha: 0.45), blurRadius: 6, offset: const Offset(0, 2))],
-      ),
-      child: Text('$n',
-          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Colors.white)),
     );
   }
 

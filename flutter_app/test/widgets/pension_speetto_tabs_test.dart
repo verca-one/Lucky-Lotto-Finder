@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_app/services/research/pension_briefing.dart';
 import 'package:flutter_app/widgets/pension_briefing_view.dart';
 import 'package:flutter_app/widgets/speetto_briefing_view.dart';
+import 'package:flutter_app/widgets/winning_number_boxes.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 final _waiting = <String, dynamic>{
@@ -37,16 +38,27 @@ void main() {
     expect(find.textContaining('제미나이 연금 가설이 아직 없습니다'), findsOneWidget);
   });
 
-  testWidgets('일반 모드 연금 탭 — 공개 요약 (티켓 · 명당 · 가설, 추정 확률 숨김)', (tester) async {
+  testWidgets('일반 모드 연금 탭 — 상단 당첨번호(조 + 네모칸 · 보너스) → 연금 번호 엔진만 (명당 · 가설 트랙 없음)', (tester) async {
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: PensionBriefingView(
-        admin: false, loader: () async => PensionBriefing.fromPublic(_ok)))));
+        admin: false, loader: () async => PensionBriefing.fromPublic(_ok),
+        winningLoader: () async => const PensionLatestWinning(337, 2, '060727', '293160', '2026-10-15')))));
     await tester.pumpAndSettle();
+    expect(find.text('연금복권720+ 337회 당첨번호'), findsOneWidget);
+    expect(find.text('2조'), findsOneWidget);
+    expect(find.text('각조'), findsOneWidget);
     expect(find.text('4조'), findsOneWidget);
-    expect(find.text('하당복권방'), findsOneWidget);
-    expect(find.textContaining('추정'), findsNothing);
+    expect(find.text('하당복권방'), findsNothing);
+    expect(find.textContaining('제미나이'), findsNothing);
+    expect(find.textContaining('같은 숫자 반복일 때'), findsNothing);
     expect(find.byKey(const ValueKey('pension_input_shortcut')), findsNothing);
-    await tester.scrollUntilVisible(find.text('2조'), 200);
-    expect(find.textContaining('같은 숫자 반복일 때'), findsOneWidget);
+  });
+
+  testWidgets('로또 당첨번호 네모칸 — 6개 + 보너스', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: Scaffold(body: LottoWinningBoxes(numbers: [44, 2, 13, 3, 41, 5], bonus: 7))));
+    expect(find.text('2'), findsOneWidget);
+    expect(find.text('44'), findsOneWidget);
+    expect(find.text('7'), findsOneWidget);
+    expect(find.text('+'), findsOneWidget);
   });
 
   testWidgets('스피또 탭 — 관리자는 데이터 미확보 사유, 일반은 준비 중', (tester) async {
@@ -55,5 +67,6 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: Scaffold(body: SpeettoBriefingView(admin: false))));
     expect(find.textContaining('같은 589곳'), findsNothing);
     expect(find.text('스피또 명당 추천을 준비하고 있습니다.'), findsOneWidget);
+    expect(find.textContaining('제미나이'), findsNothing);
   });
 }
