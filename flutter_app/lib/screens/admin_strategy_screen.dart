@@ -310,6 +310,7 @@ class _AdminStrategyScreenState extends State<AdminStrategyScreen> {
               Wrap(spacing: 4, runSpacing: 4, children: [
                 _pill(label, color),
                 if (h.isStore) _pill('판매점', const Color(0xFFE65100), icon: Icons.storefront_rounded),
+                if (h.isPension) _pill('연금 · 가설 트랙', const Color(0xFFEF6C00), icon: Icons.card_giftcard),
                 if (kind != null) _pill(kind.$1, kind.$2),
                 if (h.simulated)
                   _pill('모의 ×${h.simLift?.toStringAsFixed(2) ?? '-'}', h.simRaised ? const Color(0xFF2E7D32) : Colors.blueGrey,

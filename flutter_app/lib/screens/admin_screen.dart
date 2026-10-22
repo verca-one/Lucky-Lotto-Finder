@@ -19,6 +19,8 @@ import 'admin_pattern_analysis_screen.dart';
 import 'admin_rpa_screen.dart';
 import 'admin_region_research_screen.dart';
 import '../widgets/master_briefing_section.dart';
+import '../widgets/pension_briefing_view.dart';
+import '../widgets/speetto_briefing_view.dart';
 import '../widgets/agent_briefing_section.dart';
 import '../widgets/db_usage_card.dart';
 import '../services/research/research_scheduler.dart';
@@ -1273,7 +1275,7 @@ class BriefingDetailScreen extends StatelessWidget {
     // 탭: 이번 회차 브리핑 · 지난 회차 검증(회차별 보라색 박스)
     // 이번 회차 브리핑 맨 위 회차 검증: 토·일 펼침 → 월·화 보라색 박스 → 수요일부터 '지난 회차 검증' 탭에만
     return DefaultTabController(
-      length: 2,
+      length: 4,
       child: Scaffold(
       backgroundColor: const Color(0xFFF8F5FF),
       appBar: AppBar(
@@ -1286,7 +1288,9 @@ class BriefingDetailScreen extends StatelessWidget {
           unselectedLabelColor: Colors.white70,
           indicatorColor: Color(0xFFFFC107),
           labelStyle: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
-          tabs: [Tab(text: '이번 회차 브리핑'), Tab(text: '지난 회차 검증')],
+          isScrollable: true,
+          tabAlignment: TabAlignment.start,
+          tabs: [Tab(text: '이번 회차 브리핑'), Tab(text: '지난 회차 검증'), Tab(text: '연금복권'), Tab(text: '스피또')],
         ),
       ),
       body: TabBarView(children: [
@@ -1317,6 +1321,8 @@ class BriefingDetailScreen extends StatelessWidget {
         ],
       ),
         const RoundDebriefHistoryView(),
+        const PensionBriefingView(),
+        const SpeettoBriefingView(),
       ]),
       ),
     );

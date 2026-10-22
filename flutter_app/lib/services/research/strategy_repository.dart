@@ -89,6 +89,9 @@ class StrategyHypothesis {
   /// 판매점 단위 가설 (명당)
   bool get isStore => spec['level'] == 'store';
 
+  /// 연금복권 가설 (가설 트랙 전용 — 가설 공장 판정 없음)
+  bool get isPension => spec['level'] == 'pension';
+
   /// 파생 원본 가설 코드 (기본 가설이면 null)
   String? get parentCode => spec['parent'] as String?;
 }

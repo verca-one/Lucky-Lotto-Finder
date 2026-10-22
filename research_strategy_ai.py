@@ -21,16 +21,18 @@ import re
 import sys
 
 import research_hypothesis_factory as F
+import research_pension as PN
 import research_review_worker as R
 
-VERSION = "sa-1.3"
+VERSION = "sa-1.4"
 CLAUDE_MODEL = "claude-opus-5-5"
 GEMINI_MODEL = "gemini-3.8-flash"   # 무료 등급 있음 (ai.google.dev 요금표)
 MAX_DIRECTIONS = 5
 DAILY_HYPS = 20           # AI 마다 하루 새 가설 수
 DAILY_APPLIED = 10        # AI 마다 하루 응용 가설 수 (이전 가설에 조건 보충·결과 변경)
 DAILY_STORE = 10          # AI 마다 하루 판매점 가설 수 (명당 — 지방장 기대보다 1등이 더 나오는 판매점 조건)
-FOCUS = ["popularity", "calendar", "sales", "numbers", "stores"]
+FOCUS = ["popularity", "calendar", "sales", "numbers", "stores", "pension"]
+DAILY_PENSION = 10
 
 SYSTEM = """당신은 로또 연구팀의 'AI 전략기획부'입니다. 역할은 다음 주에 검증할 연구 방향을 제시하는 것뿐입니다.
 번호를 추천하거나 결과를 예측하지 않습니다. 제시한 가설은 비서가 과거 데이터로 엄격히 검정합니다
@@ -180,7 +182,7 @@ def _strip_additional(x):
     return x
 
 
-def ask_claude(prompt):
+def ask_claude(prompt, system=None, sch=None):
     """→ (데이터, 모델, 사용량). 거절·오류는 AiFailed"""
     import anthropic
     client = anthropic.Anthropic()
@@ -188,9 +190,9 @@ def ask_claude(prompt):
         resp = client.beta.messages.create(
             model=CLAUDE_MODEL,
             max_tokens=16000,
-            system=SYSTEM,
+            system=system or SYSTEM,
             messages=[{"role": "user", "content": prompt}],
-            output_config={"effort": "medium", "format": {"type": "json_schema", "schema": schema()}},
+            output_config={"effort": "medium", "format": {"type": "json_schema", "schema": sch or schema()}},
             betas=["server-side-fallback-2026-07-01"],
             fallbacks="default",
         )
@@ -205,7 +207,7 @@ def ask_claude(prompt):
     return json.loads(text), resp.model, usage
 
 
-def ask_gemini(prompt):
+def ask_gemini(prompt, system=None, sch=None):
     """Gemini Interactions API (google-genai). → (데이터, 모델, 사용량)"""
     from google import genai
     raw = os.environ["GEMINI_API_KEY"]
@@ -214,9 +216,9 @@ def ask_gemini(prompt):
     try:
         it = client.interactions.create(
             model=GEMINI_MODEL,
-            system_instruction=SYSTEM,
+            system_instruction=system or SYSTEM,
             input=prompt,
-            response_format={"type": "text", "mime_type": "application/json", "schema": _strip_additional(schema())},
+            response_format={"type": "text", "mime_type": "application/json", "schema": _strip_additional(sch or schema())},
         )
     except Exception as e:  # SDK 예외 종류가 버전마다 달라 구글 오류 문장을 남김 (키처럼 보이는 문자열은 가림)
         msg = re.sub(r"AIza[0-9A-Za-z_\-]{20,}", "AIza***", str(e))[:400]
@@ -335,6 +337,95 @@ def run(db, dry=False):
     return results
 
 
+# ── 연금복권 가설 (가설 트랙 · 연금 탭) ─────────────────────────────
+PENSION_SYSTEM = """당신은 로또 연구팀의 'AI 전략기획부'입니다. 오늘은 연금복권720+ 가설을 냅니다.
+연금복권720+: 매주 목요일 추첨, 1등 = 조(1~5) + 6자리 숫자 모두 일치, 2등 = 6자리 일치(조 무관).
+당신의 가설은 '가설 트랙'이 검증을 기다리지 않고 바로 씁니다 — 이번 회차 조건이 참이고 최근 최대 200회에서
+방향이 맞은 가설만 힘을 받아 다음 회차 번호(조 + 6자리)를 고르고, 실전에서 맞히면 힘이 커집니다.
+조건·결과·기대 방향은 주어진 목록의 키에서만 고릅니다. 조건 두 개를 겹치려면 condition2 (아니면 "none").
+모든 조건은 추첨 전에 알 수 있는 것(회차·날짜·계절·직전 회차 1등 번호)입니다.
+제목·이유(왜 그렇게 상상했는지)를 한국어로 짧게 쓰고, 가설 10개를 내세요. 이미 있는 조합은 고르지 마세요.
+결과는 가설일 뿐이며 한 장의 1등 확률(1/5,000,000)을 바꾸지 않습니다."""
+
+
+def pension_schema():
+    return {"type": "object", "additionalProperties": False, "properties": {
+        "title": {"type": "string"}, "rationale": {"type": "string"},
+        "hypotheses": {"type": "array", "items": {"type": "object", "additionalProperties": False, "properties": {
+            "condition": {"type": "string", "enum": list(PN.PENSION_CONDITIONS)},
+            "condition2": {"type": "string", "enum": ["none"] + list(PN.PENSION_CONDITIONS)},
+            "outcome": {"type": "string", "enum": list(PN.PENSION_OUTCOMES)},
+            "expect": {"type": "string", "enum": ["higher", "lower"]}},
+            "required": ["condition", "condition2", "outcome", "expect"]}}},
+        "required": ["title", "rationale", "hypotheses"]}
+
+
+def pension_context(db, have_codes, n_numbers):
+    lines = ["# 연금 가설 어휘", "조건:"] + [f"- {k}: {v}" for k, v in PN.PENSION_CONDITIONS.items()]
+    lines += ["결과:"] + [f"- {k}: {v}" for k, v in PN.PENSION_OUTCOMES.items()]
+    lines += [f"\n# 저장된 연금 당첨번호: {n_numbers}회 (관리자 입력 중 · 50회부터 가설 트랙 가동)",
+              "# 이미 있는 연금 가설 (다시 내지 마세요):"] + [f"- {c}" for c in sorted(have_codes)][:200]
+    return "\n".join(lines)
+
+
+def run_pension(db, dry=False):
+    latest = db.get("lotto_winning_numbers", {"select": "round", "order": "round.desc", "limit": "1"})[0]["round"]
+    have = {h["code"] for h in db.get("strategy_hypotheses", {"select": "code"}) if str(h["code"]).startswith("pension:")}
+    n_numbers = len(db.get("pension_winning_numbers", {"select": "round"}))
+    prompt = pension_context(db, have, n_numbers)
+    if dry:
+        print(prompt)
+        return None
+    now_kst = datetime.now(timezone.utc) + timedelta(hours=9)
+    day_start = (datetime(now_kst.year, now_kst.month, now_kst.day, tzinfo=timezone.utc) - timedelta(hours=9)).isoformat()
+    out = {}
+    for name, env, ask in PROVIDERS:
+        if not os.environ.get(env):
+            continue
+        done = db.get("strategy_directions", {"select": "id", "source": "eq.ai", "focus": "eq.pension",
+                                              "created_at": f"gte.{day_start}", "model": f"ilike.*{name}*", "limit": "1"})
+        if done:
+            print(f"오늘 {name} 연금 제안 이미 있음 — 건너뜀")
+            continue
+        try:
+            data, model, usage = ask(prompt, system=PENSION_SYSTEM, sch=pension_schema())
+        except AiFailed as e:
+            db.insert("strategy_runs", {"kind": "ai_pension", "status": "failed", "after_round": latest,
+                                        "stats": {"provider": name}, "note": str(e)})
+            print(f"{name} 연금: {e}")
+            continue
+        specs, dup = [], 0
+        for h in data.get("hypotheses") or []:
+            spec = {"condition": h["condition"], "outcome": h["outcome"], "expect": h["expect"], "kind": "base", "level": "pension"}
+            if h.get("condition2") not in (None, "none", h["condition"]):
+                spec["condition2"] = h["condition2"]
+            if spec["condition"] not in PN.PENSION_CONDITIONS or spec["outcome"] not in PN.PENSION_OUTCOMES \
+                    or spec.get("condition2", spec["condition"]) not in PN.PENSION_CONDITIONS:
+                continue
+            code = PN.pension_code(spec)
+            if code in have:
+                dup += 1
+                continue
+            if len(specs) >= DAILY_PENSION:
+                break
+            have.add(code)
+            specs.append(spec)
+        saved = 0
+        if specs:
+            did = db.insert("strategy_directions", {"after_round": latest, "source": "ai", "model": model,
+                                                    "title": (data.get("title") or "연금복권 가설")[:200],
+                                                    "rationale": (data.get("rationale") or "")[:2000], "focus": "pension"})
+            rows = [{"direction_id": did, "code": PN.pension_code(sp), "statement": PN.pension_statement(sp), "spec": sp,
+                     "status": "proposed", "created_round": latest} for sp in specs]
+            db.upsert("strategy_hypotheses", rows, "code", ignore=True)
+            saved = len(rows)
+        stats = dict(usage, provider=name, model=model, version=VERSION, pension=saved, duplicates_skipped=dup)
+        db.insert("strategy_runs", {"kind": "ai_pension", "status": "success", "after_round": latest, "stats": stats})
+        print(f"{name}({model}) 연금 가설 {saved}개 · 중복 제외 {dup} · 토큰 {usage}")
+        out[name] = stats
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
@@ -344,7 +435,12 @@ def main():
         sys.exit("SUPABASE_URL / SUPABASE_KEY 환경변수 필요")
     if not a.dry_run and os.environ.get("GITHUB_ACTIONS") != "true":
         sys.exit("저장은 서버(GitHub Actions)에서만 합니다. 로컬은 --dry-run 만 허용")
-    run(R.Db(url, key, dry=a.dry_run), a.dry_run)
+    db = R.Db(url, key, dry=a.dry_run)
+    run(db, a.dry_run)
+    try:
+        run_pension(db, a.dry_run)
+    except Exception as e:   # 연금 가설 실패가 로또 쪽을 막지 않는다
+        print(f"연금 가설 실패: {type(e).__name__} {str(e)[:200]}")
 
 
 if __name__ == "__main__":
