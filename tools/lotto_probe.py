@@ -1,6 +1,7 @@
 """
 로또 6/45 당첨번호 목록 주소 확인 (1회용 · 서버 전용) — 연금(/pt720/result → selectPstPt720WnList.do)과 같은 방식
-  1) 첫 화면 (쿠키 · 로또 결과 링크 찾기)  2) 로또 결과 화면  3) 그 화면이 쓰는 당첨 목록 주소 1번 — 요청 3~4번 · DB 무관
+  1차: /lt645/result 안 주소 = checkWnNo.do · selectPstLt645InfoNew.do
+  2차: 첫 화면 → 결과 화면(호출 코드·파라미터) → selectPstLt645InfoNew.do 1번 — 요청 3번 · DB 무관
 """
 import json
 import os
@@ -29,32 +30,30 @@ ajax = {"User-Agent": UA, "Accept": "application/json, text/javascript, */*; q=0
         "X-Requested-With": "XMLHttpRequest", "Sec-Fetch-Dest": "empty", "Sec-Fetch-Mode": "cors", "Sec-Fetch-Site": "same-origin"}
 s = requests.Session()
 r = s.get("https://www.dhlottery.co.kr/common.do?method=main", headers=html, timeout=30, verify=False)
-main = r.text
-links = sorted({m.group(1) for m in re.finditer(r"""["'](/lt645/[A-Za-z0-9_/]*)["']""", main)})
-note("1 main", r.status_code, "| /lt645 링크:", links[:30])
-page = next((x for x in links if re.search(r"result", x, re.I)), "/lt645/result")
 time.sleep(random.uniform(2.5, 4.0))
-r = s.get("https://www.dhlottery.co.kr" + page, headers=html, timeout=60, verify=False)
+r = s.get("https://www.dhlottery.co.kr/lt645/result", headers=html, timeout=60, verify=False)
 t = r.text
-eps = sorted({m.group(0) for m in re.finditer(r"/lt645/[A-Za-z0-9_]+\.do", t)})
-note("2 result", page, r.status_code, "final", r.url, "len", len(t), "| 주소:", eps)
-calls = sorted({re.sub(r"\s+", " ", t[max(0, m.start() - 150): m.start() + 120]) for m in re.finditer(r"WnList|WnInfo|WnResult", t)})
-note("3 호출 코드:", " || ".join(calls)[:3000])
-pick = next((x for x in eps if re.search(r"WnList", x)), None) or next((x for x in eps if re.search(r"List", x)), None)
-if pick:
-    time.sleep(random.uniform(3.0, 5.0))
-    r = s.get("https://www.dhlottery.co.kr" + pick, headers=dict(ajax, Referer=r.url), timeout=60, verify=False)
-    note("4", pick, r.status_code, r.headers.get("Content-Type"), "len", len(r.text))
-    try:
-        d = r.json()
-        data = d.get("data")
-        lst = (data.get("result") or data.get("list")) if isinstance(data, dict) else data
-        if isinstance(lst, list) and lst:
-            note("5 개수", len(lst), "| 첫 행:", json.dumps(lst[0], ensure_ascii=False)[:1500])
-            note("6 끝 행:", json.dumps(lst[-1], ensure_ascii=False)[:1500])
-        else:
-            note("5 응답:", json.dumps(d, ensure_ascii=False)[:2500])
-    except ValueError:
-        note("5 JSON 아님:", re.sub(r"\s+", " ", r.text[:1200]))
-else:
-    note("4 목록 주소 못 찾음 — 더 요청하지 않음")
+calls = [re.sub(r"\s+", " ", t[max(0, m.start() - 450): m.start() + 250]) for m in re.finditer(r"selectPstLt645InfoNew", t)]
+note("1 result", r.status_code, "| 호출", len(calls), "곳:", " || ".join(calls)[:3300])
+params = sorted({m.group(1) for c in calls for m in re.finditer(r"([A-Za-z]+)\s*:", c) if m.group(1).startswith("srch")})
+note("2 srch 파라미터:", params)
+time.sleep(random.uniform(3.0, 5.0))
+r = s.get("https://www.dhlottery.co.kr/lt645/selectPstLt645InfoNew.do", timeout=60, verify=False,
+          headers=dict(ajax, Referer="https://www.dhlottery.co.kr/lt645/result"))
+note("3 InfoNew(파라미터 없이)", r.status_code, r.headers.get("Content-Type"), "len", len(r.text))
+try:
+    d = r.json()
+    data = d.get("data")
+    note("4 keys", list(d.keys()), "| data:", type(data).__name__, list(data.keys()) if isinstance(data, dict) else "")
+    lst = None
+    if isinstance(data, dict):
+        lst = next((v for v in data.values() if isinstance(v, list) and v), None)
+    elif isinstance(data, list):
+        lst = data
+    if lst:
+        note("5 개수", len(lst), "| 첫 행:", json.dumps(lst[0], ensure_ascii=False)[:1500])
+        note("6 끝 행:", json.dumps(lst[-1], ensure_ascii=False)[:1500])
+    else:
+        note("5 응답:", json.dumps(d, ensure_ascii=False)[:3000])
+except ValueError:
+    note("4 JSON 아님:", re.sub(r"\s+", " ", r.text[:1200]))
