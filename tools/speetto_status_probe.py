@@ -1,6 +1,7 @@
 """
 스피또 판매 현황(출고율 · 남은 1·2등) 주소 확인 (1회용 · 서버 전용) — 사용자가 알려 준 /st/st10Intro 출발
-  1) 첫 화면(쿠키)  2) /st/st10Intro  3) 그 안의 판매 현황 내부 주소 1번 — 요청 3~4번 · DB 무관
+  1차: /st/st10Intro → 내부 주소 /st/selectSellStInfo.do (srchStGmTypeCd = SP1000 등)
+  2차: 첫 화면 + SP1000 · SP2000 · SP500 각 1번 — 요청 4번 · DB 무관
 """
 import json
 import os
@@ -30,29 +31,14 @@ ajax = {"User-Agent": UA, "Accept": "application/json, text/javascript, */*; q=0
         "Sec-Fetch-Dest": "empty", "Sec-Fetch-Mode": "cors", "Sec-Fetch-Site": "same-origin"}
 s = requests.Session()
 s.get("https://www.dhlottery.co.kr/common.do?method=main", headers=html, timeout=30, verify=False)
-time.sleep(random.uniform(2.5, 4.0))
-r = s.get("https://www.dhlottery.co.kr/st/st10Intro", headers=html, timeout=60, verify=False)
-t = r.text
-eps = sorted({m.group(0) for m in re.finditer(r"/st/[A-Za-z0-9_]+(?:\.do)?", t)})
-note("1 st10Intro", r.status_code, "final", r.url, "len", len(t), "| /st 주소:", eps[:60])
-ctx = []
-for kw in ("출고", "잔여", "남은"):
-    i = t.find(kw)
-    if i >= 0:
-        ctx.append(f"[{kw}] " + re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", t[max(0, i - 300): i + 300])))
-note("2 출고·잔여 주변:", " || ".join(ctx)[:3300] or "-")
-calls = sorted({re.sub(r"\s+", " ", t[max(0, m.start() - 250): m.start() + 150]) for m in re.finditer(r"sendHttpJson\(", t)})
-note("3 내부 호출:", " || ".join(calls)[:3300] or "-")
-cand = [e for e in eps if e.endswith(".do") and re.search(r"Prgs|prgs|Sls|sls|Rmn|rmn|Rmnd|Stts|stts|Gm|Info|List", e)]
-note("4 후보:", cand)
-pick = next((e for e in cand if re.search(r"Prgs|Sls|Rmn|Stts", e)), None) or (cand[0] if cand else None)
-if pick:
+for code in ("SP1000", "SP2000", "SP500"):
     time.sleep(random.uniform(3.0, 5.0))
-    r = s.get("https://www.dhlottery.co.kr" + pick, headers=ajax, timeout=60, verify=False)
-    note("5", pick, r.status_code, r.headers.get("Content-Type"), "len", len(r.text))
+    r = s.get("https://www.dhlottery.co.kr/st/selectSellStInfo.do", headers=ajax, timeout=60, verify=False,
+              params={"srchStGmTypeCd": code})
     try:
-        note("6 응답:", json.dumps(r.json(), ensure_ascii=False)[:3300])
+        d = r.json().get("data") or {}
+        lst, rd = d.get("list") or [], d.get("rnkDatelist") or []
+        note(code, r.status_code, "| list", len(lst), "rnkDatelist", len(rd), "| list[0]:", json.dumps(lst[0] if lst else None, ensure_ascii=False)[:1600],
+             "| rnkDatelist[0..1]:", json.dumps(rd[:2], ensure_ascii=False)[:1200])
     except ValueError:
-        note("6 JSON 아님:", re.sub(r"\s+", " ", r.text[:1500]))
-else:
-    note("5 후보 없음 — 더 요청하지 않음")
+        note(code, r.status_code, "JSON 아님:", re.sub(r"\s+", " ", r.text[:800]))
