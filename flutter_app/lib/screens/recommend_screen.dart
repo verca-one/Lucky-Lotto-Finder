@@ -6,7 +6,6 @@ import 'saju_number_screen.dart';
 import 'number_meaning_screen.dart';
 import 'ac_value_screen.dart';
 import 'zone_balance_screen.dart';
-import 'tax_calculator_screen.dart';
 import 'random_recommend_content.dart';
 import 'purchase_public_content.dart';
 import '../models/lotto_winning_number.dart';
@@ -48,7 +47,7 @@ class RecommendScreen extends StatefulWidget {
 }
 
 class RecommendScreenState extends State<RecommendScreen> {
-  // null: 메인메뉴, 'tax': 세금계산기, 'ai_sub': AI하위메뉴, ...
+  // null: 메인메뉴, 'ai_sub': AI하위메뉴, ...
   String? _currentSub;
 
   /// 복권 종류 탭: lotto(기존 메뉴) · pension(연금복권) · speetto(스피또)
@@ -81,9 +80,6 @@ class RecommendScreenState extends State<RecommendScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_currentSub == 'tax') {
-      return _wrapWithBack(const TaxCalculatorContent(), '도구', null);
-    }
     if (_currentSub == 'ai_7183') {
       return _wrapWithBack(const AiNumberContent(), 'AI 조합번호 생성', 'ai_sub');
     }
@@ -227,18 +223,6 @@ class RecommendScreenState extends State<RecommendScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  _buildSectionLabel('도구'),
-                  const SizedBox(height: 10),
-                  _buildMenuCard(
-                    icon: Icons.receipt_long_rounded,
-                    iconColor: const Color(0xFF1565C0),
-                    bgColor: Colors.white,
-                    borderColor: const Color(0xFFE8EDF5),
-                    title: '로또 세금계산기',
-                    subtitle: '당첨금 실수령액 계산',
-                    onTap: () => setState(() => _currentSub = 'tax'),
-                  ),
-                  const SizedBox(height: 20),
                   _buildSectionLabel('번호 추천'),
                   const SizedBox(height: 10),
                   for (final (i, m) in kRecommendNumberMenu.indexed) ...[

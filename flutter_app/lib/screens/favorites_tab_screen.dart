@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'favorites_screen.dart';
 import 'my_numbers_screen.dart';
+import 'tax_calculator_screen.dart';
 
 class FavoritesTabScreen extends StatefulWidget {
   const FavoritesTabScreen({super.key});
@@ -16,7 +17,7 @@ class _FavoritesTabScreenState extends State<FavoritesTabScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -84,6 +85,7 @@ class _FavoritesTabScreenState extends State<FavoritesTabScreen>
                   tabs: const [
                     Tab(icon: Icon(Icons.star_rounded, size: 18), text: '즐겨찾기'),
                     Tab(icon: Icon(Icons.casino_rounded, size: 18), text: '나의 번호'),
+                    Tab(icon: Icon(Icons.receipt_long_rounded, size: 18), text: '세금계산기'),
                   ],
                 ),
               ],
@@ -95,6 +97,7 @@ class _FavoritesTabScreenState extends State<FavoritesTabScreen>
               children: const [
                 FavoritesScreen(),
                 MyNumbersScreen(),
+                TaxCalculatorContent(),
               ],
             ),
           ),
