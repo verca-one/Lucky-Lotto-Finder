@@ -1,7 +1,9 @@
 """
-스피또 당첨지점 응답 형식 확인 (1회용 · 서버 전용) — 기존 크롤러가 쓰는 같은 주소·헤더로 딱 3번만 요청한다.
-  1~2) 세션 워밍업 페이지 2개 (기존 크롤러와 같음)  3) 스피또1000 당첨지점 목록 1페이지 5건
-목적: 회차(차수) 값이 응답의 어느 칸에 있는지 확인 → 기존 스피또 크롤러가 회차를 구분하도록 고친다.
+동행복권 응답 형식 확인 (1회용 · 서버 전용) — 기존 크롤러가 쓰는 같은 주소·헤더로 최소 요청만 한다.
+  2026-10-23 1차: 스피또 당첨지점 형식 확인 (완료 — 회차 = ltEpsd)
+  2026-10-24 2차: 연금복권 당첨번호를 어디서 받을 수 있는지 — 요청 4번
+    1~2) 세션 워밍업 (기존 크롤러와 같음)  3) 연금 당첨판매점 337회 응답 1건 (당첨번호 칸이 있는지)
+    4) 연금 당첨결과 페이지 337회 (HTML 안 조·6자리 위치)
 DB 읽기·쓰기 없음. 결과는 로그에만 (판매점 이름·코드 · 필드 이름).
 """
 import json
@@ -37,21 +39,29 @@ for u in ("https://www.dhlottery.co.kr/common.do?method=main", "https://www.dhlo
     r = s.get(u, headers=html, timeout=30, verify=False)
     print("warm-up", u, r.status_code)
     time.sleep(random.uniform(2.0, 3.5))
-r = s.get("https://www.dhlottery.co.kr/st/selectWnDsctn.do", headers=ajax, timeout=60, verify=False,
-          params={"stGmTypeNm": "스피또1000", "srchOption": 1, "srchValue": "", "pageNum": 1, "recordCountPerPage": 5})
-print("speetto", r.status_code, r.headers.get("Content-Type"))
+# 3) 연금 당첨판매점 API (기존 크롤러 crawl_pension_stores 와 같은 주소)
+r = s.get("https://www.dhlottery.co.kr/wnprchsplcsrch/selectPtWnShp.do", timeout=60, verify=False,
+          headers=dict(ajax, Referer="https://www.dhlottery.co.kr/wnprchsplcsrch/wnprchsplcsrch.do"),
+          params={"srchWnShpRnk": "all", "srchLtEpsd": 337, "srchShpLctn": ""})
+print("pension-store", r.status_code, r.headers.get("Content-Type"))
 try:
     d = r.json()
+    data = d.get("data") or {}
+    print("pension-store keys:", list(d.keys()), list(data.keys()) if isinstance(data, dict) else type(data).__name__)
+    lst = data.get("list") if isinstance(data, dict) else None
+    if lst:
+        print("pension-store record0:", json.dumps(lst[0], ensure_ascii=False)[:1500])
+    print("pension-store 다른 칸:", json.dumps({k: v for k, v in data.items() if k != "list"}, ensure_ascii=False)[:1500] if isinstance(data, dict) else "")
 except ValueError:
-    print("JSON 아님:", r.text[:800])
-    sys.exit(0)
-print("top keys:", list(d.keys()))
-data = d.get("data")
-if isinstance(data, dict):
-    print("data keys:", list(data.keys()), "total:", data.get("total"))
-    lst = data.get("list") or []
-    for i, rec in enumerate(lst[:5]):
-        print(f"record {i}:", json.dumps(rec, ensure_ascii=False))
-    print("다른 칸:", json.dumps({k: v for k, v in data.items() if k != "list"}, ensure_ascii=False)[:1500])
-else:
-    print(json.dumps(d, ensure_ascii=False)[:2000])
+    print("pension-store JSON 아님:", r.text[:500])
+time.sleep(random.uniform(3.0, 5.0))
+
+# 4) 연금 당첨결과 페이지 (HTML) — 조·번호가 들어 있는 부분만 잘라 본다
+import re
+r = s.get("https://www.dhlottery.co.kr/gameResult.do", headers=html, timeout=60, verify=False,
+          params={"method": "win720", "Round": 337})
+print("win720", r.status_code, r.headers.get("Content-Type"), "len", len(r.text), "final", r.url)
+t = r.text
+for kw in ("win720", "조", "num", "drwNo", "337"):
+    i = t.find(kw)
+    print(f"win720 '{kw}' 위치 {i}:", re.sub(r"\s+", " ", t[max(0, i - 200): i + 400]) if i >= 0 else "-")
