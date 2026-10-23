@@ -2,6 +2,7 @@
 동행복권 응답 형식 확인 (1회용 · 서버 전용) — 기존 크롤러가 쓰는 같은 주소·헤더로 최소 요청만 한다.
   2026-10-23 1차: 스피또 당첨지점 형식 확인 (완료 — 회차 = ltEpsd)
   2026-10-24 2차: 연금 당첨판매점 응답엔 당첨번호 없음 · 예전 win720 주소는 오류 페이지 (완료)
+  2026-10-24 4차: 결과 화면에서 내부 주소 발견 (selectPstPt720WnList.do 등) → 목록 1번 직접 확인
   2026-10-24 3차: 새 사이트의 연금 결과 주소 찾기 — 요청 3~4번
     1~2) 세션 워밍업 (기존 크롤러와 같음) — 첫 화면 HTML 에서 720·연금 관련 링크 추출 (추가 요청 없음)
     3) 연금 결과 화면 /pt720/result (사용자 제공) 1번  4) 그 화면 전용 스크립트 1번 — 당첨번호를 부르는 내부 주소
@@ -37,45 +38,26 @@ ajax = {"User-Agent": UA, "Accept": "application/json, text/javascript, */*; q=0
         "Sec-Fetch-Dest": "empty", "Sec-Fetch-Mode": "cors", "Sec-Fetch-Site": "same-origin"}
 s = requests.Session()
 import re
-pages = {}
-for u in ("https://www.dhlottery.co.kr/common.do?method=main", "https://www.dhlottery.co.kr/wnprchsplcsrch/selectWnPrchsPlcList.do"):
-    r = s.get(u, headers=html, timeout=30, verify=False)
-    pages[u] = r.text
-    print("warm-up", u, r.status_code, "final", r.url, "len", len(r.text))
-    time.sleep(random.uniform(2.0, 3.5))
-
-# 첫 화면 · 판매점 페이지 안의 링크 중 연금(720) 관련
-links = set()
-for t in pages.values():
-    for m in re.finditer(r"""(?:href|src|action|url)\s*[:=]\s*["']([^"']+)["']""", t):
-        links.add(m.group(1))
-cand = sorted(x for x in links if re.search(r"720|pt7|pension|win720|wnNo|drwNo|Rslt|rslt|result|Result", x))
-print("연금 후보 링크:", cand[:60])
-menu = sorted({m.group(0) for t in pages.values() for m in re.finditer(r"/[A-Za-z0-9_/]+\.do[^\"' <>]*", t)})
-print("모든 .do 주소:", menu[:150])
-
-# 사용자가 알려 준 연금 결과 화면 (/pt720/result) 1번 + 그 화면 전용 스크립트 1번
+# 1) 첫 화면 (쿠키)  2) 연금 결과 화면 (Referer)  3) 당첨 목록 내부 주소 1번 — 주석은 단계당 10줄 제한이라 8줄 안으로
+r = s.get("https://www.dhlottery.co.kr/common.do?method=main", headers=html, timeout=30, verify=False)
+time.sleep(random.uniform(2.0, 3.5))
+r2 = s.get("https://www.dhlottery.co.kr/pt720/result", headers=html, timeout=60, verify=False)
+t = r2.text
+calls = sorted({re.sub(r"\s+", " ", t[max(0, m.start() - 160): m.start() + 120]) for m in re.finditer(r"selectPstPt720WnList|selectPstPt720WnInfo", t)})
+print("1 main", r.status_code, "result", r2.status_code, "| 호출 코드:", " || ".join(calls)[:3000])
 time.sleep(random.uniform(3.0, 5.0))
-r = s.get("https://www.dhlottery.co.kr/pt720/result", headers=html, timeout=60, verify=False)
-t = r.text
-print("pt720 result", r.status_code, "final", r.url, "len", len(t))
-print("결과 화면 안 주소:", sorted({m.group(0) for m in re.finditer(r"/(?:pt720|[A-Za-z0-9_]+)/[A-Za-z0-9_/]+\.do|/pt720/[A-Za-z0-9_/]+", t)})[:80])
-scripts = sorted({m.group(1) for m in re.finditer(r"""<script[^>]+src=["']([^"']+)["']""", t)})
-print("결과 화면 스크립트:", scripts[:40])
-for kw in ("ajax", "url:", "url :", ".do", "ltEpsd", "Epsd", "wnBnd", "조"):
-    i = t.find(kw)
-    print(f"결과 화면 '{kw}' 위치 {i}:", re.sub(r"\s+", " ", t[max(0, i - 200): i + 500]) if i >= 0 else "-")
-js = next((x for x in scripts if re.search(r"pt720|720|result|rslt", x, re.I)), None)
-if js:
-    time.sleep(random.uniform(3.0, 5.0))
-    u = js if js.startswith("http") else "https://www.dhlottery.co.kr" + js
-    r = s.get(u, headers=dict(html, Accept="*/*"), timeout=60, verify=False)
-    j = r.text
-    print("스크립트", u, r.status_code, "len", len(j))
-    print("스크립트 안 주소:", sorted({m.group(0) for m in re.finditer(r"/[A-Za-z0-9_/]+\.do|/pt720/[A-Za-z0-9_/]+", j)})[:80])
-    for kw in ("url", "ajax", "Epsd", "wnBnd", "Rnk"):
-        for m in list(re.finditer(kw, j))[:3]:
-            i = m.start()
-            print(f"스크립트 '{kw}' {i}:", re.sub(r"\s+", " ", j[max(0, i - 150): i + 350]))
-else:
-    print("결과 화면 전용 스크립트 없음 — 화면 안 인라인 스크립트만 확인")
+r3 = s.get("https://www.dhlottery.co.kr/pt720/selectPstPt720WnList.do", timeout=60, verify=False,
+           headers=dict(ajax, Referer="https://www.dhlottery.co.kr/pt720/result"))
+print("2 WnList", r3.status_code, r3.headers.get("Content-Type"), "len", len(r3.text))
+try:
+    d = r3.json()
+    data = d.get("data")
+    print("3 keys", list(d.keys()), "| data:", type(data).__name__, list(data.keys()) if isinstance(data, dict) else (len(data) if isinstance(data, list) else ""))
+    lst = data.get("list") if isinstance(data, dict) else data
+    if isinstance(lst, list) and lst:
+        print("4 개수", len(lst), "| 첫 행:", json.dumps(lst[0], ensure_ascii=False)[:1500])
+        print("5 끝 행:", json.dumps(lst[-1], ensure_ascii=False)[:1500])
+    else:
+        print("4 응답:", json.dumps(d, ensure_ascii=False)[:2500])
+except ValueError:
+    print("3 JSON 아님:", re.sub(r"\s+", " ", r3.text[:1500]))
