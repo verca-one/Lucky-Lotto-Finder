@@ -4,6 +4,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'agent_extra_section.dart';
 import 'briefing_store_widgets.dart' show FavoriteStoreStar;
 
 const kSpeettoColor = Color(0xFF00897B);
@@ -209,7 +210,10 @@ class SpeettoBriefing {
 class SpeettoBriefingView extends StatefulWidget {
   final bool admin;
   final Future<SpeettoBriefing?> Function()? loader;
-  const SpeettoBriefingView({super.key, this.admin = true, this.loader});
+
+  /// 지방장 영역 (테스트용)
+  final Future<AgentExtraData?> Function()? agentLoader;
+  const SpeettoBriefingView({super.key, this.admin = true, this.loader, this.agentLoader});
   @override
   State<SpeettoBriefingView> createState() => _SpeettoBriefingViewState();
 }
@@ -239,6 +243,8 @@ class _SpeettoBriefingViewState extends State<SpeettoBriefingView> {
             const SizedBox(height: 12),
             _statusArea(b),
             if (widget.admin) ...[
+              const SizedBox(height: 12),
+              AgentExtraSection(lottery: 'speetto', color: kSpeettoColor, loader: widget.agentLoader),
               const SizedBox(height: 12),
               _area('3', '스피또 가설 트랙 — 제미나이', Text('판매점·판매 현황 데이터가 갖춰지면 제미나이 스피또 가설로 게임·판매점을 고릅니다.',
                   style: TextStyle(fontSize: 12, color: Colors.grey.shade800, height: 1.45))),

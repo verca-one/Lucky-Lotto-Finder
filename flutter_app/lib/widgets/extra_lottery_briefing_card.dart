@@ -68,6 +68,13 @@ class _ExtraLotteryBriefingCardState extends State<ExtraLotteryBriefingCard> {
         ),
       );
 
+  /// '2026-10-29' · ISO → '10/29'
+  static String _md(String? iso) {
+    final s = iso ?? '';
+    if (s.length < 10) return '-';
+    return '${int.tryParse(s.substring(5, 7)) ?? 0}/${int.tryParse(s.substring(8, 10)) ?? 0}';
+  }
+
   Widget _line(String s) => Text(s, maxLines: 2, overflow: TextOverflow.ellipsis,
       style: TextStyle(fontSize: 11.5, color: Colors.grey.shade800, height: 1.35));
 
@@ -91,7 +98,7 @@ class _ExtraLotteryBriefingCardState extends State<ExtraLotteryBriefingCard> {
       key: const ValueKey('extra_pension'),
       color: kPensionColor,
       icon: Icons.card_giftcard,
-      title: b == null ? '연금복권 브리핑' : '연금복권 ${b.targetRound}회 브리핑 · ${b.drawDate} (목)',
+      title: b == null ? '이번 주 연금복권' : '이번 주 연금복권 ${b.targetRound}회 · ${_md(b.drawDate)}(목) 추첨',
       lines: lines,
       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminPensionResearchScreen())),
     );
@@ -104,6 +111,14 @@ class _ExtraLotteryBriefingCardState extends State<ExtraLotteryBriefingCard> {
     } else if (b == null) {
       lines.add(_line('스피또 브리핑 저장본 없음 (서버 매일 17시)'));
     } else {
+      final newest = <String, SpeettoEdition>{};
+      for (final e in b.editions) {
+        if ((newest[e.game]?.edition ?? -1) < e.edition) newest[e.game] = e;
+      }
+      if (newest.isNotEmpty) {
+        lines.add(_line('판매 중 · ${(newest.values.toList()..sort((a, c) => a.game.compareTo(c.game)))
+            .map((e) => '${e.label} ${e.edition}회 (${_md(e.saleStart)} 출시)').join(' · ')}'));
+      }
       final top = b.editions.isNotEmpty ? b.editions.first : null;
       lines.add(_line(top == null
           ? '판매 현황 수집 전 (매일 10시)'
@@ -115,7 +130,7 @@ class _ExtraLotteryBriefingCardState extends State<ExtraLotteryBriefingCard> {
       key: const ValueKey('extra_speetto'),
       color: kSpeettoColor,
       icon: Icons.style_rounded,
-      title: '스피또 브리핑',
+      title: '이번 주 스피또',
       lines: lines,
       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminSpeettoResearchScreen())),
     );

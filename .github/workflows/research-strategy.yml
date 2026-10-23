@@ -22,6 +22,7 @@ on:
       - 'research_hypothesis_track.py'
       - 'research_pension.py'
       - 'research_speetto.py'
+      - 'research_agent_extra.py'
       - '.github/workflows/research-strategy.yml'
 
 concurrency:
@@ -79,3 +80,10 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: python research_speetto.py
+      - name: 연금 · 스피또 지방장 — 시·군·구별 TOP5 · 최근 성적
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python research_agent_extra.py

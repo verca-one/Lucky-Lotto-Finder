@@ -15,6 +15,7 @@ import '../services/route/region_research_repository.dart';
 import 'admin_agent_replay_screen.dart';
 import '../widgets/admin_region_store_widgets.dart' show regionTag, hypothesisStatusColor;
 import '../widgets/agent_store_widgets.dart';
+import '../widgets/agent_extra_section.dart';
 
 const _teal = kAgentColor;
 
@@ -38,7 +39,7 @@ class _AdminAgentResearchScreenState extends State<AdminAgentResearchScreen> wit
   @override
   void initState() {
     super.initState();
-    _tab = TabController(length: 4, vsync: this, initialIndex: widget.initialTab.clamp(0, 3));
+    _tab = TabController(length: 6, vsync: this, initialIndex: widget.initialTab.clamp(0, 5));
     _checkAdmin();
   }
 
@@ -96,7 +97,7 @@ class _AdminAgentResearchScreenState extends State<AdminAgentResearchScreen> wit
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white70,
           indicatorColor: Colors.amber,
-          tabs: const [Tab(text: '중앙 엔진'), Tab(text: '지방장'), Tab(text: '가설 저장소'), Tab(text: '성능')],
+          tabs: const [Tab(text: '중앙 엔진'), Tab(text: '지방장'), Tab(text: '가설 저장소'), Tab(text: '성능'), Tab(text: '연금 지방장'), Tab(text: '스피또 지방장')],
         ),
       ),
       body: !_adminChecked
@@ -108,6 +109,12 @@ class _AdminAgentResearchScreenState extends State<AdminAgentResearchScreen> wit
                   _AgentListTab(key: ValueKey('agents_${_reload}_$_model'), model: _model),
                   _HypothesisTab(key: ValueKey('hyps_${_reload}_$_model'), model: _model),
                   _PerformanceTab(key: ValueKey('perf_${_reload}_$_model'), model: _model),
+                  ListView(padding: const EdgeInsets.all(14), children: [
+                    AgentExtraSection(key: ValueKey('ax_pension_$_reload'), lottery: 'pension', color: const Color(0xFFEF6C00)),
+                  ]),
+                  ListView(padding: const EdgeInsets.all(14), children: [
+                    AgentExtraSection(key: ValueKey('ax_speetto_$_reload'), lottery: 'speetto', color: const Color(0xFF00897B)),
+                  ]),
                 ]),
     );
   }

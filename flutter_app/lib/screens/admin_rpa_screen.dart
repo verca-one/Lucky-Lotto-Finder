@@ -18,6 +18,8 @@ import '../services/rpa_unified_prediction.dart' show kRpaActiveModelVersion;
 import '../services/supabase_service.dart';
 import 'admin_comprehensive_prediction_screen.dart';
 import 'admin_mnd_screen.dart';
+import '../widgets/pension_briefing_view.dart';
+import '../widgets/speetto_briefing_view.dart';
 import '../services/research/hypothesis_replay_engine.dart';
 import '../services/research/research_runtime.dart';
 
@@ -1017,7 +1019,7 @@ class _AdminRpaScreenState extends State<AdminRpaScreen>
   @override
   void initState() {
     super.initState();
-    _tab = TabController(length: 7, vsync: this);
+    _tab = TabController(length: 9, vsync: this);
     _init();
   }
 
@@ -1385,6 +1387,8 @@ class _AdminRpaScreenState extends State<AdminRpaScreen>
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white54,
           indicatorColor: Colors.amber,
+          isScrollable: true,
+          tabAlignment: TabAlignment.start,
           tabs: const [
             Tab(icon: Icon(Icons.dashboard), text: '대시보드'),
             Tab(icon: Icon(Icons.bar_chart), text: '분석'),
@@ -1393,6 +1397,8 @@ class _AdminRpaScreenState extends State<AdminRpaScreen>
             Tab(icon: Icon(Icons.store_outlined), text: 'Store Model'),
             Tab(icon: Icon(Icons.hub_outlined), text: 'Joint'),
             Tab(icon: Icon(Icons.location_searching_rounded), text: '명당연구소'),
+            Tab(icon: Icon(Icons.card_giftcard), text: '연금복권'),
+            Tab(icon: Icon(Icons.style_rounded), text: '스피또'),
           ],
         ),
       ),
@@ -1451,6 +1457,8 @@ class _AdminRpaScreenState extends State<AdminRpaScreen>
                       },
                     ),
                     AdminMndScreen(trainingEndRound: _mndTrainingEnd),
+                    const PensionBriefingView(),
+                    const SpeettoBriefingView(),
                   ],
                 ),
     );

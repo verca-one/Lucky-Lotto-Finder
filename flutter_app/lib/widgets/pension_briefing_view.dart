@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../screens/admin_pension_numbers_input_screen.dart';
 import '../services/research/pension_briefing.dart';
+import 'agent_extra_section.dart';
 import 'briefing_store_widgets.dart' show FavoriteStoreStar;
 import 'winning_number_boxes.dart';
 
@@ -82,6 +83,8 @@ class _PensionBriefingViewState extends State<PensionBriefingView> {
               _stores(b),
               const SizedBox(height: 12),
               _track(b),
+              const SizedBox(height: 12),
+              const AgentExtraSection(lottery: 'pension', color: kPensionColor),
               const SizedBox(height: 12),
               Text(b.disclaimer.isNotEmpty ? b.disclaimer : '모든 추천은 과거 기록·가설에 기반한 참고용입니다. 연금복권 한 장의 1등 확률(1/5,000,000)은 어떤 번호든 같습니다.',
                   style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700, height: 1.4)),

@@ -50,7 +50,7 @@ class AdminStrategyScreen extends StatefulWidget {
 class _AdminStrategyScreenState extends State<AdminStrategyScreen> {
   late Future<StrategyData> _f = (widget.loader ?? StrategyRepository.load)();
   String _src = 'all'; // all | ai | manual
-  String _lottery = 'all'; // all | lotto | pension | speetto
+  String _lottery = 'lotto'; // lotto | pension | speetto (탭)
   String _stage = 'all'; // all | open | passed | closed
 
   static const _stages = {
@@ -72,6 +72,35 @@ class _AdminStrategyScreenState extends State<AdminStrategyScreen> {
         backgroundColor: _ink,
         foregroundColor: Colors.white,
         title: const Text('AI 전략기획부', style: TextStyle(fontWeight: FontWeight.w800)),
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(48),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
+            child: Row(children: [
+              for (final (k, label) in const [('lotto', '로또'), ('pension', '연금복권'), ('speetto', '스피또')])
+                Expanded(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 3),
+                    child: InkWell(
+                      key: ValueKey('lot_$k'),
+                      borderRadius: BorderRadius.circular(10),
+                      onTap: () => setState(() => _lottery = k),
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(vertical: 9),
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: _lottery == k ? Colors.white : Colors.white.withValues(alpha: 0.12),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900,
+                            color: _lottery == k ? _ink : Colors.white)),
+                      ),
+                    ),
+                  ),
+                ),
+            ]),
+          ),
+        ),
       ),
       body: FutureBuilder<StrategyData>(
         future: _f,
@@ -83,7 +112,7 @@ class _AdminStrategyScreenState extends State<AdminStrategyScreen> {
           }
           final d = s.data!;
           final dirs = d.directions
-              .where((x) => (_src == 'all' || x.source == _src) && (_lottery == 'all' || x.lottery == _lottery))
+              .where((x) => (_src == 'all' || x.source == _src) && x.lottery == _lottery)
               .toList();
           return RefreshIndicator(
             onRefresh: _reload,
@@ -200,13 +229,6 @@ class _AdminStrategyScreenState extends State<AdminStrategyScreen> {
           child: ChoiceChip(key: key, label: Text(label, style: const TextStyle(fontSize: 12)), selected: on, onSelected: (_) => tap()),
         );
     return Wrap(children: [
-      chip('로또', _lottery == 'lotto', () => setState(() => _lottery = _lottery == 'lotto' ? 'all' : 'lotto'),
-          key: const ValueKey('lot_lotto')),
-      chip('연금', _lottery == 'pension', () => setState(() => _lottery = _lottery == 'pension' ? 'all' : 'pension'),
-          key: const ValueKey('lot_pension')),
-      chip('스피또', _lottery == 'speetto', () => setState(() => _lottery = _lottery == 'speetto' ? 'all' : 'speetto'),
-          key: const ValueKey('lot_speetto')),
-      const SizedBox(width: 10),
       chip('전체', _src == 'all', () => setState(() => _src = 'all')),
       chip('AI 제안', _src == 'ai', () => setState(() => _src = 'ai'), key: const ValueKey('src_ai')),
       chip('관리자 제안', _src == 'manual', () => setState(() => _src = 'manual'), key: const ValueKey('src_manual')),
