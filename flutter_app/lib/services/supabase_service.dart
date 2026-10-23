@@ -45,7 +45,7 @@ class SupabaseService {
     }
   }
 
-  // 특정 코드 목록으로 판매점 조회 (즐겨찾기용) — 로또 판매점 우선, 없는 코드는 연금 판매점에서 찾는다
+  // 특정 코드 목록으로 판매점 조회 (즐겨찾기용) — 로또 판매점 우선, 없는 코드는 연금 → 스피또 판매점에서 찾는다
   static Future<List<LotteryStore>> getStoresByCodes(List<String> codes) async {
     if (codes.isEmpty) return [];
     try {
@@ -64,6 +64,17 @@ class SupabaseService {
             .inFilter('dhlottery_code', rest)
             .eq('lottery_type', 'pension');
         out.addAll((pension as List).map((json) => LotteryStore.fromJson(json)));
+      }
+      final found2 = out.map((s) => s.dhlotteryCode).toSet();
+      final rest2 = codes.where((c) => !found2.contains(c)).toList();
+      if (rest2.isNotEmpty) {
+        final speetto = await _supabase
+            .from('lottery_stores')
+            .select()
+            .inFilter('dhlottery_code', rest2)
+            .inFilter('lottery_type', ['speedlotto_2000', 'speedlotto_1000', 'speedlotto_500']);
+        final seen = <String>{};
+        out.addAll((speetto as List).map((json) => LotteryStore.fromJson(json)).where((s) => seen.add(s.dhlotteryCode)));
       }
       return out;
     } catch (e) {

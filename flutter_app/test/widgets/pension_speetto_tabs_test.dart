@@ -70,12 +70,26 @@ void main() {
     expect(find.text('+'), findsOneWidget);
   });
 
-  testWidgets('스피또 탭 — 관리자는 데이터 미확보 사유, 일반은 준비 중', (tester) async {
-    await tester.pumpWidget(const MaterialApp(home: Scaffold(body: SpeettoBriefingView())));
-    expect(find.textContaining('같은 589곳'), findsOneWidget);
-    await tester.pumpWidget(const MaterialApp(home: Scaffold(body: SpeettoBriefingView(admin: false))));
-    expect(find.textContaining('같은 589곳'), findsNothing);
-    expect(find.text('스피또 명당 추천을 준비하고 있습니다.'), findsOneWidget);
+  testWidgets('스피또 탭 — 데이터 정리 필요면 관리자는 사유 · 일반은 준비 중 · 정상이면 게임별 판매점 ★', (tester) async {
+    final bad = SpeettoBriefing.fromPayload({'games': [
+      {'game': 'speedlotto_1000', 'label': '스피또1000', 'status': 'data_invalid', 'same_ratio': 0.99, 'stores': []}]});
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SpeettoBriefingView(key: const ValueKey('s1'), loader: () async => bad))));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('데이터 정리 필요'), findsOneWidget);
+    expect(find.textContaining('스피또1000 99%'), findsOneWidget);
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SpeettoBriefingView(key: const ValueKey('s2'), admin: false, loader: () async => null))));
+    await tester.pumpAndSettle();
+    expect(find.text('스피또 판매점 정보를 준비하고 있습니다.'), findsOneWidget);
     expect(find.textContaining('제미나이'), findsNothing);
+
+    SharedPreferences.setMockInitialValues({});
+    final ok = SpeettoBriefing.fromPayload({'games': [
+      {'game': 'speedlotto_1000', 'label': '스피또1000', 'status': 'ok', 'latest_edition': 110, 'stores': [
+        {'store_code': '71161762', 'name': '행운복권방', 'region': '서울 서대문구', 'first': 3, 'second': 0, 'last_edition': 110}]}]});
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SpeettoBriefingView(key: const ValueKey('s3'), admin: false, loader: () async => ok))));
+    await tester.pumpAndSettle();
+    expect(find.text('스피또1000 · 최근 110차'), findsOneWidget);
+    expect(find.text('행운복권방'), findsOneWidget);
+    expect(find.byKey(const ValueKey('fav_star_71161762')), findsOneWidget);
   });
 }
