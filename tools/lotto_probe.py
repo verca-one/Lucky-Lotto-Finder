@@ -1,6 +1,7 @@
 """
 로또 6/45 당첨번호 목록 주소 확인 (1회용 · 서버 전용) — 연금(/pt720/result → selectPstPt720WnList.do)과 같은 방식
   1차: /lt645/result 안 주소 = checkWnNo.do · selectPstLt645InfoNew.do
+  3차: center + srchLtEpsd=1246 1번 — 응답 칸 확인 (요청 3번)
   2차: 첫 화면 → 결과 화면(호출 코드·파라미터) → selectPstLt645InfoNew.do 1번 — 요청 3번 · DB 무관
 """
 import json
@@ -32,28 +33,15 @@ s = requests.Session()
 r = s.get("https://www.dhlottery.co.kr/common.do?method=main", headers=html, timeout=30, verify=False)
 time.sleep(random.uniform(2.5, 4.0))
 r = s.get("https://www.dhlottery.co.kr/lt645/result", headers=html, timeout=60, verify=False)
-t = r.text
-calls = [re.sub(r"\s+", " ", t[max(0, m.start() - 450): m.start() + 250]) for m in re.finditer(r"selectPstLt645InfoNew", t)]
-note("1 result", r.status_code, "| 호출", len(calls), "곳:", " || ".join(calls)[:3300])
-params = sorted({m.group(1) for c in calls for m in re.finditer(r"([A-Za-z]+)\s*:", c) if m.group(1).startswith("srch")})
-note("2 srch 파라미터:", params)
 time.sleep(random.uniform(3.0, 5.0))
 r = s.get("https://www.dhlottery.co.kr/lt645/selectPstLt645InfoNew.do", timeout=60, verify=False,
+          params={"srchDir": "center", "srchLtEpsd": "1246"},
           headers=dict(ajax, Referer="https://www.dhlottery.co.kr/lt645/result"))
-note("3 InfoNew(파라미터 없이)", r.status_code, r.headers.get("Content-Type"), "len", len(r.text))
+note("1 center 1246", r.status_code, r.headers.get("Content-Type"), "len", len(r.text))
 try:
-    d = r.json()
-    data = d.get("data")
-    note("4 keys", list(d.keys()), "| data:", type(data).__name__, list(data.keys()) if isinstance(data, dict) else "")
-    lst = None
-    if isinstance(data, dict):
-        lst = next((v for v in data.values() if isinstance(v, list) and v), None)
-    elif isinstance(data, list):
-        lst = data
-    if lst:
-        note("5 개수", len(lst), "| 첫 행:", json.dumps(lst[0], ensure_ascii=False)[:1500])
-        note("6 끝 행:", json.dumps(lst[-1], ensure_ascii=False)[:1500])
-    else:
-        note("5 응답:", json.dumps(d, ensure_ascii=False)[:3000])
+    lst = ((r.json().get("data") or {}).get("list")) or []
+    note("2 개수", len(lst), "| 회차들:", [x.get("ltEpsd") for x in lst][:30])
+    for i, x in enumerate(lst[:3]):
+        note(f"3 행{i}:", json.dumps(x, ensure_ascii=False)[:2500])
 except ValueError:
-    note("4 JSON 아님:", re.sub(r"\s+", " ", r.text[:1200]))
+    note("2 JSON 아님:", re.sub(r"\s+", " ", r.text[:1200]))
