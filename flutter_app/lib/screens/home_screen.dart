@@ -389,7 +389,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 BottomNavigationBarItem(icon: Icon(Icons.home_rounded), label: '홈'),
                 BottomNavigationBarItem(icon: Icon(Icons.near_me_rounded), label: '주변'),
                 BottomNavigationBarItem(icon: Icon(Icons.map_rounded), label: '지역'),
-                BottomNavigationBarItem(icon: Icon(Icons.auto_awesome_rounded), label: '추천'),
+                BottomNavigationBarItem(icon: Icon(Icons.auto_awesome_rounded), label: '복권연구'),
                 BottomNavigationBarItem(icon: Icon(Icons.star_rounded), label: '즐겨찾기'),
               ],
             ),
