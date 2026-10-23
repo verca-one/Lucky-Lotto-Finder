@@ -507,6 +507,47 @@ class DHLotteryCrawler:
             logger.error(f"[연금] {round_num}회 크롤링 예외 → 저장 실패: {e}")
             return False
 
+    def crawl_speedlotto_all(self, game_type: str) -> list:
+        """스피또 당첨지점 전체 목록을 한 번만 받아 각 기록을 실제 회차(ltEpsd)에 기록 (2026-10-24 추가).
+        응답이 원래 모든 회차를 담고 있어, 회차마다 다시 받지 않는다 (요청 수 최소화 — 차단 방지).
+        반환: 기록한 회차 목록 (실패 시 빈 목록)"""
+        game_name = {"speedlotto_2000": "스피또2000", "speedlotto_1000": "스피또1000",
+                     "speedlotto_500": "스피또500"}.get(game_type, "스피또2000")
+        url = "https://www.dhlottery.co.kr/st/selectWnDsctn.do"
+        page_num, per_page, seen = 1, 100, set()
+        try:
+            while True:
+                response = self._safe_request(url, params={"stGmTypeNm": game_name, "srchOption": 1, "srchValue": "",
+                                                           "pageNum": page_num, "recordCountPerPage": per_page})
+                if not response:
+                    break
+                data = response.json().get("data") or {}
+                records = data.get("list") or []
+                if page_num == 1:
+                    logger.info(f"스피또 {game_type}: 전체 {data.get('total', 0)}개 당첨 기록")
+                for record in records:
+                    shop_id = record.get("ltShpId")
+                    rank = record.get("wnSqNo", 0)
+                    try:
+                        rec_round = int(record.get("ltEpsd"))
+                    except (TypeError, ValueError):
+                        continue
+                    if not shop_id or rank not in [1, 2]:
+                        continue
+                    purchase_method = self._get_purchase_method(record.get("shpPtrnCode", ""))
+                    self._ensure_store_entry(shop_id, record.get("ltShpNm", ""), record.get("rdnm") or "", purchase_method)
+                    self._add_winning_record(shop_id, game_type, rec_round, self._get_prize_tier(rank), purchase_method)
+                    seen.add(rec_round)
+                if len(records) < per_page:
+                    break
+                page_num += 1
+                time.sleep(random.uniform(2.5, 4.5))
+        except Exception as e:
+            logger.error(f"스피또 {game_type} 전체 목록 크롤링 실패: {e}")
+        logger.info(f"스피또 {game_type}: 회차 {min(seen) if seen else '-'}~{max(seen) if seen else '-'} · "
+                    f"{len(seen)}개 회차 기록 (요청 {page_num}페이지)")
+        return sorted(seen)
+
     def crawl_speedlotto_stores(self, game_type: str, round_num: int) -> bool:
         """스피또 당첨지점 크롤링"""
         logger.info(f"스피또 {game_type} {round_num}회 당첨지점 크롤링 시작...")
@@ -566,13 +607,21 @@ class DHLotteryCrawler:
                     if rank not in [1, 2]:
                         continue
 
+                    # 응답은 모든 회차 목록 — 요청한 회차(ltEpsd)만 기록 (2026-10-24 수정)
+                    try:
+                        rec_round = int(record.get("ltEpsd"))
+                    except (TypeError, ValueError):
+                        continue
+                    if rec_round != round_num:
+                        continue
+
                     store_name = record.get("ltShpNm", "")
                     prize_tier = self._get_prize_tier(rank)
                     # 구매 방식: shpPtrnCode
                     purchase_method_code = record.get("shpPtrnCode", "")
                     purchase_method = self._get_purchase_method(purchase_method_code)
 
-                    self._ensure_store_entry(shop_id, store_name, "", purchase_method)
+                    self._ensure_store_entry(shop_id, store_name, record.get("rdnm") or "", purchase_method)
                     self._add_winning_record(shop_id, game_type, round_num, prize_tier, purchase_method)
 
                 # 다음 페이지 확인
@@ -1167,28 +1216,16 @@ class DHLotteryCrawler:
                     logger.info(f"[연금] ✅ 크롤링 완료 (일부 회차 판매점 없음 — 재수집 대기)")
 
         elif game_type == "speed":
-            speed_max = {
-                "speedlotto_2000": 68,
-                "speedlotto_1000": 106,
-                "speedlotto_500": 48,
-            }
-            for speed_type, max_round in speed_max.items():
-                actual_count = min(count, max_round)
+            # 2026-10-24 수정: 최신 회차를 고정값(68/106/48)으로 두고 회차마다 같은 전체 목록을 붙이던 문제 →
+            # 게임마다 전체 당첨 목록을 1번 받아 각 기록을 실제 회차(ltEpsd)에 기록 (count 무관 · 요청 최소)
+            for speed_type in ("speedlotto_2000", "speedlotto_1000", "speedlotto_500"):
                 logger.info(f"\n{'='*50}")
-                logger.info(f"[{speed_type}] 1~{max_round}회 크롤링 시작 ({actual_count}회)")
+                logger.info(f"[{speed_type}] 전체 당첨 목록 크롤링 (회차별 기록)")
                 logger.info(f"{'='*50}")
-                for i in range(actual_count):
-                    round_num = max_round - i
-                    if round_num <= 0:
-                        break
-                    logger.info(f"\n[{i+1}/{actual_count}] {speed_type} {round_num}회 크롤링 중...")
-                    self.crawl_speedlotto_stores(speed_type, round_num)
-                    if (i + 1) % 50 == 0:
-                        self.save_to_files()
-                        logger.info(f"[중간저장] {speed_type} {round_num}회 완료")
-                    time.sleep(random.uniform(2.0, 4.0))
+                rounds = self.crawl_speedlotto_all(speed_type)
                 self.save_to_files()
-                logger.info(f"[{speed_type}] 크롤링 완료!")
+                logger.info(f"[{speed_type}] 크롤링 완료! 회차 {len(rounds)}개")
+                time.sleep(random.uniform(3.0, 5.0))
 
         else:
             logger.error(f"알 수 없는 게임 타입: {game_type}")
