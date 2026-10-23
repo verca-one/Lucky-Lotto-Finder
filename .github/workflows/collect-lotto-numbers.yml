@@ -1,0 +1,36 @@
+name: Collect Lotto Numbers
+
+# 로또 6/45 당첨번호 수집 = 자동 발행 (새 수집기 · 기존 판매점 크롤러와 별개)
+#   동행복권 로또 결과 화면의 주소로 다음 회차 당첨번호를 받아 lotto_winning_numbers 에 없는 회차만 추가한다.
+#   실행당 요청 3번. 추첨: 매주 토 20:35 → 토 21:20 · 22:30 · 일 07:00 KST (이미 있으면 추가 0)
+on:
+  schedule:
+    - cron: '20 12 * * 6'   # 토 21:20 KST
+    - cron: '30 13 * * 6'   # 토 22:30 KST (보충)
+    - cron: '0 22 * * 6'    # 일 07:00 KST (보충)
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'lotto_numbers_collector.py'
+      - '.github/workflows/collect-lotto-numbers.yml'
+
+concurrency:
+  group: collect-lotto-numbers
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: 로또 당첨번호 수집 · 발행 (없는 회차만 추가 · 덮어쓰기 없음)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python lotto_numbers_collector.py
