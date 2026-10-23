@@ -4,7 +4,7 @@
   2026-10-24 2차: 연금 당첨판매점 응답엔 당첨번호 없음 · 예전 win720 주소는 오류 페이지 (완료)
   2026-10-24 3차: 새 사이트의 연금 결과 주소 찾기 — 요청 3~4번
     1~2) 세션 워밍업 (기존 크롤러와 같음) — 첫 화면 HTML 에서 720·연금 관련 링크 추출 (추가 요청 없음)
-    3) 연금 소개 화면 /pt720/intro (사용자 제공) 1번  4) 그 안의 결과 화면 링크 1번 — .do 주소 · 스크립트 · 조 위치
+    3) 연금 결과 화면 /pt720/result (사용자 제공) 1번  4) 그 화면 전용 스크립트 1번 — 당첨번호를 부르는 내부 주소
 DB 읽기·쓰기 없음. 결과는 로그에만 (판매점 이름·코드 · 필드 이름).
 """
 import json
@@ -54,25 +54,28 @@ print("연금 후보 링크:", cand[:60])
 menu = sorted({m.group(0) for t in pages.values() for m in re.finditer(r"/[A-Za-z0-9_/]+\.do[^\"' <>]*", t)})
 print("모든 .do 주소:", menu[:150])
 
-# 사용자가 알려 준 연금 소개 화면(/pt720/intro)을 1번 열고, 그 안의 결과 화면 링크를 1번 더 연다
+# 사용자가 알려 준 연금 결과 화면 (/pt720/result) 1번 + 그 화면 전용 스크립트 1번
 time.sleep(random.uniform(3.0, 5.0))
-r = s.get("https://www.dhlottery.co.kr/pt720/intro", headers=html, timeout=60, verify=False)
-t0 = r.text
-print("pt720 intro", r.status_code, "final", r.url, "len", len(t0))
-pt = sorted({m.group(1) for m in re.finditer(r"""(?:href|action|url|location\.href)\s*[:=]\s*["']([^"']*pt720[^"']*)["']""", t0)})
-print("pt720 링크:", pt[:60])
-print("intro 안 .do·pt720 주소:", sorted({m.group(0) for m in re.finditer(r"/pt720/[A-Za-z0-9_/]+(?:\.do)?", t0)})[:80])
-pick = next((x for x in pt if re.search(r"rslt|result|Rslt|Result|wn|Wn|win", x)), None)
-if pick:
-    url = pick if pick.startswith("http") else "https://www.dhlottery.co.kr" + pick
+r = s.get("https://www.dhlottery.co.kr/pt720/result", headers=html, timeout=60, verify=False)
+t = r.text
+print("pt720 result", r.status_code, "final", r.url, "len", len(t))
+print("결과 화면 안 주소:", sorted({m.group(0) for m in re.finditer(r"/(?:pt720|[A-Za-z0-9_]+)/[A-Za-z0-9_/]+\.do|/pt720/[A-Za-z0-9_/]+", t)})[:80])
+scripts = sorted({m.group(1) for m in re.finditer(r"""<script[^>]+src=["']([^"']+)["']""", t)})
+print("결과 화면 스크립트:", scripts[:40])
+for kw in ("ajax", "url:", "url :", ".do", "ltEpsd", "Epsd", "wnBnd", "조"):
+    i = t.find(kw)
+    print(f"결과 화면 '{kw}' 위치 {i}:", re.sub(r"\s+", " ", t[max(0, i - 200): i + 500]) if i >= 0 else "-")
+js = next((x for x in scripts if re.search(r"pt720|720|result|rslt", x, re.I)), None)
+if js:
     time.sleep(random.uniform(3.0, 5.0))
-    r = s.get(url, headers=html, timeout=60, verify=False)
-    t = r.text
-    print("연금 결과 페이지", url, r.status_code, "final", r.url, "len", len(t))
-    print("페이지 안 pt720·.do 주소:", sorted({m.group(0) for m in re.finditer(r"/pt720/[A-Za-z0-9_/]+(?:\.do)?|/[A-Za-z0-9_/]+\.do", t)})[:80])
-    print("페이지 안 스크립트:", sorted({m.group(1) for m in re.finditer(r"""<script[^>]+src=["']([^"']+)["']""", t)})[:40])
-    for kw in ("조", "ltEpsd", "wnBnd", "Epsd", "ajax", "url:"):
-        i = t.find(kw)
-        print(f"결과 페이지 '{kw}' 위치 {i}:", re.sub(r"\s+", " ", t[max(0, i - 150): i + 400]) if i >= 0 else "-")
+    u = js if js.startswith("http") else "https://www.dhlottery.co.kr" + js
+    r = s.get(u, headers=dict(html, Accept="*/*"), timeout=60, verify=False)
+    j = r.text
+    print("스크립트", u, r.status_code, "len", len(j))
+    print("스크립트 안 주소:", sorted({m.group(0) for m in re.finditer(r"/[A-Za-z0-9_/]+\.do|/pt720/[A-Za-z0-9_/]+", j)})[:80])
+    for kw in ("url", "ajax", "Epsd", "wnBnd", "Rnk"):
+        for m in list(re.finditer(kw, j))[:3]:
+            i = m.start()
+            print(f"스크립트 '{kw}' {i}:", re.sub(r"\s+", " ", j[max(0, i - 150): i + 350]))
 else:
-    print("intro 안에서 결과 화면 링크를 못 찾음 — 더 열지 않음")
+    print("결과 화면 전용 스크립트 없음 — 화면 안 인라인 스크립트만 확인")
