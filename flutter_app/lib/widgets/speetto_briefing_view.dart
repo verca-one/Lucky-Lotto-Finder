@@ -8,6 +8,106 @@ import 'briefing_store_widgets.dart' show FavoriteStoreStar;
 
 const kSpeettoColor = Color(0xFF00897B);
 
+/// 3707543 → '371만'
+String manWon(int n) => n >= 10000 ? '${(n / 10000).round()}만' : '$n';
+
+String ymdOf(String? iso) => (iso ?? '').length >= 10 ? iso!.substring(0, 10) : (iso ?? '-');
+
+/// 엔진 브리핑 맨 위 — 출고율 95% 이상 스피또 차수 (사진 · 판매 기간 · 남은 1등 · 1장당 1등 확률)
+class SpeettoAlertCard extends StatefulWidget {
+  final Future<SpeettoBriefing?> Function()? loader;
+  const SpeettoAlertCard({super.key, this.loader});
+  @override
+  State<SpeettoAlertCard> createState() => _SpeettoAlertCardState();
+}
+
+class _SpeettoAlertCardState extends State<SpeettoAlertCard> {
+  late final Future<SpeettoBriefing?> _f = () async {
+    try {
+      return await (widget.loader ?? SpeettoBriefing.loadAdmin)();
+    } catch (_) {
+      return null;
+    }
+  }();
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<SpeettoBriefing?>(
+        future: _f,
+        builder: (context, s) {
+          final alerts = s.data?.alerts ?? const <SpeettoEdition>[];
+          if (alerts.isEmpty) return const SizedBox.shrink();
+          return Container(
+            key: const ValueKey('speetto_alert'),
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(colors: [Color(0xFFD84315), Color(0xFFFF7043)]),
+              borderRadius: BorderRadius.circular(16),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                const Icon(Icons.local_fire_department_rounded, color: Colors.white),
+                const SizedBox(width: 6),
+                Expanded(child: Text('스피또 출고율 95% 이상 — ${s.data?.statusDate ?? ''}',
+                    style: const TextStyle(color: Colors.white, fontSize: 15, fontWeight: FontWeight.w900))),
+              ]),
+              const SizedBox(height: 8),
+              for (final e in alerts) _row(e),
+              const Text('남은 1등이 아직 안 팔린 표에 있다고 보고 계산한 추정입니다. 이미 팔렸지만 찾아가지 않은 1등이 있으면 실제 확률은 더 낮습니다.',
+                  style: TextStyle(color: Colors.white70, fontSize: 10, height: 1.4)),
+            ]),
+          );
+        },
+      );
+
+  Widget _row(SpeettoEdition e) => Container(
+        key: ValueKey('speetto_alert_${e.game}_${e.edition}'),
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(8),
+            child: SizedBox(
+              width: 72, height: 72,
+              child: e.image == null
+                  ? Container(color: const Color(0xFFE0F2F1), child: const Icon(Icons.style_rounded, color: kSpeettoColor, size: 36))
+                  : Image.network(e.image!, fit: BoxFit.cover,
+                      errorBuilder: (_, __, ___) => Container(color: const Color(0xFFE0F2F1),
+                          child: const Icon(Icons.style_rounded, color: kSpeettoColor, size: 36))),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                Expanded(child: Text('${e.label} ${e.edition}회', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900))),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(color: e.recommend ? const Color(0xFF2E7D32) : Colors.grey.shade600,
+                      borderRadius: BorderRadius.circular(12)),
+                  child: Text(e.recommend ? '구매 추천' : '확률 낮아짐',
+                      style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.w900)),
+                ),
+              ]),
+              Text('판매 ${ymdOf(e.saleStart)} ~ ${ymdOf(e.saleEnd)} · 출고율 ${(e.shipRate ?? 0).toStringAsFixed(0)}%',
+                  style: TextStyle(fontSize: 11, color: Colors.grey.shade700)),
+              const SizedBox(height: 3),
+              Text('1등${e.prize1 == null ? '' : '(${e.prize1})'} ${e.rnk1Left ?? '-'}장 남음 / 전체 ${e.rnk1Total ?? '-'}장',
+                  style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800)),
+              if (e.soldRate != null)
+                Text('추정 판매율 ${e.soldRate!.toStringAsFixed(1)}% · 안 팔린 표 약 ${manWon(e.unsoldTickets ?? 0)}장',
+                    style: TextStyle(fontSize: 11, color: Colors.grey.shade800)),
+              if (e.p1Now != null)
+                Text('1장당 1등 1/${manWon(e.p1Now!)} (처음 1/${manWon(e.p1Start ?? 0)} · ${(e.boost ?? 0).toStringAsFixed(2)}배)',
+                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800,
+                        color: e.recommend ? const Color(0xFF2E7D32) : Colors.grey.shade700)),
+            ]),
+          ),
+        ]),
+      );
+}
+
 class SpeettoStore {
   final String code, name, region;
   final int first, second, lastEdition;
@@ -38,18 +138,33 @@ class SpeettoEdition {
   final int edition;
   final double? shipRate, index;
   final int? rnk1Total, rnk1Left, rnk2Total, rnk2Left;
+  final String? prize1, prize2, saleEnd, saleStart, image;
 
-  /// 출고율 95% 이상 — 지수를 쓰지 않음
-  bool get nearEnd => (shipRate ?? 0) >= 95;
-  final String? prize1, prize2, saleEnd;
+  /// 판매율 추정(%) · 발행 · 안 팔린 장수 · 1장당 1등 확률 분모(처음 · 지금) · 좋아진 배수
+  final double? soldRate, boost;
+  final int? totalTickets, unsoldTickets, p1Start, p1Now;
+
+  /// 출고율 95% 이상 · 1등 남음 → 브리핑 맨 위
+  final bool alert;
   const SpeettoEdition({required this.game, required this.edition, this.shipRate, this.index, this.rnk1Total, this.rnk1Left,
-      this.rnk2Total, this.rnk2Left, this.prize1, this.prize2, this.saleEnd});
+      this.rnk2Total, this.rnk2Left, this.prize1, this.prize2, this.saleEnd, this.saleStart, this.image, this.soldRate,
+      this.boost, this.totalTickets, this.unsoldTickets, this.p1Start, this.p1Now, this.alert = false});
+
+  /// 처음보다 1장당 1등 확률이 좋아졌으면 구매 추천
+  bool get recommend => alert && (boost ?? 0) >= 1.0;
+
+  /// 출고율 95% 이상 — 남은 1등 지수를 쓰지 않음
+  bool get nearEnd => (shipRate ?? 0) >= 95;
   factory SpeettoEdition.fromJson(Map<String, dynamic> j) => SpeettoEdition(
         game: '${j['game'] ?? ''}', edition: (j['edition'] as num?)?.toInt() ?? 0,
         shipRate: (j['ship_rate'] as num?)?.toDouble(), index: (j['index'] as num?)?.toDouble(),
         rnk1Total: (j['rnk1_total'] as num?)?.toInt(), rnk1Left: (j['rnk1_left'] as num?)?.toInt(),
         rnk2Total: (j['rnk2_total'] as num?)?.toInt(), rnk2Left: (j['rnk2_left'] as num?)?.toInt(),
         prize1: j['prize1'] as String?, prize2: j['prize2'] as String?, saleEnd: j['sale_end'] as String?,
+        saleStart: j['sale_start'] as String?, image: j['image'] as String?,
+        soldRate: (j['sold_rate'] as num?)?.toDouble(), boost: (j['boost'] as num?)?.toDouble(),
+        totalTickets: (j['total_tickets'] as num?)?.toInt(), unsoldTickets: (j['unsold_tickets'] as num?)?.toInt(),
+        p1Start: (j['p1_start'] as num?)?.toInt(), p1Now: (j['p1_now'] as num?)?.toInt(), alert: j['alert'] == true,
       );
   String get label => {'SP500': '스피또500', 'SP1000': '스피또1000', 'SP2000': '스피또2000'}[game] ?? game;
 }
@@ -60,6 +175,9 @@ class SpeettoBriefing {
 
   /// 판매 현황 (가장 최근 수집일) — 남은 1등 지수 높은 순
   final List<SpeettoEdition> editions;
+
+  /// 출고율 95% 이상 차수 (브리핑 맨 위)
+  List<SpeettoEdition> get alerts => editions.where((e) => e.alert).toList();
   final String? statusDate, statusNote;
   const SpeettoBriefing(this.games, {this.disclaimer = '', this.editions = const [], this.statusDate, this.statusNote});
   factory SpeettoBriefing.fromPayload(Map<String, dynamic> p) {
@@ -254,6 +372,9 @@ class _SpeettoBriefingViewState extends State<SpeettoBriefingView> {
         if (e.nearEnd)
           Text('판매점으로 거의 다 나간 차수입니다. 남은 1등은 판매점 재고이거나, 이미 팔렸지만 아직 찾아가지 않은 표일 수 있습니다.',
               style: TextStyle(fontSize: 10.5, color: Colors.orange.shade900)),
+        if (e.soldRate != null)
+          Text('추정 판매율 ${e.soldRate!.toStringAsFixed(1)}%${e.p1Now != null ? ' · 1장당 1등 1/${manWon(e.p1Now!)} (처음 1/${manWon(e.p1Start ?? 0)})' : ''}',
+              style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700)),
         Text('1등${e.prize1 == null ? '' : '(${e.prize1})'} 남은 ${e.rnk1Left ?? '-'} / ${e.rnk1Total ?? '-'}장'
             '   ·   2등${e.prize2 == null ? '' : '(${e.prize2})'} 남은 ${e.rnk2Left ?? '-'} / ${e.rnk2Total ?? '-'}장',
             style: TextStyle(fontSize: 11.5, color: Colors.grey.shade800)),

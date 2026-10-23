@@ -33,6 +33,8 @@ HALF_LIFE = 20.0
 SECOND_W = 0.3
 N_STORES = 10
 SAME_LIMIT = 0.5
+ALERT_SHIP = 95.0          # 출고율 이 이상이면 브리핑 맨 위 '스피또 구매 추천'
+SOLD_MIN_TOTAL = 100000    # 판매율 추정에 쓰는 소액 등위의 최소 전체 매수
 
 # ── 스피또 가설 어휘 (spec.level = speetto) — 판매 현황이 날마다 쌓이면 검정한다 ─────────
 SPEETTO_CONDITIONS = {
@@ -115,6 +117,55 @@ def game_block(db, lt, label):
                 rule=f"1등 기록 반감기 {HALF_LIFE:.0f}차수 감쇠 누적 (2등 {SECOND_W}배) · 시·군·구당 1곳")
 
 
+def win_rate(odds):
+    """전체 당첨률 표기 → 비율 ('33.1' → 0.331 · '1/3.17' → 0.315)"""
+    s = str(odds or "").strip()
+    try:
+        if s.startswith("1/"):
+            return 1 / float(s[2:])
+        v = float(s)
+        return v / 100 if v > 1 else v
+    except (ValueError, ZeroDivisionError):
+        return None
+
+
+def estimate(raw):
+    """판매율 · 발행 장수 · 남은(안 팔린) 장수 · 1장당 1등 확률 — 동행복권 등위별 '당첨(찾아감)' · '남은' 매수로 추정
+    · 등위 k 전체 = 남은(stIvtRnkK) + 찾아감(winRnkK)
+    · 판매율 ≈ 소액 등위(전체 10만 장 이상 중 가장 아래 등위)의 찾아감 ÷ 전체 (소액은 바로 찾아가므로)
+    · 발행 장수 ≈ 전체 당첨 매수 ÷ 전체 당첨률(stSumWnPbltNm)"""
+    tot = {}
+    for k in range(1, 7):
+        iv, wn = raw.get(f"stIvtRnk{k}Qty"), raw.get(f"winRnk{k}Qty")
+        if isinstance(iv, (int, float)) and isinstance(wn, (int, float)) and iv + wn > 0:
+            tot[k] = (int(iv) + int(wn), int(wn))
+    low = [k for k, (t, _) in tot.items() if t >= SOLD_MIN_TOTAL]
+    if not low:
+        return {}
+    k = max(low)
+    sold = tot[k][1] / tot[k][0]
+    wr = win_rate(raw.get("stSumWnPbltNm"))
+    out = {"sold_rate": round(sold * 100, 1), "sold_basis_rank": k}
+    if wr:
+        T = sum(t for t, _ in tot.values()) / wr
+        U = T * (1 - sold)
+        r1 = tot.get(1)
+        out.update(total_tickets=int(T), unsold_tickets=int(U))
+        if r1 and r1[0] and U > 0:
+            left1 = r1[0] - r1[1]
+            out.update(p1_start=round(T / r1[0]), p1_now=round(U / left1) if left1 > 0 else None,
+                       boost=round((left1 / U) / (r1[0] / T), 2) if left1 > 0 else None)
+    return out
+
+
+def img_url(raw):
+    p = raw.get("stMainImgStrgPathNm") or raw.get("tm1StWnImgStrgPathNm")
+    if not p:
+        return None
+    from urllib.parse import quote
+    return "https://www.dhlottery.co.kr" + quote(p)
+
+
 def status_block(db):
     try:
         last = db.get("research_speetto_status", {"select": "snap_date", "order": "snap_date.desc", "limit": "1"})
@@ -124,7 +175,7 @@ def status_block(db):
         return {"status": "no_data", "note": "아직 수집 전 (매일 10시)", "games": []}
     snap = last[0]["snap_date"]
     rows = db.get("research_speetto_status", {"select": "game,edition,price,sale_start,sale_end,ship_rate,rnk1_total,rnk1_left,"
-                                                        "rnk2_total,rnk2_left,rnk3_total,rnk3_left,prize1,prize2,prize3,odds",
+                                                        "rnk2_total,rnk2_left,rnk3_total,rnk3_left,prize1,prize2,prize3,odds,raw",
                                               "snap_date": f"eq.{snap}", "order": "game,edition"})
     out = []
     for r in rows:
@@ -132,9 +183,13 @@ def status_block(db):
         t1, l1 = r.get("rnk1_total") or 0, r.get("rnk1_left")
         near_end = ship >= 0.95   # 출고 거의 끝 — 남은 1등은 판매점 재고이거나 팔렸지만 아직 안 찾아간 표일 수 있어 지수를 쓰지 않는다
         idx = round((l1 / t1) / (1 - ship), 3) if t1 and l1 is not None and not near_end else None
-        out.append(dict(r, index=idx, near_end=near_end))
-    out.sort(key=lambda r: (r["near_end"], -(r["index"] or 0)))
-    return {"status": "ok", "snap_date": snap, "editions": out,
+        raw = r.pop("raw", None) or {}
+        est = estimate(raw)
+        alert = (r.get("ship_rate") or 0) >= ALERT_SHIP and (l1 or 0) > 0
+        out.append(dict(r, index=idx, near_end=near_end, alert=alert, image=img_url(raw), **est))
+    out.sort(key=lambda r: (not r["alert"], r["near_end"], -(r.get("boost") or r["index"] or 0)))
+    alerts = [r for r in out if r["alert"]]
+    return {"status": "ok", "snap_date": snap, "editions": out, "alerts": alerts, "alert_ship": ALERT_SHIP,
             "rule": "남은 1등 지수 = (남은 1등 ÷ 전체 1등) ÷ (1 − 출고율) · 1보다 크면 출고된 만큼보다 1등이 많이 남음"}
 
 

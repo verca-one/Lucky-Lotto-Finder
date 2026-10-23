@@ -11,6 +11,7 @@ on:
     branches: [main]
     paths:
       - 'speetto_status_collector.py'
+      - 'research_speetto.py'
       - '.github/workflows/collect-speetto-status.yml'
 
 concurrency:
@@ -26,9 +27,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      - run: pip install requests
+      - run: pip install requests numpy
       - name: 스피또 판매 현황 수집 (출고율 · 남은 매수)
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: python speetto_status_collector.py
+      - name: 스피또 계산 바로 — 출고율 95% 이상이면 브리핑 맨 위 구매 추천
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python research_speetto.py

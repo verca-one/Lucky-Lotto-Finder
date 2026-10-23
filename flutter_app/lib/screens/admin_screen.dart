@@ -1294,6 +1294,7 @@ class BriefingDetailScreen extends StatelessWidget {
         ListView(
         padding: const EdgeInsets.all(16),
         children: [
+          const SpeettoAlertCard(),
           const ManualRecommendCard(),
           const RoundDebriefTop(),
           _buildHeader(context),

@@ -59,7 +59,7 @@ def to_row(x, snap):
             "rnk3_total": _i(x.get("stRnk3WnQty")), "rnk3_left": _i(x.get("stIvtRnk3Qty")),
             "prize1": x.get("stRnk1GdsLstcCharCn"), "prize2": x.get("stRnk2GdsLstcCharCn"), "prize3": x.get("stRnk3GdsLstcCharCn"),
             "odds": x.get("stSumWnPbltNm"), "site_changed": x.get("dataChgDt"),
-            "raw": {k: v for k, v in x.items() if not str(k).endswith("PathNm")}}
+            "raw": {k: v for k, v in x.items() if not str(k).endswith("PathNm") or k in ("stMainImgStrgPathNm", "tm1StWnImgStrgPathNm")}}
 
 
 def fetch():

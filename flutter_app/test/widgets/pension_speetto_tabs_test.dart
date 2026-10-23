@@ -111,4 +111,29 @@ void main() {
     await tester.scrollUntilVisible(find.byKey(const ValueKey('speetto_edition_SP2000_69')), 200);
     expect(find.text('출고 거의 끝'), findsOneWidget);
   });
+
+  testWidgets('스피또 95% 알림 — 확률 좋아진 차수만 구매 추천', (tester) async {
+    final b = SpeettoBriefing.fromPayload({'games': [], 'status': {'status': 'ok', 'snap_date': '2026-10-24', 'editions': [
+      {'game': 'SP1000', 'edition': 109, 'ship_rate': 100, 'rnk1_total': 12, 'rnk1_left': 2, 'prize1': '5억원', 'alert': true,
+        'sold_rate': 87.6, 'unsold_tickets': 7415085, 'p1_start': 4992465, 'p1_now': 3707543, 'boost': 1.35,
+        'sale_start': '2026-03-01T00:00:00+09:00', 'sale_end': '2026-12-31T23:59:00+09:00'},
+      {'game': 'SP2000', 'edition': 69, 'ship_rate': 99, 'rnk1_total': 10, 'rnk1_left': 1, 'alert': true, 'boost': 0.61,
+        'p1_start': 4996541, 'p1_now': 8189659},
+      {'game': 'SP500', 'edition': 48, 'ship_rate': 58, 'rnk1_total': 5, 'rnk1_left': 3},
+    ]}});
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(child: SpeettoAlertCard(loader: () async => b)))));
+    await tester.pumpAndSettle();
+    expect(find.text('스피또1000 109회'), findsOneWidget);
+    expect(find.text('구매 추천'), findsOneWidget);
+    expect(find.text('확률 낮아짐'), findsOneWidget);
+    expect(find.text('1장당 1등 1/371만 (처음 1/499만 · 1.35배)'), findsOneWidget);
+    expect(find.text('판매 2026-03-01 ~ 2026-12-31 · 출고율 100%'), findsOneWidget);
+    expect(find.text('스피또500 48회'), findsNothing);
+  });
+
+  testWidgets('스피또 95% 알림 — 해당 차수 없으면 안 보임', (tester) async {
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SpeettoAlertCard(loader: () async => null))));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('speetto_alert')), findsNothing);
+  });
 }
