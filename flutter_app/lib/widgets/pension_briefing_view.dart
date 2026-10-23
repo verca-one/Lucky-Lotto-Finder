@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../screens/admin_pension_numbers_input_screen.dart';
 import '../services/research/pension_briefing.dart';
+import 'briefing_store_widgets.dart' show FavoriteStoreStar;
 import 'winning_number_boxes.dart';
 
 const kPensionColor = Color(0xFFEF6C00);
@@ -100,8 +101,11 @@ class _PensionBriefingViewState extends State<PensionBriefingView> {
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             if (b == null || error)
               _note('연금복권 추천번호를 준비하고 있습니다.')
-            else
+            else ...[
               _engine(b),
+              const SizedBox(height: 12),
+              _stores(b),
+            ],
             const SizedBox(height: 12),
             Text(b?.disclaimer.isNotEmpty == true ? b!.disclaimer : '추천번호는 과거 당첨번호 기록에 기반한 참고용입니다. 연금복권 한 장의 1등 확률(1/5,000,000)은 어떤 번호든 같습니다.',
                 style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700, height: 1.4)),
@@ -159,7 +163,7 @@ class _PensionBriefingViewState extends State<PensionBriefingView> {
 
   Widget _engine(PensionBriefing b) => _card(
         '1',
-        '연금 번호 엔진',
+        widget.admin ? '연금 번호 엔진' : '추천번호',
         b.engineStatus == 'ok'
             ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
                 for (final t in b.engineTickets) Padding(padding: const EdgeInsets.only(bottom: 6), child: pensionTicket(t)),
@@ -185,9 +189,10 @@ class _PensionBriefingViewState extends State<PensionBriefingView> {
 
   Widget _stores(PensionBriefing b) => _card(
         '2',
-        '연금 명당 TOP${b.stores.length}',
+        widget.admin ? '연금 명당 TOP${b.stores.length}' : '연금 판매점',
         Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          if (b.stores.isEmpty) _note('연금 명당 기록 없음'),
+          if (!widget.admin) _small('연금복권 1·2등이 나온 판매점 · ★를 누르면 즐겨찾기에 저장됩니다'),
+          if (b.stores.isEmpty) _note(widget.admin ? '연금 명당 기록 없음' : '연금 판매점 정보를 준비하고 있습니다.'),
           for (final e in b.stores.asMap().entries)
             Container(
               margin: const EdgeInsets.only(bottom: 6),
@@ -206,6 +211,7 @@ class _PensionBriefingViewState extends State<PensionBriefingView> {
                   if (widget.admin && e.value.pNext != null)
                     Text('다음 회차 1·2등 추정 ${(e.value.pNext! * 100).toStringAsFixed(2)}%', style: TextStyle(fontSize: 9.5, color: Colors.grey.shade600)),
                 ]),
+                if (e.value.code.isNotEmpty) FavoriteStoreStar(code: e.value.code, name: e.value.name),
               ]),
             ),
           if (widget.admin && b.storeRule != null) _small(b.storeRule!),

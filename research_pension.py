@@ -316,13 +316,16 @@ def track_block(db, nums, latest, target, prev_payload):
 
 
 def public_summary(p):
-    """일반 모드 공개 요약 — 연금 번호 엔진만 (명당 · 가설 트랙은 관리자 전용, 연구 원본 · 계수 없음)"""
+    """일반 모드 공개 요약 — ① 추천번호(연금 번호 엔진) · ② 연금 판매점 (가설 트랙은 관리자 전용, 연구 원본 · 계수 없음)"""
     eng = p["engine"]
+    stores = [{k: s.get(k) for k in ("store_code", "name", "region", "address", "first", "second", "last_round")}
+              for s in (p.get("stores") or {}).get("stores", [])]
     return {
         "lottery": "pension", "target_round": p["target_round"], "draw_date": p["draw_date"],
         "engine": {"status": eng["status"], "tickets": eng.get("tickets", []),
                    "note": None if eng["status"] == "ok" else "연금 번호 엔진을 준비하고 있습니다 (당첨번호 기록을 모으는 중).",
                    "rule": "최근 당첨번호 자리별 숫자 빈도 기반 추천" if eng["status"] == "ok" else None},
+        "stores": stores,
         "disclaimer": "추천번호는 과거 당첨번호 기록에 기반한 참고용입니다. 연금복권 한 장의 1등 확률(1/5,000,000)은 어떤 번호든 같습니다.",
     }
 

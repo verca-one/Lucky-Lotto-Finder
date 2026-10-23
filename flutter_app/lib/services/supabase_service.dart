@@ -45,7 +45,7 @@ class SupabaseService {
     }
   }
 
-  // 특정 코드 목록으로 판매점 조회 (즐겨찾기용)
+  // 특정 코드 목록으로 판매점 조회 (즐겨찾기용) — 로또 판매점 우선, 없는 코드는 연금 판매점에서 찾는다
   static Future<List<LotteryStore>> getStoresByCodes(List<String> codes) async {
     if (codes.isEmpty) return [];
     try {
@@ -54,7 +54,18 @@ class SupabaseService {
           .select()
           .inFilter('dhlottery_code', codes)
           .eq('lottery_type', 'lotto');
-      return (response as List).map((json) => LotteryStore.fromJson(json)).toList();
+      final out = (response as List).map((json) => LotteryStore.fromJson(json)).toList();
+      final found = out.map((s) => s.dhlotteryCode).toSet();
+      final rest = codes.where((c) => !found.contains(c)).toList();
+      if (rest.isNotEmpty) {
+        final pension = await _supabase
+            .from('lottery_stores')
+            .select()
+            .inFilter('dhlottery_code', rest)
+            .eq('lottery_type', 'pension');
+        out.addAll((pension as List).map((json) => LotteryStore.fromJson(json)));
+      }
+      return out;
     } catch (e) {
       print('즐겨찾기 판매점 조회 오류: $e');
       return [];

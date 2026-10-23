@@ -15,14 +15,15 @@ class PensionTicket {
 }
 
 class PensionStore {
-  final String name, region;
+  final String code, name, region, address;
   final int first, second, lastRound;
   final double? pNext;
   final List<int> rounds;
-  const PensionStore({required this.name, this.region = '', this.first = 0, this.second = 0, this.lastRound = 0, this.pNext,
+  const PensionStore({this.code = '', required this.name, this.region = '', this.address = '', this.first = 0, this.second = 0, this.lastRound = 0, this.pNext,
       this.rounds = const []});
   factory PensionStore.fromJson(Map<String, dynamic> j) => PensionStore(
-        name: '${j['name'] ?? ''}', region: '${j['region'] ?? ''}', first: _i(j['first']), second: _i(j['second']),
+        code: '${j['store_code'] ?? ''}', name: '${j['name'] ?? ''}', region: '${j['region'] ?? ''}',
+        address: '${j['address'] ?? ''}', first: _i(j['first']), second: _i(j['second']),
         lastRound: _i(j['last_round']), pNext: _dn(j['p_next']),
         rounds: [for (final r in (j['rounds'] as List? ?? const [])) (r as num).toInt()],
       );

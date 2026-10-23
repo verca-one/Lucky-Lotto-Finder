@@ -5,6 +5,7 @@ import 'package:flutter_app/widgets/pension_briefing_view.dart';
 import 'package:flutter_app/widgets/speetto_briefing_view.dart';
 import 'package:flutter_app/widgets/winning_number_boxes.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 final _waiting = <String, dynamic>{
   'target_round': 338, 'latest_round': 337, 'draw_date': '2026-10-22', 'numbers_entered': 1,
@@ -18,7 +19,7 @@ final _waiting = <String, dynamic>{
 final _ok = <String, dynamic>{
   'target_round': 338, 'draw_date': '2026-10-22',
   'engine': {'status': 'ok', 'tickets': [{'group': 4, 'number': '586358'}], 'rule': '최근 당첨번호 자리별 숫자 빈도 기반 추천'},
-  'stores': [{'name': '하당복권방', 'region': '전남광주 목포시', 'first': 3, 'second': 2, 'last_round': 336}],
+  'stores': [{'store_code': '74660469', 'name': '하당복권방', 'region': '전남광주 목포시', 'first': 3, 'second': 2, 'last_round': 336}],
   'track': {'status': 'ok', 'tickets': [{'group': 2, 'number': '147599'}],
     'hypotheses': ['직전 1등 번호에 같은 숫자 반복일 때 1등 번호 5~9 숫자 개수가 높다']},
   'disclaimer': '모든 추천은 참고용입니다.',
@@ -38,7 +39,8 @@ void main() {
     expect(find.textContaining('제미나이 연금 가설이 아직 없습니다'), findsOneWidget);
   });
 
-  testWidgets('일반 모드 연금 탭 — 상단 당첨번호(조 + 공 · 보너스) → 연금 번호 엔진만 (명당 · 가설 트랙 없음)', (tester) async {
+  testWidgets('일반 모드 연금 탭 — 상단 당첨번호 → ① 추천번호 · ② 연금 판매점(★ 저장) · 가설 트랙 없음', (tester) async {
+    SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: PensionBriefingView(
         admin: false, loader: () async => PensionBriefing.fromPublic(_ok),
         winningLoader: () async => const PensionLatestWinning(337, 2, '060727', '293160', '2026-10-15')))));
@@ -47,7 +49,14 @@ void main() {
     expect(find.text('2조'), findsOneWidget);
     expect(find.text('각조'), findsOneWidget);
     expect(find.text('4조'), findsOneWidget);
-    expect(find.text('하당복권방'), findsNothing);
+    expect(find.text('추천번호'), findsOneWidget);
+    expect(find.text('연금 번호 엔진'), findsNothing);
+    await tester.scrollUntilVisible(find.text('하당복권방'), 200);
+    expect(find.text('연금 판매점'), findsOneWidget);
+    expect(find.byKey(const ValueKey('fav_star_74660469')), findsOneWidget);
+    await tester.tap(find.byKey(const ValueKey('fav_star_74660469')));
+    await tester.pumpAndSettle();
+    expect((await SharedPreferences.getInstance()).getStringList('favorite_stores'), ['74660469']);
     expect(find.textContaining('제미나이'), findsNothing);
     expect(find.textContaining('같은 숫자 반복일 때'), findsNothing);
     expect(find.byKey(const ValueKey('pension_input_shortcut')), findsNothing);
