@@ -1,0 +1,21 @@
+name: Lotto Numbers Probe
+
+# 로또 당첨번호 목록 주소 확인 (1회용) — 요청 3~4번 · DB 읽기/쓰기 없음 · 기존 크롤러와 무관
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'tools/lotto_probe.py'
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - run: python tools/lotto_probe.py
