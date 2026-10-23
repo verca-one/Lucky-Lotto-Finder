@@ -92,4 +92,20 @@ void main() {
     expect(find.text('행운복권방'), findsOneWidget);
     expect(find.byKey(const ValueKey('fav_star_71161762')), findsOneWidget);
   });
+
+  testWidgets('스피또 판매 현황 — 남은 1등 지수 · 출고율 · 남은 매수', (tester) async {
+    final b = SpeettoBriefing.fromPayload({'games': [], 'status': {'status': 'ok', 'snap_date': '2026-10-24', 'editions': [
+      {'game': 'SP500', 'edition': 48, 'ship_rate': 58, 'rnk1_total': 5, 'rnk1_left': 3, 'rnk2_total': 100, 'rnk2_left': 48,
+        'prize1': '2억원', 'prize2': '1백만원', 'index': 1.429},
+      {'game': 'SP2000', 'edition': 70, 'ship_rate': 28, 'rnk1_total': 8, 'rnk1_left': 8, 'rnk2_total': 24, 'rnk2_left': 21,
+        'prize1': '10억원', 'index': 1.389},
+    ]}});
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SpeettoBriefingView(admin: false, loader: () async => b))));
+    await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.byKey(const ValueKey('speetto_edition_SP500_48')), 200);
+    expect(find.text('스피또500 48회'), findsOneWidget);
+    expect(find.text('남은 1등 지수 1.43'), findsOneWidget);
+    expect(find.text('출고율 58%'), findsOneWidget);
+    expect(find.textContaining('1등(2억원) 남은 3 / 5장'), findsOneWidget);
+  });
 }

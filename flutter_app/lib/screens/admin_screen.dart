@@ -924,10 +924,14 @@ class _BriefingCardState extends State<_BriefingCard> {
   bool _loading = true;
   ResearchPhase? _lastPhase;
 
+  /// 진행 중인 브리핑 읽기 (불러오는 중에 눌러도 끝나면 브리핑을 연다)
+  Future<void>? _loadFuture;
+  bool _opening = false;
+
   @override
   void initState() {
     super.initState();
-    _load();
+    _loadFuture = _load();
     // 연구 단계가 바뀌면(연구중 → 예측완료 → 완료) 브리핑을 다시 읽는다
     ResearchScheduler.instance.status.addListener(_onResearchStatus);
   }
@@ -943,8 +947,28 @@ class _BriefingCardState extends State<_BriefingCard> {
     if (p != _lastPhase) {
       _lastPhase = p;
       if (mounted) setState(() {});
-      if (p == ResearchPhase.done || p == ResearchPhase.predicted) _load();
+      if (p == ResearchPhase.done || p == ResearchPhase.predicted) _loadFuture = _load();
     }
+  }
+
+  /// 엔진 브리핑 열기 — 아직 불러오는 중이면 끝날 때까지 기다렸다가 연다 (예전: 엔진 메뉴로 잘못 이동)
+  Future<void> _openBriefing() async {
+    if (_opening) return;
+    var d = _data;
+    if (d == null) {
+      setState(() => _opening = true);
+      await (_loadFuture ?? (_loadFuture = _load()));
+      if (!mounted) return;
+      setState(() => _opening = false);
+      d = _data;
+    }
+    if (!mounted) return;
+    if (d == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('엔진 브리핑을 불러오지 못했습니다. 잠시 후 다시 눌러 주세요.')));
+      return;
+    }
+    Navigator.push(context, MaterialPageRoute(builder: (_) => BriefingDetailScreen(data: d!)));
   }
 
   Future<void> _load() async {
@@ -1104,15 +1128,7 @@ class _BriefingCardState extends State<_BriefingCard> {
     final topItem = items.isNotEmpty ? items.first : null;
 
     return GestureDetector(
-      onTap: () {
-        if (d != null) {
-          Navigator.push(context, MaterialPageRoute(
-            builder: (_) => BriefingDetailScreen(data: d),
-          ));
-        } else {
-          widget.onDetail();
-        }
-      },
+      onTap: _openBriefing,
       child: Container(
         decoration: BoxDecoration(
           color: const Color(0xFFF3F0FF),

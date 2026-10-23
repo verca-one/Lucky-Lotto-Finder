@@ -1,0 +1,34 @@
+name: Collect Speetto Status
+
+# 스피또 판매 현황 수집 (새 수집기 · 기존 스피또 판매점 크롤러와 별개)
+#   게임별(500 · 1000 · 2000) 판매 중 차수의 출고율 · 남은 1·2·3등 매수 → research_speetto_status (날짜별)
+#   실행당 요청 4번 · 하루 1번 10:00 KST · 푸시 시 1번
+on:
+  schedule:
+    - cron: '0 1 * * *'   # 10:00 KST
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'speetto_status_collector.py'
+      - '.github/workflows/collect-speetto-status.yml'
+
+concurrency:
+  group: collect-speetto-status
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: 스피또 판매 현황 수집 (출고율 · 남은 매수)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python speetto_status_collector.py

@@ -4,6 +4,9 @@
   · 기록: winning_history (lottery_type speedlotto_2000 · speedlotto_1000 · speedlotto_500, 회차 = 게임 차수)
   · 점수: 1등 기록을 차수 기준 반감기 20차수로 감쇠 누적 (2등은 0.3배, 스피또2000 만 2등 기록 있음)
   · 게임마다 상위 10곳 (시·군·구당 1곳) — 이름 · 주소 · 1·2등 횟수 · 최근 당첨 차수
+  · 판매 현황 (research_speetto_status, 수집기 speetto_status_collector.py): 가장 최근 수집일의 판매 중 차수별
+    출고율 · 남은 1·2·3등 → '남은 1등 지수' = (남은 1등 ÷ 전체 1등) ÷ (1 − 출고율) — 1보다 크면 팔린 만큼보다 1등이 많이 남음
+    (출고율은 판매점으로 나간 비율이라 실제 판매와 다를 수 있다)
   · 데이터 검사: 차수마다 1등 판매점 목록이 거의 같으면(예전 크롤러 문제 — 회차 구분 없이 전체 목록 저장)
     결과를 만들지 않고 '데이터 정리 필요'로 둔다. 고친 크롤러가 다시 모으면 자동으로 공개된다.
   결과는 과거 기록 정리이며 한 장의 당첨 확률을 바꾸지 않는다.
@@ -83,23 +86,51 @@ def game_block(db, lt, label):
                 rule=f"1등 기록 반감기 {HALF_LIFE:.0f}차수 감쇠 누적 (2등 {SECOND_W}배) · 시·군·구당 1곳")
 
 
+def status_block(db):
+    try:
+        last = db.get("research_speetto_status", {"select": "snap_date", "order": "snap_date.desc", "limit": "1"})
+    except RuntimeError as e:
+        return {"status": "no_table", "note": f"research_v17_speetto_status.sql 실행 필요 ({str(e)[:80]})", "games": []}
+    if not last:
+        return {"status": "no_data", "note": "아직 수집 전 (매일 10시)", "games": []}
+    snap = last[0]["snap_date"]
+    rows = db.get("research_speetto_status", {"select": "game,edition,price,sale_start,sale_end,ship_rate,rnk1_total,rnk1_left,"
+                                                        "rnk2_total,rnk2_left,rnk3_total,rnk3_left,prize1,prize2,prize3,odds",
+                                              "snap_date": f"eq.{snap}", "order": "game,edition"})
+    out = []
+    for r in rows:
+        ship = (r.get("ship_rate") or 0) / 100
+        t1, l1 = r.get("rnk1_total") or 0, r.get("rnk1_left")
+        idx = round((l1 / t1) / (1 - ship), 3) if t1 and l1 is not None and ship < 0.999 else None
+        out.append(dict(r, index=idx))
+    out.sort(key=lambda r: -(r["index"] or 0))
+    return {"status": "ok", "snap_date": snap, "editions": out,
+            "rule": "남은 1등 지수 = (남은 1등 ÷ 전체 1등) ÷ (1 − 출고율) · 1보다 크면 출고된 만큼보다 1등이 많이 남음"}
+
+
 def public_summary(p):
     return {"lottery": "speetto", "generated_at": p["generated_at"],
             "games": [{"game": g["game"], "label": g["label"], "status": g["status"], "latest_edition": g.get("latest_edition"),
                        "stores": [{k: s[k] for k in ("store_code", "name", "region", "address", "first", "second", "last_edition")}
                                   for s in g.get("stores", [])]} for g in p["games"]],
-            "disclaimer": "스피또 1·2등이 나온 판매점 기록을 정리한 참고용입니다. 어느 판매점에서 사도 한 장의 당첨 확률은 같습니다."}
+            "status": p.get("status"),
+            "disclaimer": "스피또 1·2등이 나온 판매점 기록과 동행복권 판매 현황을 정리한 참고용입니다. 어느 판매점에서 사도 한 장의 당첨 확률은 같습니다."}
 
 
 def run(db, dry=False):
     now = datetime.now(timezone.utc)
-    p = {"version": VERSION, "generated_at": now.isoformat(), "games": [game_block(db, lt, label) for lt, label in GAMES]}
+    p = {"version": VERSION, "generated_at": now.isoformat(), "games": [game_block(db, lt, label) for lt, label in GAMES],
+         "status": status_block(db)}
+    st = p["status"]
+    print(f"판매 현황: {st['status']} {st.get('snap_date') or st.get('note') or ''}")
+    for e in st.get("editions", []):
+        print(f"   {e['game']} {e['edition']}차 출고 {e['ship_rate']}% · 1등 {e['rnk1_left']}/{e['rnk1_total']} · 지수 {e['index']}")
     for g in p["games"]:
         print(f"{g['label']}: {g['status']} · 차수 {g.get('editions', 0)}개 (최신 {g.get('latest_edition')}) · "
               f"같은 목록 비율 {g.get('same_ratio')} · 판매점 {len(g['stores'])}곳")
         for s in g["stores"][:5]:
             print(f"   {s['name']} ({s['region']}) 1등 {s['first']} · 2등 {s['second']} · 최근 {s['last_edition']}차")
-    ok = any(g["status"] == "ok" for g in p["games"])
+    ok = any(g["status"] == "ok" for g in p["games"]) or p["status"]["status"] == "ok"
     tag = int(now.strftime("%Y%m%d"))        # 스피또는 회차가 게임마다 달라 날짜를 키로 쓴다
     row = {"research_type": RESULT_TYPE, "model_version": VERSION, "training_end_round": tag, "target_round": tag, "payload": p}
     pub = {"lottery": "speetto", "target_round": tag, "payload": public_summary(p), "is_public_approved": ok,

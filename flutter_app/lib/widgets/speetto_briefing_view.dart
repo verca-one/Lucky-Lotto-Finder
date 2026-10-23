@@ -1,5 +1,5 @@
 // 스피또 화면 — 관리자 엔진 브리핑 '스피또' 탭 · 일반 모드 복권연구 '스피또' 탭
-//  ① 게임별(스피또2000 · 1000 · 500) 1등 판매점 (서버 sp-1.0 · ★ 즐겨찾기 저장)  ② 게임별 판매 현황(출고율 · 남은 1등) — 수집 전
+//  ① 게임별(스피또2000 · 1000 · 500) 1등 판매점 (서버 sp-1.0 · ★ 즐겨찾기 저장)  ② 판매 중 게임 · 남은 1등 (출고율 · 남은 매수, 매일 수집)
 // 서버 계산이 '데이터 정리 필요'(예전 크롤러가 차수마다 같은 목록을 저장)로 판정하면 판매점을 보여 주지 않는다.
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -32,14 +32,42 @@ class SpeettoGame {
   bool get ok => status == 'ok';
 }
 
+/// 판매 중 차수 한 개의 판매 현황 (출고율 · 남은 매수)
+class SpeettoEdition {
+  final String game;
+  final int edition;
+  final double? shipRate, index;
+  final int? rnk1Total, rnk1Left, rnk2Total, rnk2Left;
+  final String? prize1, prize2, saleEnd;
+  const SpeettoEdition({required this.game, required this.edition, this.shipRate, this.index, this.rnk1Total, this.rnk1Left,
+      this.rnk2Total, this.rnk2Left, this.prize1, this.prize2, this.saleEnd});
+  factory SpeettoEdition.fromJson(Map<String, dynamic> j) => SpeettoEdition(
+        game: '${j['game'] ?? ''}', edition: (j['edition'] as num?)?.toInt() ?? 0,
+        shipRate: (j['ship_rate'] as num?)?.toDouble(), index: (j['index'] as num?)?.toDouble(),
+        rnk1Total: (j['rnk1_total'] as num?)?.toInt(), rnk1Left: (j['rnk1_left'] as num?)?.toInt(),
+        rnk2Total: (j['rnk2_total'] as num?)?.toInt(), rnk2Left: (j['rnk2_left'] as num?)?.toInt(),
+        prize1: j['prize1'] as String?, prize2: j['prize2'] as String?, saleEnd: j['sale_end'] as String?,
+      );
+  String get label => {'SP500': '스피또500', 'SP1000': '스피또1000', 'SP2000': '스피또2000'}[game] ?? game;
+}
+
 class SpeettoBriefing {
   final List<SpeettoGame> games;
   final String disclaimer;
-  const SpeettoBriefing(this.games, {this.disclaimer = ''});
-  factory SpeettoBriefing.fromPayload(Map<String, dynamic> p) => SpeettoBriefing(
-        [for (final g in (p['games'] as List? ?? const [])) SpeettoGame.fromJson(Map<String, dynamic>.from(g as Map))],
-        disclaimer: '${p['disclaimer'] ?? ''}',
-      );
+
+  /// 판매 현황 (가장 최근 수집일) — 남은 1등 지수 높은 순
+  final List<SpeettoEdition> editions;
+  final String? statusDate, statusNote;
+  const SpeettoBriefing(this.games, {this.disclaimer = '', this.editions = const [], this.statusDate, this.statusNote});
+  factory SpeettoBriefing.fromPayload(Map<String, dynamic> p) {
+    final st = p['status'] is Map ? Map<String, dynamic>.from(p['status']) : const <String, dynamic>{};
+    return SpeettoBriefing(
+      [for (final g in (p['games'] as List? ?? const [])) SpeettoGame.fromJson(Map<String, dynamic>.from(g as Map))],
+      disclaimer: '${p['disclaimer'] ?? ''}',
+      editions: [for (final e in (st['editions'] as List? ?? const [])) SpeettoEdition.fromJson(Map<String, dynamic>.from(e as Map))],
+      statusDate: st['snap_date'] as String?, statusNote: st['note'] as String?,
+    );
+  }
 
   static Future<SpeettoBriefing?> loadAdmin() async {
     final rows = await Supabase.instance.client.from('research_results').select('payload')
@@ -88,11 +116,7 @@ class _SpeettoBriefingViewState extends State<SpeettoBriefingView> {
           else ...[
             _storesArea(b),
             const SizedBox(height: 12),
-            _area('2', '게임별 판매 현황 (출고율 · 남은 1등)', Text(
-                widget.admin
-                    ? '데이터 미확보 — 출고율이 높은데 1등이 많이 남은 게임일수록 한 장의 기대가 올라갑니다. 서버 수집 승인 후 표시합니다.'
-                    : '게임별 남은 1등 정보를 준비하고 있습니다.',
-                style: TextStyle(fontSize: 12, color: Colors.grey.shade800, height: 1.45))),
+            _statusArea(b),
             if (widget.admin) ...[
               const SizedBox(height: 12),
               _area('3', '스피또 가설 트랙 — 제미나이', Text('판매점·판매 현황 데이터가 갖춰지면 제미나이 스피또 가설로 게임·판매점을 고릅니다.',
@@ -164,6 +188,65 @@ class _SpeettoBriefingViewState extends State<SpeettoBriefingView> {
           ),
       ],
     ]));
+  }
+
+  Widget _statusArea(SpeettoBriefing? b) {
+    final eds = b?.editions ?? const <SpeettoEdition>[];
+    if (eds.isEmpty) {
+      return _area('2', '판매 중 게임 · 남은 1등', Text(
+          widget.admin
+              ? '판매 현황 수집 전 — ${b?.statusNote ?? '매일 10시 서버 수집 (research_v17_speetto_status.sql 필요)'}'
+              : '게임별 남은 1등 정보를 준비하고 있습니다.',
+          key: const ValueKey('speetto_status_waiting'),
+          style: TextStyle(fontSize: 12, color: Colors.grey.shade800, height: 1.45)));
+    }
+    return _area('2', '판매 중 게임 · 남은 1등', Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Text('${b?.statusDate ?? ''} 동행복권 판매 현황 · 출고된 만큼보다 1등이 많이 남은 순서',
+          style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700)),
+      const SizedBox(height: 8),
+      for (final e in eds) _editionRow(e),
+      Text('남은 1등 지수 = 남은 1등 비율 ÷ 아직 출고 안 된 비율. 1보다 크면 출고된 만큼보다 1등이 많이 남았다는 뜻입니다 '
+          '(출고율은 판매점으로 나간 비율이라 실제 판매와 다를 수 있습니다).',
+          style: TextStyle(fontSize: 10, color: Colors.grey.shade600, height: 1.4)),
+    ]));
+  }
+
+  Widget _editionRow(SpeettoEdition e) {
+    final ship = (e.shipRate ?? 0).clamp(0, 100) / 100;
+    final good = (e.index ?? 0) > 1.0;
+    return Container(
+      key: ValueKey('speetto_edition_${e.game}_${e.edition}'),
+      margin: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: good ? const Color(0xFFE0F2F1) : Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: good ? kSpeettoColor : Colors.grey.shade300, width: good ? 1.4 : 1),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text('${e.label} ${e.edition}회', style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900))),
+          if (e.index != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(color: good ? kSpeettoColor : Colors.grey.shade400, borderRadius: BorderRadius.circular(12)),
+              child: Text('남은 1등 지수 ${e.index!.toStringAsFixed(2)}',
+                  style: const TextStyle(fontSize: 10.5, color: Colors.white, fontWeight: FontWeight.w800)),
+            ),
+        ]),
+        const SizedBox(height: 6),
+        Row(children: [
+          Text('출고율 ${(e.shipRate ?? 0).toStringAsFixed(0)}%', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+          const SizedBox(width: 8),
+          Expanded(child: LinearProgressIndicator(value: ship.toDouble(), minHeight: 6, color: kSpeettoColor,
+              backgroundColor: Colors.white, borderRadius: BorderRadius.circular(3))),
+        ]),
+        const SizedBox(height: 6),
+        Text('1등${e.prize1 == null ? '' : '(${e.prize1})'} 남은 ${e.rnk1Left ?? '-'} / ${e.rnk1Total ?? '-'}장'
+            '   ·   2등${e.prize2 == null ? '' : '(${e.prize2})'} 남은 ${e.rnk2Left ?? '-'} / ${e.rnk2Total ?? '-'}장',
+            style: TextStyle(fontSize: 11.5, color: Colors.grey.shade800)),
+      ]),
+    );
   }
 
   Widget _area(String no, String title, Widget child) => Container(
