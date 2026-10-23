@@ -35,6 +35,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('1247회 가설 트랙 — 제미나이 가설'), findsOneWidget);
     expect(find.text('사전 등록'), findsOneWidget);
+    expect(find.textContaining('토요일 아침 8시 최종 점검 뒤 이번 주 가설로 다시 뽑습니다'), findsOneWidget);
     expect(find.textContaining('가설 164개 중 이번 회차 사용: 번호 1개 · 명당 1개'), findsOneWidget);
     expect(find.textContaining('인기 백분위 56%'), findsOneWidget);
     expect(find.text('실전 성적: 가설 사용 3번 중 방향 맞힘 2번'), findsOneWidget);

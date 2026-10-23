@@ -27,6 +27,18 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: python research_hypothesis_factory.py
+      - name: 판매점 다시 뽑기 — 검증 통과 판매점 가설 최신 반영 (브리핑 ④)
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python research_store_hypothesis_apply.py
+      - name: 가설 트랙 다시 뽑기 — 이번 주 가설로 토요일 최종본 (번호 5세트 · 명당 5곳, 브리핑 ⑤)
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python research_hypothesis_track.py --final
       - name: 토요일 최종 점검 — 수요일 대비 변경점
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

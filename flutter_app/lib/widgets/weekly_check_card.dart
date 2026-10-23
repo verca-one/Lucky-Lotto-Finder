@@ -53,12 +53,12 @@ class WeeklyCheckCard extends StatelessWidget {
         final (Color c, IconData icon, String title, String sub) = switch (w) {
           null => (Colors.blueGrey, Icons.event_note_rounded, '이번 주 비서 점검',
               '수요일 엔진 실행 때 이번 주 가설을 취합하고, 토요일 아침 8시에 최종 점검합니다.'),
-          WeeklyCheck(sat: null) => (const Color(0xFF1565C0), Icons.inventory_2_outlined, '수요일 취합 완료 · 토요일 아침 최종 점검 예정',
+          WeeklyCheck(sat: null) => (const Color(0xFF1565C0), Icons.inventory_2_outlined, '수요일 취합 완료 · 토요일 아침 8시 최종 점검 예정',
               '취합 ${_time(w.wed?['at'] as String?)} · 이번 주 가설 ${(w.wed?['activity'] as Map?)?['hypotheses'] ?? 0}개 · '
                   '적용 후보 ${((w.wed?['qualifying'] as List?) ?? const []).length}개'),
-          _ when w.noChange => (const Color(0xFF2E7D32), Icons.verified_rounded, '토요일 최종 점검: 변경점 없음',
+          _ when w.noChange => (const Color(0xFF2E7D32), Icons.verified_rounded, '토요일 8시 최종 점검: 변경점 없음',
               '${w.sat!['verdict']} · 점검 ${_time(w.sat!['at'] as String?)}'),
-          _ => (const Color(0xFFE65100), Icons.warning_amber_rounded, '토요일 최종 점검: 변경점 있음',
+          _ => (const Color(0xFFE65100), Icons.warning_amber_rounded, '토요일 8시 최종 점검: 변경점 있음',
               '${w.sat!['verdict']} · 점검 ${_time(w.sat!['at'] as String?)}'),
         };
         final act = Map<String, dynamic>.from((w?.sat ?? w?.wed)?['activity'] as Map? ?? const {});

@@ -43,7 +43,7 @@ GROUPS = [  # (key, algorithm, 고정 version 또는 None=최신, 이름, 역할
     ("purchase", "purchase_prediction", None, "구매예측 번호", "브리핑 ③"),
     ("number_engine", "number_engine", None, "Number 엔진 기본 조합", "연구소 기록 (브리핑 아님)"),
     ("random", "random_control", None, "무작위 대조군", "연구소 기록 (브리핑 아님)"),
-    ("hypothesis", "hypothesis_track", "ht-1.0", "가설 트랙 (제미나이 가설)", "브리핑 ⑤ 가설 기반"),
+    ("hypothesis", "hypothesis_track", None, "가설 트랙 (제미나이 가설)", "브리핑 ⑤ 가설 기반 · 토요일 최종본 우선"),
 ]
 BRIEFED = ("official", "popularity", "purchase")   # 브리핑이 실제로 추천한 번호 영역
 TIER = {"first": 1, "second": 2}
@@ -126,7 +126,7 @@ def win_of(d, t):
 # ── 번호 ──────────────────────────────────────────────────────────
 def pick_reg(regs, t, algo, version):
     rows = [r for r in regs if r["target_round"] == t and r["algorithm"] == algo and (version is None or r["version"] == version)]
-    return max(rows, key=lambda r: ver_key(r["version"])) if rows else None
+    return max(rows, key=lambda r: (ver_key(r["version"]), r.get("generated_at") or "")) if rows else None
 
 
 def track_record(d, algo, version):
@@ -479,7 +479,8 @@ def run(db, D=None):
     if D is None:
         D = db.get("lotto_winning_numbers", {"select": "round", "order": "round.desc", "limit": "1"})[0]["round"]
     d = load(db, D)
-    tr = db.get("research_results", {"select": "payload", "research_type": "eq.hypothesis_track", "model_version": "eq.ht-1.0",
+    tr = db.get("research_results", {"select": "payload", "research_type": "eq.hypothesis_track", "model_version": "in.(ht-1.0-sat,ht-1.0)",
+                                      "order": "model_version.desc",
                                       "target_round": f"eq.{d['D']}", "limit": "1"})
     d["track"] = tr[0]["payload"] if tr else None
     nums = numbers_block(d)

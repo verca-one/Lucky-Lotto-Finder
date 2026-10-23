@@ -55,7 +55,7 @@ class _HypothesisTrackCardState extends State<HypothesisTrackCard> {
               const SizedBox(width: 8),
               Expanded(child: Text('${widget.target}회 가설 트랙 — 제미나이 가설',
                   style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: kTrackColor))),
-              statusChip('가설 기반 · 검증 전', kTrackColor),
+              statusChip(snap.data?.isFinal == true ? '토요일 8시 최종본' : '가설 기반 · 검증 전', kTrackColor),
             ]),
             const SizedBox(height: 4),
             Text('AI 전략기획부(제미나이) 가설을 검증 통과를 기다리지 않고 바로 씁니다. 최근 200회에서 방향이 맞은 가설만 힘을 받고, '
@@ -83,6 +83,18 @@ class _HypothesisTrackCardState extends State<HypothesisTrackCard> {
     final (plays, hits) = t.totalRecord;
     final skipped = t.skipped.values.fold<int>(0, (a, b) => a + b);
     return [
+      Container(
+        key: const ValueKey('track_final_note'),
+        width: double.infinity,
+        margin: const EdgeInsets.only(bottom: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(color: kTrackColor.withValues(alpha: 0.07), borderRadius: BorderRadius.circular(8)),
+        child: Text(
+            t.isFinal
+                ? '토요일 아침 8시 최종 점검 뒤 이번 주 가설로 다시 뽑았습니다 — 수요일 선정 대비 번호 ${t.changedSets}세트 · 명당 ${t.changedStores}곳 바뀜'
+                : '수요일 선정본입니다. 토요일 아침 8시 최종 점검 뒤 이번 주 가설로 다시 뽑습니다.',
+            style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: kTrackColor)),
+      ),
       Text(
           '가설 ${t.hypothesesTotal}개 중 이번 회차 사용: 번호 ${nh.length}개 · 명당 ${t.storeHyps.length}개 '
           '(조건이 이번 회차와 안 맞거나 최근 200회 방향이 반대인 $skipped개 제외)'

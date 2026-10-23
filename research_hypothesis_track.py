@@ -48,6 +48,7 @@ import research_store_hypotheses as H
 from research_region_worker import Db as PDb
 
 VERSION = "ht-1.0"
+FINAL_VERSION = "ht-1.0-sat"   # 토요일 08:00 최종 점검 뒤 재선정 (수요일 선정본과 따로 등록)
 ALGO = "hypothesis_track"
 RESULT_TYPE = "hypothesis_track"
 AGENT_MODEL = "ag-1.1"
@@ -249,7 +250,8 @@ def store_picks(db, sd, latest, target, store_used, capital_used):
     return out, None
 
 
-def run(url, key, dry=False):
+def run(url, key, dry=False, final=False):
+    ver = FINAL_VERSION if final else VERSION
     db = R.Db(url, key, dry=dry)
     base = url.rstrip("/") + "/rest/v1/"
 
@@ -266,7 +268,13 @@ def run(url, key, dry=False):
     mine = db.get("research_results", {"select": "target_round,payload", "research_type": f"eq.{RESULT_TYPE}",
                                        "model_version": f"eq.{VERSION}", "order": "target_round.desc", "limit": "2"})
     cur = next((x for x in mine if x["target_round"] == target), None)
-    if cur and (cur["payload"] or {}).get("status") == "registered":
+    if final:
+        fin = db.get("research_results", {"select": "target_round,payload", "research_type": f"eq.{RESULT_TYPE}",
+                                          "model_version": f"eq.{ver}", "target_round": f"eq.{target}", "limit": "1"})
+        if fin and (fin[0]["payload"] or {}).get("status") == "registered":
+            print(f"{target}회 토요일 최종본 이미 등록 — 고정")
+            return fin[0]["payload"]
+    elif cur and (cur["payload"] or {}).get("status") == "registered":
         print(f"{target}회 가설 트랙 이미 등록 — 고정 (다시 계산하지 않음)")
         return cur["payload"]
     from research_release import prediction_allowed
@@ -292,7 +300,7 @@ def run(url, key, dry=False):
     sd = H.StoreData(db, latest) if need_store else None
     prev = next((x for x in mine if x["target_round"] == latest), None)
     rec, scored_prev = score_previous(prev["payload"] if prev else {}, rows, sd, latest)
-    if prev and scored_prev and not dry and not prev["payload"].get("scored"):
+    if prev and scored_prev and not dry and not final and not prev["payload"].get("scored"):
         db.patch("research_results", {"research_type": f"eq.{RESULT_TYPE}", "model_version": f"eq.{VERSION}",
                                       "target_round": f"eq.{latest}"},
                  {"payload": py(dict(prev["payload"], scored=True, scored_hits=scored_prev))})
@@ -353,15 +361,17 @@ def run(url, key, dry=False):
     status = "pending"
     if not dry and sets:
         db.upsert("research_predictions", [{
-            "algorithm": ALGO, "version": VERSION, "target_round": target, "data_end_round": latest,
+            "algorithm": ALGO, "version": ver, "target_round": target, "data_end_round": latest,
             "sets": sets, "generated_at": now.isoformat(), "deadline_at": deadline.isoformat(),
             "pre_deadline": True, "locked": True, "status": "pending"}], "algorithm,version,target_round", ignore=True)
-        reg = db.get("research_predictions", {"select": "sets", "algorithm": f"eq.{ALGO}", "version": f"eq.{VERSION}",
+        reg = db.get("research_predictions", {"select": "sets", "algorithm": f"eq.{ALGO}", "version": f"eq.{ver}",
                                               "target_round": f"eq.{target}"})
         if reg:
             sets, status = reg[0]["sets"], "registered"
     payload = py({
-        "version": VERSION, "target_round": target, "training_end_round": latest, "window": [lo, latest],
+        "version": ver, "final": final, "target_round": target, "training_end_round": latest, "window": [lo, latest],
+        "wednesday": ({"sets": [s.get("set") for s in (cur["payload"] or {}).get("sets", [])],
+                       "stores": [o.get("store_code") for o in (cur["payload"] or {}).get("stores", [])]} if final and cur else None),
         "draw_date": tdate.isoformat(), "conditions": tcond, "status": status,
         "sets": [sc.score(s) for s in sets], "popularity_target_pct": target_pct, "popularity_drive": D,
         "stores": stores, "store_error": store_err,
@@ -382,7 +392,7 @@ def run(url, key, dry=False):
         print(f"  명당 {o.get('name')} ({o.get('region')}) {o['p_first'] * 100:.3f}% ×{o['factor']:.2f} → {o['p_adj'] * 100:.3f}%")
     if scored_prev:
         print(f"  직전 {latest}회 성적: {sum(x['hit'] for x in scored_prev)}/{len(scored_prev)} 방향 맞힘")
-    row = {"research_type": RESULT_TYPE, "model_version": VERSION, "training_end_round": latest, "target_round": target,
+    row = {"research_type": RESULT_TYPE, "model_version": ver, "training_end_round": latest, "target_round": target,
            "payload": payload}
     json.dumps(row, ensure_ascii=False)
     if dry:
@@ -395,13 +405,14 @@ def run(url, key, dry=False):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--final", action="store_true", help="토요일 08:00 최종 점검 뒤 재선정 (ht-1.0-sat)")
     a = ap.parse_args()
     url, key = os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_KEY")
     if not url or not key:
         sys.exit("SUPABASE_URL / SUPABASE_KEY 환경변수가 필요합니다")
     if not a.dry_run and os.environ.get("GITHUB_ACTIONS") != "true":
         sys.exit("저장·등록은 서버(GitHub Actions)에서만 합니다. 로컬은 --dry-run 만 허용")
-    run(url, key, a.dry_run)
+    run(url, key, a.dry_run, a.final)
 
 
 if __name__ == "__main__":

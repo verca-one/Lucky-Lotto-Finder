@@ -53,11 +53,24 @@ class HypothesisTrack {
 
   /// 누적 실전 성적 (가설 코드 → [사용, 맞힘])
   final Map<String, List<int>> record;
+
+  /// 토요일 08:00 최종 점검 뒤 재선정본이면 true · 수요일 선정과 비교용
+  final bool isFinal;
+  final List<List<int>> wedSets;
+  final List<String> wedStores;
   const HypothesisTrack({
     required this.targetRound, required this.trainingEndRound, this.hypothesesTotal = 0, this.status = 'pending',
     this.window = const [], this.sets = const [], this.targetPct, this.drive, this.used = const [], this.stores = const [],
-    this.skipped = const {}, this.record = const {},
+    this.skipped = const {}, this.record = const {}, this.isFinal = false, this.wedSets = const [], this.wedStores = const [],
   });
+
+  /// 수요일 선정과 다른 번호 세트 수 · 명당 수 (최종본일 때)
+  int get changedSets {
+    final w = {for (final s in wedSets) ([...s]..sort()).join(',')};
+    return sets.where((s) => !w.contains(([...s.numbers]..sort()).join(','))).length;
+  }
+
+  int get changedStores => stores.where((s) => !wedStores.contains(s.code)).length;
 
   factory HypothesisTrack.fromPayload(Map<String, dynamic> p) {
     List<Map<String, dynamic>> maps(dynamic v) => [for (final x in (v as List? ?? const [])) Map<String, dynamic>.from(x as Map)];
@@ -85,6 +98,12 @@ class HypothesisTrack {
         for (final e in (p['record'] as Map? ?? const {}).entries)
           '${e.key}': [for (final x in (e.value as List)) (x as num).toInt()],
       },
+      isFinal: p['final'] == true,
+      wedSets: [
+        for (final s in ((p['wednesday'] as Map?)?['sets'] as List? ?? const []))
+          [for (final n in (s as List? ?? const [])) (n as num).toInt()],
+      ],
+      wedStores: [for (final c in ((p['wednesday'] as Map?)?['stores'] as List? ?? const [])) '$c'],
     );
   }
 
@@ -111,9 +130,9 @@ class HypothesisTrack {
         .from('research_results')
         .select('payload')
         .eq('research_type', 'hypothesis_track')
-        .eq('model_version', 'ht-1.0')
+        .inFilter('model_version', ['ht-1.0-sat', 'ht-1.0'])
         .eq('target_round', target)
-        .order('created_at', ascending: false)
+        .order('model_version', ascending: false) // 'ht-1.0-sat'(토요일 최종본) 우선
         .limit(1);
     if ((rows as List).isEmpty) return null;
     return HypothesisTrack.fromPayload(Map<String, dynamic>.from(rows.first['payload'] as Map));
