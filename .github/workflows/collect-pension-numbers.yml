@@ -1,0 +1,35 @@
+name: Collect Pension Numbers
+
+# 연금복권720+ 당첨번호 수집 (새 수집기 · 기존 판매점 크롤러와 별개)
+#   동행복권 연금 결과 화면의 목록 주소 1번으로 전 회차 당첨번호를 받아, pension_winning_numbers 에 없는 회차만 추가한다.
+#   실행당 요청 3번. 추첨: 매주 목 19시대 → 목 21:30 KST · 금 09:00 KST 두 번 (이미 있으면 추가 0)
+on:
+  schedule:
+    - cron: '30 12 * * 4'   # 목 21:30 KST
+    - cron: '0 0 * * 5'     # 금 09:00 KST (보충)
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'pension_numbers_collector.py'
+      - '.github/workflows/collect-pension-numbers.yml'
+
+concurrency:
+  group: collect-pension-numbers
+  cancel-in-progress: false
+
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests
+      - name: 연금 당첨번호 수집 (없는 회차만 추가 · 덮어쓰기 없음)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python pension_numbers_collector.py
