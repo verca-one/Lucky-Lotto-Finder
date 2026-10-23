@@ -32,7 +32,36 @@ GAMES = [("speedlotto_2000", "스피또2000"), ("speedlotto_1000", "스피또100
 HALF_LIFE = 20.0
 SECOND_W = 0.3
 N_STORES = 10
-SAME_LIMIT = 0.5     # 연속 차수의 1등 판매점 목록이 이 비율 넘게 '완전히 같으면' 잘못된 데이터
+SAME_LIMIT = 0.5
+
+# ── 스피또 가설 어휘 (spec.level = speetto) — 판매 현황이 날마다 쌓이면 검정한다 ─────────
+SPEETTO_CONDITIONS = {
+    "sp_ship_high": "출고율 50% 이상인 차수",
+    "sp_ship_low": "출고율 20% 이하인 차수",
+    "sp_left_high": "1등이 80% 이상 남은 차수",
+    "sp_new": "판매 시작 30일 이내 차수",
+    "sp_old": "판매 시작 120일 지난 차수",
+    "sp_game_500": "스피또500",
+    "sp_game_1000": "스피또1000",
+    "sp_game_2000": "스피또2000",
+    "sp_index_high": "남은 1등 지수 1.2 이상",
+}
+SPEETTO_OUTCOMES = {
+    "sp_rnk1_out": "다음 7일 안에 나가는 1등 수",
+    "sp_ship_speed": "다음 7일 출고율 상승폭",
+    "sp_rnk2_out": "다음 7일 안에 나가는 2등 수",
+}
+
+
+def speetto_statement(spec):
+    conds = [c for c in (spec.get("condition"), spec.get("condition2")) if c and c != "none"]
+    more = "많다" if spec["expect"] == "higher" else "적다"
+    return f"[스피또] {' · '.join(SPEETTO_CONDITIONS[c] for c in conds)}는 {SPEETTO_OUTCOMES[spec['outcome']]}가 {more}"
+
+
+def speetto_code(spec):
+    conds = sorted(c for c in (spec.get("condition"), spec.get("condition2")) if c and c != "none")
+    return f"speetto:{'+'.join(conds)}|{spec['outcome']}|{spec['expect']}"     # 연속 차수의 1등 판매점 목록이 이 비율 넘게 '완전히 같으면' 잘못된 데이터
 
 
 def game_block(db, lt, label):

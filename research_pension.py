@@ -69,6 +69,29 @@ PENSION_OUTCOMES = {
 }
 EXPECT = {"higher": "높다", "lower": "낮다"}
 
+# ── 연금 판매점 가설 어휘 (spec.level = pension_store) ──────────────
+PENSION_STORE_CONDITIONS = {
+    "ps_famous": "연금 1·2등 2회 이상 나온 판매점",
+    "ps_recent_52": "최근 52회 안에 연금 1·2등이 나온 판매점",
+    "ps_dormant": "연금 1·2등이 있었지만 최근 100회 동안 없는 판매점",
+    "ps_capital": "수도권(서울·경기·인천) 판매점",
+    "ps_region_hot": "같은 시·군·구에서 최근 10회 안에 연금 1·2등",
+    "ps_first_only": "연금 1등이 나온 적 있는 판매점",
+}
+PENSION_STORE_OUTCOMES = {"ps_next": "다음 회차 연금 1·2등"}
+STORE_WINDOW = 100      # 판매점 가설 최근 검정 구간 (회차)
+
+
+def pension_store_statement(spec):
+    conds = [c for c in (spec.get("condition"), spec.get("condition2")) if c and c != "none"]
+    more = "더 많이 나온다" if spec["expect"] == "higher" else "덜 나온다"
+    return f"[연금 판매점] {' · '.join(PENSION_STORE_CONDITIONS[c] for c in conds)}에서 다음 회차 연금 1·2등이 기대보다 {more}"
+
+
+def pension_store_code(spec):
+    conds = sorted(c for c in (spec.get("condition"), spec.get("condition2")) if c and c != "none")
+    return f"pension_store:{'+'.join(conds)}|{spec['outcome']}|{spec['expect']}"
+
 
 def josa(word):
     w = re.sub(r"\s*\([^)]*\)\s*$", "", word).strip()
@@ -176,6 +199,18 @@ def stores_block(db, latest):
     total = sum(score.values())
     recent = [per_round.get(r, 0) for r in range(latest - 51, latest + 1)]
     lam = sum(recent) / len(recent)            # 최근 52회 회차당 1·2등 판매점 사건 수 (인터넷 제외)
+    # 제미나이 연금 판매점 가설 — 최근 100회 '실제 ÷ 기대'가 가설 방향과 맞으면 그 배수를 곱한다
+    hyps_used = store_hyps(db, ev, reg, latest)
+    fac = {c: 1.0 for c in score}
+    why = defaultdict(list)
+    for k, u in enumerate(hyps_used):
+        for c in u["now"]:
+            if c in fac and u["factor"] > fac[c]:
+                fac[c] = u["factor"]
+            if c in fac:
+                why[c].append(k)
+    score = {c: v * fac[c] for c, v in score.items()}
+    total = sum(score.values())
     out, used = [], set()
     for c in sorted(score, key=lambda x: -score[x]):
         if len(out) >= N_STORES:
@@ -188,9 +223,76 @@ def stores_block(db, latest):
         out.append({"store_code": c, "name": s.get("store_name") or c, "address": s.get("address") or "",
                     "region": reg[c].replace("|", " "), "first": sum(t == "first" for _, t in ev[c]),
                     "second": sum(t == "second" for _, t in ev[c]), "last_round": rounds[0], "rounds": rounds[:8],
-                    "share": round(score[c] / total, 6), "p_next": round(1 - math.exp(-lam * score[c] / total), 6)})
+                    "share": round(score[c] / total, 6), "p_next": round(1 - math.exp(-lam * score[c] / total), 6),
+                    "factor": round(fac[c], 3), "hyps": why.get(c, [])})
     return {"status": "ok", "stores": out, "events_per_round": round(lam, 3), "stores_with_events": len(ev),
+            "hypotheses": [{k: u[k] for k in ("code", "statement", "status", "factor", "ratio", "n_cond", "expected")}
+                           for u in hyps_used],
             "rule": f"연금 1·2등 판매점 기록 반감기 {HALF_LIFE:.0f}회 감쇠 + {REGION_PRIOR} × 지역 평균 · 인터넷 판매 제외 · 시·군·구당 1곳"}
+
+
+def store_hyps(db, ev, reg, latest):
+    """제미나이 연금 판매점 가설 → 최근 STORE_WINDOW 회차 검정 (회차마다 그 직전까지 정보만)"""
+    try:
+        dirs = {d["id"]: d for d in db.all("strategy_directions", {"select": "id,source", "order": "id"}, key="id")}
+        rows = [h for h in db.all("strategy_hypotheses", {"select": "code,statement,status,spec,direction_id", "order": "code"}, key="code")
+                if (h.get("spec") or {}).get("level") == "pension_store" and (dirs.get(h.get("direction_id")) or {}).get("source") == "ai"]
+    except Exception:
+        return []
+    if not rows:
+        return []
+    codes = sorted(ev)
+    g = 0.5 ** (1 / HALF_LIFE)
+    rounds_of = {c: sorted({r for r, _ in ev[c]}) for c in codes}
+    first_of = {c: sorted({r for r, t in ev[c] if t == "first"}) for c in codes}
+    by_round = defaultdict(set)
+    for c in codes:
+        for r in rounds_of[c]:
+            by_round[r].add(c)
+    capital = {c: reg[c].split("|")[0] in ("서울", "경기", "인천") for c in codes}
+
+    def cond(key, c, t):
+        rs = [r for r in rounds_of[c] if r < t]
+        if key == "ps_famous":
+            return len(rs) >= 2
+        if key == "ps_recent_52":
+            return any(r >= t - 52 for r in rs)
+        if key == "ps_dormant":
+            return bool(rs) and not any(r >= t - 100 for r in rs)
+        if key == "ps_capital":
+            return capital[c]
+        if key == "ps_region_hot":
+            return any(reg[o] == reg[c] for r in range(t - 10, t) for o in by_round.get(r, ()) if o != c)
+        if key == "ps_first_only":
+            return any(r < t for r in first_of[c])
+        return False
+
+    out = []
+    for h in rows:
+        sp = h["spec"]
+        conds = [x for x in (sp.get("condition"), sp.get("condition2")) if x and x != "none"]
+        if any(x not in PENSION_STORE_CONDITIONS for x in conds):
+            continue
+        O = E = 0.0
+        for t in range(max(14, latest - STORE_WINDOW + 1), latest + 1):
+            hit = by_round.get(t, set())
+            if not hit:
+                continue
+            w = {c: sum(g ** (t - 1 - r) for r in rounds_of[c] if r < t) + 0.05 for c in codes}
+            m = [c for c in codes if all(cond(x, c, t) for x in conds)]
+            tot = sum(w.values())
+            E += len(hit) * sum(w[c] for c in m) / tot
+            O += len(hit & set(m))
+        if E < 2:
+            continue
+        ratio = O / E
+        agree = (ratio > 1) if sp["expect"] == "higher" else (ratio < 1)
+        if not agree:
+            continue
+        now = [c for c in codes if all(cond(x, c, latest + 1) for x in conds)]
+        out.append({"code": h["code"], "statement": h["statement"], "status": h["status"], "ratio": round(ratio, 3),
+                    "factor": round(min(max(ratio, 0.5), 3.0), 3), "n_cond": int(O), "expected": round(E, 2), "now": now})
+    return out
 
 
 # ── ② 연금 번호 엔진 ──────────────────────────────────────────────

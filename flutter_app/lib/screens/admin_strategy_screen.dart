@@ -50,6 +50,7 @@ class AdminStrategyScreen extends StatefulWidget {
 class _AdminStrategyScreenState extends State<AdminStrategyScreen> {
   late Future<StrategyData> _f = (widget.loader ?? StrategyRepository.load)();
   String _src = 'all'; // all | ai | manual
+  String _lottery = 'all'; // all | lotto | pension | speetto
   String _stage = 'all'; // all | open | passed | closed
 
   static const _stages = {
@@ -81,7 +82,9 @@ class _AdminStrategyScreenState extends State<AdminStrategyScreen> {
                 child: Text('전략기획부 자료를 불러오지 못했습니다.\n(research_v14_strategy.sql 실행 필요)\n${s.error}', textAlign: TextAlign.center)));
           }
           final d = s.data!;
-          final dirs = d.directions.where((x) => _src == 'all' || x.source == _src).toList();
+          final dirs = d.directions
+              .where((x) => (_src == 'all' || x.source == _src) && (_lottery == 'all' || x.lottery == _lottery))
+              .toList();
           return RefreshIndicator(
             onRefresh: _reload,
             child: ListView(padding: const EdgeInsets.all(16), children: [
@@ -197,6 +200,13 @@ class _AdminStrategyScreenState extends State<AdminStrategyScreen> {
           child: ChoiceChip(key: key, label: Text(label, style: const TextStyle(fontSize: 12)), selected: on, onSelected: (_) => tap()),
         );
     return Wrap(children: [
+      chip('로또', _lottery == 'lotto', () => setState(() => _lottery = _lottery == 'lotto' ? 'all' : 'lotto'),
+          key: const ValueKey('lot_lotto')),
+      chip('연금', _lottery == 'pension', () => setState(() => _lottery = _lottery == 'pension' ? 'all' : 'pension'),
+          key: const ValueKey('lot_pension')),
+      chip('스피또', _lottery == 'speetto', () => setState(() => _lottery = _lottery == 'speetto' ? 'all' : 'speetto'),
+          key: const ValueKey('lot_speetto')),
+      const SizedBox(width: 10),
       chip('전체', _src == 'all', () => setState(() => _src = 'all')),
       chip('AI 제안', _src == 'ai', () => setState(() => _src = 'ai'), key: const ValueKey('src_ai')),
       chip('관리자 제안', _src == 'manual', () => setState(() => _src = 'manual'), key: const ValueKey('src_manual')),
@@ -310,7 +320,10 @@ class _AdminStrategyScreenState extends State<AdminStrategyScreen> {
               Wrap(spacing: 4, runSpacing: 4, children: [
                 _pill(label, color),
                 if (h.isStore) _pill('판매점', const Color(0xFFE65100), icon: Icons.storefront_rounded),
-                if (h.isPension) _pill('연금 · 가설 트랙', const Color(0xFFEF6C00), icon: Icons.card_giftcard),
+                if (h.isPension)
+                  _pill(h.isPensionStore ? '연금 판매점 · 명당 반영' : '연금 · 가설 트랙', const Color(0xFFEF6C00),
+                      icon: h.isPensionStore ? Icons.storefront_rounded : Icons.card_giftcard),
+                if (h.isSpeetto) _pill('스피또 · 판매 현황 쌓이면 검정', const Color(0xFF00897B), icon: Icons.style_rounded),
                 if (kind != null) _pill(kind.$1, kind.$2),
                 if (h.simulated)
                   _pill('모의 ×${h.simLift?.toStringAsFixed(2) ?? '-'}', h.simRaised ? const Color(0xFF2E7D32) : Colors.blueGrey,

@@ -22,6 +22,7 @@ import sys
 
 import research_hypothesis_factory as F
 import research_pension as PN
+import research_speetto as SP
 import research_review_worker as R
 
 VERSION = "sa-1.4"
@@ -31,8 +32,10 @@ MAX_DIRECTIONS = 5
 DAILY_HYPS = 20           # AI 마다 하루 새 가설 수
 DAILY_APPLIED = 10        # AI 마다 하루 응용 가설 수 (이전 가설에 조건 보충·결과 변경)
 DAILY_STORE = 10          # AI 마다 하루 판매점 가설 수 (명당 — 지방장 기대보다 1등이 더 나오는 판매점 조건)
-FOCUS = ["popularity", "calendar", "sales", "numbers", "stores", "pension"]
+FOCUS = ["popularity", "calendar", "sales", "numbers", "stores", "pension", "speetto"]
 DAILY_PENSION = 10
+DAILY_PENSION_STORE = 5
+DAILY_SPEETTO = 8
 
 SYSTEM = """당신은 로또 연구팀의 'AI 전략기획부'입니다. 역할은 다음 주에 검증할 연구 방향을 제시하는 것뿐입니다.
 번호를 추천하거나 결과를 예측하지 않습니다. 제시한 가설은 비서가 과거 데이터로 엄격히 검정합니다
@@ -344,25 +347,35 @@ PENSION_SYSTEM = """당신은 로또 연구팀의 'AI 전략기획부'입니다.
 방향이 맞은 가설만 힘을 받아 다음 회차 번호(조 + 6자리)를 고르고, 실전에서 맞히면 힘이 커집니다.
 조건·결과·기대 방향은 주어진 목록의 키에서만 고릅니다. 조건 두 개를 겹치려면 condition2 (아니면 "none").
 모든 조건은 추첨 전에 알 수 있는 것(회차·날짜·계절·직전 회차 1등 번호)입니다.
-제목·이유(왜 그렇게 상상했는지)를 한국어로 짧게 쓰고, 가설 10개를 내세요. 이미 있는 조합은 고르지 마세요.
+제목·이유(왜 그렇게 상상했는지)를 한국어로 짧게 쓰고, 번호 가설 10개(hypotheses)를 내세요. 이미 있는 조합은 고르지 마세요.
+판매점 가설도 5개(store_hypotheses) 내세요 — '어떤 연금 판매점에서 다음 회차 연금 1·2등이 기대(최근 이력)보다 더 나오나'.
+판매점 가설은 판매점 조건 목록(ps_)에서 고르고 결과는 ps_next 입니다. 맞으면 연금 명당 순위에 바로 반영됩니다.
 결과는 가설일 뿐이며 한 장의 1등 확률(1/5,000,000)을 바꾸지 않습니다."""
 
 
 def pension_schema():
     return {"type": "object", "additionalProperties": False, "properties": {
         "title": {"type": "string"}, "rationale": {"type": "string"},
+        "store_hypotheses": {"type": "array", "items": {"type": "object", "additionalProperties": False, "properties": {
+            "condition": {"type": "string", "enum": list(PN.PENSION_STORE_CONDITIONS)},
+            "condition2": {"type": "string", "enum": ["none"] + list(PN.PENSION_STORE_CONDITIONS)},
+            "outcome": {"type": "string", "enum": list(PN.PENSION_STORE_OUTCOMES)},
+            "expect": {"type": "string", "enum": ["higher", "lower"]}},
+            "required": ["condition", "condition2", "outcome", "expect"]}},
         "hypotheses": {"type": "array", "items": {"type": "object", "additionalProperties": False, "properties": {
             "condition": {"type": "string", "enum": list(PN.PENSION_CONDITIONS)},
             "condition2": {"type": "string", "enum": ["none"] + list(PN.PENSION_CONDITIONS)},
             "outcome": {"type": "string", "enum": list(PN.PENSION_OUTCOMES)},
             "expect": {"type": "string", "enum": ["higher", "lower"]}},
             "required": ["condition", "condition2", "outcome", "expect"]}}},
-        "required": ["title", "rationale", "hypotheses"]}
+        "required": ["title", "rationale", "hypotheses", "store_hypotheses"]}
 
 
 def pension_context(db, have_codes, n_numbers):
     lines = ["# 연금 가설 어휘", "조건:"] + [f"- {k}: {v}" for k, v in PN.PENSION_CONDITIONS.items()]
     lines += ["결과:"] + [f"- {k}: {v}" for k, v in PN.PENSION_OUTCOMES.items()]
+    lines += ["판매점 조건:"] + [f"- {k}: {v}" for k, v in PN.PENSION_STORE_CONDITIONS.items()]
+    lines += ["판매점 결과:"] + [f"- {k}: {v}" for k, v in PN.PENSION_STORE_OUTCOMES.items()]
     lines += [f"\n# 저장된 연금 당첨번호: {n_numbers}회 (관리자 입력 중 · 50회부터 가설 트랙 가동)",
               "# 이미 있는 연금 가설 (다시 내지 마세요):"] + [f"- {c}" for c in sorted(have_codes)][:200]
     return "\n".join(lines)
@@ -370,7 +383,7 @@ def pension_context(db, have_codes, n_numbers):
 
 def run_pension(db, dry=False):
     latest = db.get("lotto_winning_numbers", {"select": "round", "order": "round.desc", "limit": "1"})[0]["round"]
-    have = {h["code"] for h in db.get("strategy_hypotheses", {"select": "code"}) if str(h["code"]).startswith("pension:")}
+    have = {h["code"] for h in db.get("strategy_hypotheses", {"select": "code"}) if str(h["code"]).startswith("pension")}
     n_numbers = len(db.get("pension_winning_numbers", {"select": "round"}))
     prompt = pension_context(db, have, n_numbers)
     if dry:
@@ -410,18 +423,113 @@ def run_pension(db, dry=False):
                 break
             have.add(code)
             specs.append(spec)
+        sspecs = []
+        for h in data.get("store_hypotheses") or []:
+            spec = {"condition": h["condition"], "outcome": h["outcome"], "expect": h["expect"], "kind": "base", "level": "pension_store"}
+            if h.get("condition2") not in (None, "none", h["condition"]):
+                spec["condition2"] = h["condition2"]
+            if spec["condition"] not in PN.PENSION_STORE_CONDITIONS or spec.get("condition2", spec["condition"]) not in PN.PENSION_STORE_CONDITIONS \
+                    or spec["outcome"] not in PN.PENSION_STORE_OUTCOMES:
+                continue
+            code = PN.pension_store_code(spec)
+            if code in have or len(sspecs) >= DAILY_PENSION_STORE:
+                dup += code in have
+                continue
+            have.add(code)
+            sspecs.append(spec)
         saved = 0
-        if specs:
+        if specs or sspecs:
             did = db.insert("strategy_directions", {"after_round": latest, "source": "ai", "model": model,
                                                     "title": (data.get("title") or "연금복권 가설")[:200],
                                                     "rationale": (data.get("rationale") or "")[:2000], "focus": "pension"})
             rows = [{"direction_id": did, "code": PN.pension_code(sp), "statement": PN.pension_statement(sp), "spec": sp,
                      "status": "proposed", "created_round": latest} for sp in specs]
+            rows += [{"direction_id": did, "code": PN.pension_store_code(sp), "statement": PN.pension_store_statement(sp), "spec": sp,
+                      "status": "proposed", "created_round": latest} for sp in sspecs]
             db.upsert("strategy_hypotheses", rows, "code", ignore=True)
             saved = len(rows)
-        stats = dict(usage, provider=name, model=model, version=VERSION, pension=saved, duplicates_skipped=dup)
+        stats = dict(usage, provider=name, model=model, version=VERSION, pension=len(specs), pension_store=len(sspecs),
+                     duplicates_skipped=dup)
         db.insert("strategy_runs", {"kind": "ai_pension", "status": "success", "after_round": latest, "stats": stats})
-        print(f"{name}({model}) 연금 가설 {saved}개 · 중복 제외 {dup} · 토큰 {usage}")
+        print(f"{name}({model}) 연금 가설 번호 {len(specs)} · 판매점 {len(sspecs)} · 중복 제외 {dup} · 토큰 {usage}")
+        out[name] = stats
+    return out
+
+
+# ── 스피또 가설 (판매 현황이 쌓이면 검정 · 스피또 탭) ─────────────────────
+SPEETTO_SYSTEM = """당신은 로또 연구팀의 'AI 전략기획부'입니다. 오늘은 스피또(즉석복권 500 · 1000 · 2000) 가설을 냅니다.
+스피또는 게임마다 여러 차수가 동시에 팔리고, 동행복권이 차수별 출고율과 남은 1·2등 매수를 공개합니다.
+비서가 이 판매 현황을 매일 모읍니다. 당신의 가설은 '어떤 차수에서 다음 7일 동안 1등이 더 많이/적게 나가나' 같은 것으로,
+판매 현황이 쌓이는 대로 검정되고, 맞으면 '어느 게임·차수를 사면 좋은가' 추천에 쓰입니다.
+조건·결과·기대 방향은 주어진 목록의 키에서만 고릅니다. 조건 두 개를 겹치려면 condition2 (아니면 "none").
+제목·이유를 한국어로 짧게 쓰고 가설 8개를 내세요. 이미 있는 조합은 고르지 마세요.
+결과는 가설일 뿐이며 한 장의 당첨 확률을 바꾸지 않습니다."""
+
+
+def speetto_schema():
+    return {"type": "object", "additionalProperties": False, "properties": {
+        "title": {"type": "string"}, "rationale": {"type": "string"},
+        "hypotheses": {"type": "array", "items": {"type": "object", "additionalProperties": False, "properties": {
+            "condition": {"type": "string", "enum": list(SP.SPEETTO_CONDITIONS)},
+            "condition2": {"type": "string", "enum": ["none"] + list(SP.SPEETTO_CONDITIONS)},
+            "outcome": {"type": "string", "enum": list(SP.SPEETTO_OUTCOMES)},
+            "expect": {"type": "string", "enum": ["higher", "lower"]}},
+            "required": ["condition", "condition2", "outcome", "expect"]}}},
+        "required": ["title", "rationale", "hypotheses"]}
+
+
+def run_speetto(db, dry=False):
+    latest = db.get("lotto_winning_numbers", {"select": "round", "order": "round.desc", "limit": "1"})[0]["round"]
+    have = {h["code"] for h in db.get("strategy_hypotheses", {"select": "code"}) if str(h["code"]).startswith("speetto:")}
+    lines = ["# 스피또 가설 어휘", "조건:"] + [f"- {k}: {v}" for k, v in SP.SPEETTO_CONDITIONS.items()]
+    lines += ["결과:"] + [f"- {k}: {v}" for k, v in SP.SPEETTO_OUTCOMES.items()]
+    lines += ["# 이미 있는 스피또 가설 (다시 내지 마세요):"] + [f"- {c}" for c in sorted(have)][:200]
+    prompt = "\n".join(lines)
+    if dry:
+        print(prompt)
+        return None
+    now_kst = datetime.now(timezone.utc) + timedelta(hours=9)
+    day_start = (datetime(now_kst.year, now_kst.month, now_kst.day, tzinfo=timezone.utc) - timedelta(hours=9)).isoformat()
+    out = {}
+    for name, env, ask in PROVIDERS:
+        if not os.environ.get(env):
+            continue
+        done = db.get("strategy_directions", {"select": "id", "source": "eq.ai", "focus": "eq.speetto",
+                                              "created_at": f"gte.{day_start}", "model": f"ilike.*{name}*", "limit": "1"})
+        if done:
+            print(f"오늘 {name} 스피또 제안 이미 있음 — 건너뜀")
+            continue
+        try:
+            data, model, usage = ask(prompt, system=SPEETTO_SYSTEM, sch=speetto_schema())
+        except AiFailed as e:
+            db.insert("strategy_runs", {"kind": "ai_speetto", "status": "failed", "after_round": latest,
+                                        "stats": {"provider": name}, "note": str(e)})
+            print(f"{name} 스피또: {e}")
+            continue
+        specs, dup = [], 0
+        for h in data.get("hypotheses") or []:
+            spec = {"condition": h["condition"], "outcome": h["outcome"], "expect": h["expect"], "kind": "base", "level": "speetto"}
+            if h.get("condition2") not in (None, "none", h["condition"]):
+                spec["condition2"] = h["condition2"]
+            if spec["condition"] not in SP.SPEETTO_CONDITIONS or spec.get("condition2", spec["condition"]) not in SP.SPEETTO_CONDITIONS \
+                    or spec["outcome"] not in SP.SPEETTO_OUTCOMES:
+                continue
+            code = SP.speetto_code(spec)
+            if code in have or len(specs) >= DAILY_SPEETTO:
+                dup += code in have
+                continue
+            have.add(code)
+            specs.append(spec)
+        if specs:
+            did = db.insert("strategy_directions", {"after_round": latest, "source": "ai", "model": model,
+                                                    "title": (data.get("title") or "스피또 가설")[:200],
+                                                    "rationale": (data.get("rationale") or "")[:2000], "focus": "speetto"})
+            db.upsert("strategy_hypotheses", [{"direction_id": did, "code": SP.speetto_code(sp), "statement": SP.speetto_statement(sp),
+                                               "spec": sp, "status": "proposed", "created_round": latest} for sp in specs],
+                      "code", ignore=True)
+        stats = dict(usage, provider=name, model=model, version=VERSION, speetto=len(specs), duplicates_skipped=dup)
+        db.insert("strategy_runs", {"kind": "ai_speetto", "status": "success", "after_round": latest, "stats": stats})
+        print(f"{name}({model}) 스피또 가설 {len(specs)}개 · 중복 제외 {dup} · 토큰 {usage}")
         out[name] = stats
     return out
 
@@ -441,6 +549,10 @@ def main():
         run_pension(db, a.dry_run)
     except Exception as e:   # 연금 가설 실패가 로또 쪽을 막지 않는다
         print(f"연금 가설 실패: {type(e).__name__} {str(e)[:200]}")
+    try:
+        run_speetto(db, a.dry_run)
+    except Exception as e:
+        print(f"스피또 가설 실패: {type(e).__name__} {str(e)[:200]}")
 
 
 if __name__ == "__main__":

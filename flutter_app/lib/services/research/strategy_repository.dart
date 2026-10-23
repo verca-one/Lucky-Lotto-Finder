@@ -19,6 +19,9 @@ class StrategyDirection {
       );
   bool get isAi => source == 'ai';
 
+  /// 복권 종류: lotto · pension · speetto (방향의 focus 로 구분)
+  String get lottery => focus == 'pension' ? 'pension' : (focus == 'speetto' ? 'speetto' : 'lotto');
+
   /// 'Claude' · 'Gemini' · null(관리자)
   String? get aiName {
     if (!isAi) return null;
@@ -89,8 +92,12 @@ class StrategyHypothesis {
   /// 판매점 단위 가설 (명당)
   bool get isStore => spec['level'] == 'store';
 
-  /// 연금복권 가설 (가설 트랙 전용 — 가설 공장 판정 없음)
-  bool get isPension => spec['level'] == 'pension';
+  /// 연금복권 가설 (가설 트랙 전용 — 가설 공장 판정 없음) · 연금 판매점 가설 포함
+  bool get isPension => spec['level'] == 'pension' || spec['level'] == 'pension_store';
+  bool get isPensionStore => spec['level'] == 'pension_store';
+
+  /// 스피또 가설 (판매 현황이 쌓이면 검정)
+  bool get isSpeetto => spec['level'] == 'speetto';
 
   /// 파생 원본 가설 코드 (기본 가설이면 null)
   String? get parentCode => spec['parent'] as String?;

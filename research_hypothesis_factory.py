@@ -639,7 +639,7 @@ def run(db, dry=False):
                   "status": "proposed", "forward": None, "verdict": None, "created_round": latest, "last_round": None}
                  for i, sp in enumerate(seeds) if spec_code(sp) not in have]
     # 연금 가설(spec.level = pension)은 공장이 판정하지 않는다 — 연금 가설 트랙이 실전 기록으로 쓴다 (research_pension.py)
-    hyps = [h for h in hyps if (h.get("spec") or {}).get("level") != "pension"]
+    hyps = [h for h in hyps if (h.get("spec") or {}).get("level") not in ("pension", "pension_store", "speetto")]
     # 문장 정리 (조사 등) — 문장은 spec 으로 만든 것이라 spec 기준으로 다시 맞춘다
     fixed = 0
     for h in hyps:
