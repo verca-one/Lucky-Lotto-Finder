@@ -19,6 +19,7 @@ import 'admin_region_research_screen.dart';
 import '../widgets/master_briefing_section.dart';
 import '../widgets/pension_briefing_view.dart';
 import '../widgets/speetto_briefing_view.dart';
+import '../widgets/extra_lottery_briefing_card.dart';
 import '../widgets/agent_briefing_section.dart';
 import '../widgets/db_usage_card.dart';
 import '../services/research/research_scheduler.dart';
@@ -110,7 +111,7 @@ class _AdminScreenState extends State<AdminScreen> {
                     _buildAdminMenuItem(
                       icon: Icons.biotech_rounded,
                       title: '연구소',
-                      subtitle: 'AI 전략기획부 · 명당 가설 · 지방장 · 엔진 복기 · 예측 연구 현황 · 패턴 분석 · 추천 판매점',
+                      subtitle: 'AI 전략기획부 · 명당 가설 · 지방장 · 엔진 복기 · 예측 연구 현황 · 연금 연구 · 스피또 연구 · 패턴 분석 · 추천 판매점',
                       color: const Color(0xFF1A237E),
                       onTap: () => Navigator.push(context,
                           MaterialPageRoute(builder: (_) => const AdminResearchLabScreen())),
@@ -1296,6 +1297,8 @@ class BriefingDetailScreen extends StatelessWidget {
           const ManualRecommendCard(),
           const RoundDebriefTop(),
           _buildHeader(context),
+          const SizedBox(height: 10),
+          const ExtraLotteryBriefingCard(),
           const SizedBox(height: 16),
           const MasterBriefingSection(),
           const SizedBox(height: 16),

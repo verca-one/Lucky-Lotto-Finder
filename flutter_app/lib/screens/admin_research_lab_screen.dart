@@ -1,9 +1,10 @@
-// 관리자 '연구소' — 연구 화면 모음 (AI 전략기획부 · 명당 가설 · 전국 지방장 · 엔진 복기 · 실전형 재현 기록 · 예측 연구 현황 · 패턴 분석 · 추천 판매점)
+// 관리자 '연구소' — 연구 화면 모음 (AI 전략기획부 · 명당 가설 · 전국 지방장 · 엔진 복기 · 실전형 재현 기록 · 예측 연구 현황 · 연금 연구 · 스피또 연구 · 패턴 분석 · 추천 판매점)
 import 'package:flutter/material.dart';
 
 import 'admin_agent_replay_screen.dart';
 import 'admin_agent_research_screen.dart';
 import 'admin_engine_review_screen.dart';
+import 'admin_lottery_extra_screens.dart';
 import 'admin_pattern_analysis_screen.dart';
 import 'admin_recommend_stores_screen.dart';
 import 'admin_region_research_screen.dart';
@@ -33,6 +34,10 @@ final List<ResearchLabEntry> kResearchLabEntries = [
       const Color(0xFF37474F), (_) => const AdminAgentReplayScreen()),
   ResearchLabEntry(Icons.science_rounded, '예측 연구 현황', '추첨예측 · 구매예측 · 판매점 분석 · 예측력 검증 · 서버 연구 실행 상태',
       const Color(0xFF283593), (_) => const AdminResearchScreen()),
+  ResearchLabEntry(Icons.card_giftcard, '연금 연구', '연금복권720+ 번호 엔진 · 연금 명당 · 연금 가설 트랙 (제미나이)',
+      const Color(0xFFEF6C00), (_) => const AdminPensionResearchScreen()),
+  ResearchLabEntry(Icons.style_rounded, '스피또 연구', '스피또 500·1000·2000 판매 중 게임 · 남은 1등 지수 · 1등 판매점',
+      const Color(0xFF00897B), (_) => const AdminSpeettoResearchScreen()),
   ResearchLabEntry(Icons.analytics_rounded, '패턴 분석', '엔진 번호추천 · 당첨흐름 · 자리별 패턴',
       Colors.indigo, (_) => const AdminPatternAnalysisScreen()),
   ResearchLabEntry(Icons.recommend, '추천 판매점', '당첨주기 기반 이번 회차 유력 판매점',
