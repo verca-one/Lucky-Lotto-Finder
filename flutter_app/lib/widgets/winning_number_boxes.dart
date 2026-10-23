@@ -1,4 +1,4 @@
-// 당첨번호 네모칸 — 로또 · 연금복권이 같은 모양으로 당첨번호를 보여 준다 (일반 모드 추천 상단)
+// 당첨번호 공 — 로또 · 연금복권이 같은 공 모양으로 당첨번호를 보여 준다 (일반 모드 추천 상단)
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -16,7 +16,25 @@ Widget numberBox(String text, {double size = 36, Color? accent, double fontSize 
       child: Text(text, style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.w900, color: const Color(0xFF1A1A2E))),
     );
 
-/// 로또 번호대 색 (네모칸 아래 줄)
+/// 색 공 하나 (숫자 · 글자) — 이전 로또 공 모양
+Widget numberBall(String text, Color color, {double size = 38, double fontSize = 14}) => Container(
+      width: size,
+      height: size,
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: color,
+        shape: BoxShape.circle,
+        boxShadow: [BoxShadow(color: color.withValues(alpha: 0.45), blurRadius: 6, offset: const Offset(0, 2))],
+      ),
+      child: Text(text, style: TextStyle(fontSize: fontSize, fontWeight: FontWeight.w900, color: Colors.white)),
+    );
+
+/// 연금 자리별 공 색 (1~6번째 자리)
+const kPensionDigitColors = [
+  Color(0xFFEF5350), Color(0xFFFFA726), Color(0xFFFFCA28), Color(0xFF42A5F5), Color(0xFF7E57C2), Color(0xFF26A69A),
+];
+
+/// 로또 번호대 색
 Color lottoRangeColor(int n) {
   if (n <= 10) return const Color(0xFFFFB300);
   if (n <= 20) return const Color(0xFF42A5F5);
@@ -25,7 +43,7 @@ Color lottoRangeColor(int n) {
   return const Color(0xFF66BB6A);
 }
 
-/// 로또 당첨번호 6개 + 보너스 (네모칸)
+/// 로또 당첨번호 6개 + 보너스 (공)
 class LottoWinningBoxes extends StatelessWidget {
   final List<int> numbers;
   final int bonus;
@@ -35,12 +53,12 @@ class LottoWinningBoxes extends StatelessWidget {
   Widget build(BuildContext context) {
     final nums = [...numbers]..sort();
     return Row(children: [
-      for (final n in nums) Padding(padding: const EdgeInsets.only(right: 5), child: numberBox('$n', accent: lottoRangeColor(n))),
+      for (final n in nums) Padding(padding: const EdgeInsets.only(right: 6), child: numberBall('$n', lottoRangeColor(n))),
       const Padding(
-        padding: EdgeInsets.symmetric(horizontal: 3),
-        child: Text('+', style: TextStyle(color: Colors.white70, fontSize: 18, fontWeight: FontWeight.w300)),
+        padding: EdgeInsets.symmetric(horizontal: 4),
+        child: Text('+', style: TextStyle(color: Colors.white54, fontSize: 18, fontWeight: FontWeight.w300)),
       ),
-      numberBox('$bonus', accent: Colors.orange.shade600),
+      numberBall('$bonus', Colors.orange.shade600),
     ]);
   }
 }
@@ -61,7 +79,7 @@ class PensionLatestWinning {
   }
 }
 
-/// 연금복권 당첨번호 헤더 — [N조] + 6자리 네모칸 · 보너스 6자리 (각 조)
+/// 연금복권 당첨번호 헤더 — [N조] + 6자리 공 · 보너스 6자리 (각 조)
 class PensionWinningHeader extends StatefulWidget {
   final Future<PensionLatestWinning?> Function()? loader;
   const PensionWinningHeader({super.key, this.loader});
@@ -71,7 +89,6 @@ class PensionWinningHeader extends StatefulWidget {
 
 class _PensionWinningHeaderState extends State<PensionWinningHeader> {
   late final Future<PensionLatestWinning?> _f = (widget.loader ?? PensionLatestWinning.load)();
-  static const _accent = Color(0xFFEF6C00);
 
   @override
   Widget build(BuildContext context) {
@@ -110,7 +127,8 @@ class _PensionWinningHeaderState extends State<PensionWinningHeader> {
                 decoration: BoxDecoration(color: const Color(0xFF6D2C00), borderRadius: BorderRadius.circular(8)),
                 child: Text('${w.group}조', style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 15)),
               ),
-              for (final ch in w.number.split('')) Padding(padding: const EdgeInsets.only(right: 4), child: numberBox(ch, size: 30, accent: _accent)),
+              for (final e in w.number.split('').asMap().entries)
+                Padding(padding: const EdgeInsets.only(right: 4), child: numberBall(e.value, kPensionDigitColors[e.key % 6], size: 32, fontSize: 15)),
             ]),
             const SizedBox(height: 8),
             Row(children: [
@@ -123,7 +141,8 @@ class _PensionWinningHeaderState extends State<PensionWinningHeader> {
                 decoration: BoxDecoration(color: Colors.white24, borderRadius: BorderRadius.circular(8)),
                 child: const Text('각조', style: TextStyle(color: Colors.white, fontWeight: FontWeight.w900, fontSize: 13)),
               ),
-              for (final ch in w.bonus.split('')) Padding(padding: const EdgeInsets.only(right: 4), child: numberBox(ch, size: 30, accent: Colors.white70)),
+              for (final ch in w.bonus.split(''))
+                Padding(padding: const EdgeInsets.only(right: 4), child: numberBall(ch, const Color(0xFF8D6E63), size: 32, fontSize: 15)),
             ]),
           ]);
         },

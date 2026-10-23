@@ -38,7 +38,7 @@ void main() {
     expect(find.textContaining('제미나이 연금 가설이 아직 없습니다'), findsOneWidget);
   });
 
-  testWidgets('일반 모드 연금 탭 — 상단 당첨번호(조 + 네모칸 · 보너스) → 연금 번호 엔진만 (명당 · 가설 트랙 없음)', (tester) async {
+  testWidgets('일반 모드 연금 탭 — 상단 당첨번호(조 + 공 · 보너스) → 연금 번호 엔진만 (명당 · 가설 트랙 없음)', (tester) async {
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: PensionBriefingView(
         admin: false, loader: () async => PensionBriefing.fromPublic(_ok),
         winningLoader: () async => const PensionLatestWinning(337, 2, '060727', '293160', '2026-10-15')))));
@@ -53,7 +53,7 @@ void main() {
     expect(find.byKey(const ValueKey('pension_input_shortcut')), findsNothing);
   });
 
-  testWidgets('로또 당첨번호 네모칸 — 6개 + 보너스', (tester) async {
+  testWidgets('로또 당첨번호 공 — 6개 + 보너스', (tester) async {
     await tester.pumpWidget(const MaterialApp(home: Scaffold(body: LottoWinningBoxes(numbers: [44, 2, 13, 3, 41, 5], bonus: 7))));
     expect(find.text('2'), findsOneWidget);
     expect(find.text('44'), findsOneWidget);
