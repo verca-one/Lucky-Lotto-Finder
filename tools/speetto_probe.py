@@ -1,9 +1,10 @@
 """
 동행복권 응답 형식 확인 (1회용 · 서버 전용) — 기존 크롤러가 쓰는 같은 주소·헤더로 최소 요청만 한다.
   2026-10-23 1차: 스피또 당첨지점 형식 확인 (완료 — 회차 = ltEpsd)
-  2026-10-24 2차: 연금복권 당첨번호를 어디서 받을 수 있는지 — 요청 4번
-    1~2) 세션 워밍업 (기존 크롤러와 같음)  3) 연금 당첨판매점 337회 응답 1건 (당첨번호 칸이 있는지)
-    4) 연금 당첨결과 페이지 337회 (HTML 안 조·6자리 위치)
+  2026-10-24 2차: 연금 당첨판매점 응답엔 당첨번호 없음 · 예전 win720 주소는 오류 페이지 (완료)
+  2026-10-24 3차: 새 사이트의 연금 결과 주소 찾기 — 요청 3~4번
+    1~2) 세션 워밍업 (기존 크롤러와 같음) — 첫 화면 HTML 에서 720·연금 관련 링크 추출 (추가 요청 없음)
+    3) 찾은 연금 결과 페이지 1번 — 안의 .do 주소 · 스크립트 주소 · 6자리 숫자 위치
 DB 읽기·쓰기 없음. 결과는 로그에만 (판매점 이름·코드 · 필드 이름).
 """
 import json
@@ -35,33 +36,36 @@ ajax = {"User-Agent": UA, "Accept": "application/json, text/javascript, */*; q=0
         "X-Requested-With": "XMLHttpRequest", "Referer": "https://www.dhlottery.co.kr/wnprchsplcsrch/selectWnPrchsPlcList.do",
         "Sec-Fetch-Dest": "empty", "Sec-Fetch-Mode": "cors", "Sec-Fetch-Site": "same-origin"}
 s = requests.Session()
+import re
+pages = {}
 for u in ("https://www.dhlottery.co.kr/common.do?method=main", "https://www.dhlottery.co.kr/wnprchsplcsrch/selectWnPrchsPlcList.do"):
     r = s.get(u, headers=html, timeout=30, verify=False)
-    print("warm-up", u, r.status_code)
+    pages[u] = r.text
+    print("warm-up", u, r.status_code, "final", r.url, "len", len(r.text))
     time.sleep(random.uniform(2.0, 3.5))
-# 3) 연금 당첨판매점 API (기존 크롤러 crawl_pension_stores 와 같은 주소)
-r = s.get("https://www.dhlottery.co.kr/wnprchsplcsrch/selectPtWnShp.do", timeout=60, verify=False,
-          headers=dict(ajax, Referer="https://www.dhlottery.co.kr/wnprchsplcsrch/wnprchsplcsrch.do"),
-          params={"srchWnShpRnk": "all", "srchLtEpsd": 337, "srchShpLctn": ""})
-print("pension-store", r.status_code, r.headers.get("Content-Type"))
-try:
-    d = r.json()
-    data = d.get("data") or {}
-    print("pension-store keys:", list(d.keys()), list(data.keys()) if isinstance(data, dict) else type(data).__name__)
-    lst = data.get("list") if isinstance(data, dict) else None
-    if lst:
-        print("pension-store record0:", json.dumps(lst[0], ensure_ascii=False)[:1500])
-    print("pension-store 다른 칸:", json.dumps({k: v for k, v in data.items() if k != "list"}, ensure_ascii=False)[:1500] if isinstance(data, dict) else "")
-except ValueError:
-    print("pension-store JSON 아님:", r.text[:500])
-time.sleep(random.uniform(3.0, 5.0))
 
-# 4) 연금 당첨결과 페이지 (HTML) — 조·번호가 들어 있는 부분만 잘라 본다
-import re
-r = s.get("https://www.dhlottery.co.kr/gameResult.do", headers=html, timeout=60, verify=False,
-          params={"method": "win720", "Round": 337})
-print("win720", r.status_code, r.headers.get("Content-Type"), "len", len(r.text), "final", r.url)
-t = r.text
-for kw in ("win720", "조", "num", "drwNo", "337"):
-    i = t.find(kw)
-    print(f"win720 '{kw}' 위치 {i}:", re.sub(r"\s+", " ", t[max(0, i - 200): i + 400]) if i >= 0 else "-")
+# 첫 화면 · 판매점 페이지 안의 링크 중 연금(720) 관련
+links = set()
+for t in pages.values():
+    for m in re.finditer(r"""(?:href|src|action|url)\s*[:=]\s*["']([^"']+)["']""", t):
+        links.add(m.group(1))
+cand = sorted(x for x in links if re.search(r"720|pt7|pension|win720|wnNo|drwNo|Rslt|rslt|result|Result", x))
+print("연금 후보 링크:", cand[:60])
+menu = sorted({m.group(0) for t in pages.values() for m in re.finditer(r"/[A-Za-z0-9_/]+\.do[^\"' <>]*", t)})
+print("모든 .do 주소:", menu[:150])
+
+# 후보 중 결과 페이지로 보이는 것 1개만 연다
+pick = next((x for x in cand if re.search(r"720", x) and (".do" in x or x.startswith("/"))), None)
+if pick:
+    url = pick if pick.startswith("http") else "https://www.dhlottery.co.kr" + pick
+    time.sleep(random.uniform(3.0, 5.0))
+    r = s.get(url, headers=html, timeout=60, verify=False)
+    t = r.text
+    print("연금 결과 페이지", url, r.status_code, "final", r.url, "len", len(t))
+    print("페이지 안 .do 주소:", sorted({m.group(0) for m in re.finditer(r"/[A-Za-z0-9_/]+\.do", t)})[:80])
+    print("페이지 안 스크립트:", sorted({m.group(1) for m in re.finditer(r"""<script[^>]+src=["']([^"']+)["']""", t)})[:40])
+    for kw in ("조", "ltEpsd", "wnBnd", "drwNo", "Epsd", "720"):
+        i = t.find(kw)
+        print(f"결과 페이지 '{kw}' 위치 {i}:", re.sub(r"\s+", " ", t[max(0, i - 150): i + 350]) if i >= 0 else "-")
+else:
+    print("연금 결과 후보 링크 없음 — 페이지는 열지 않음")
