@@ -130,9 +130,10 @@ def status_block(db):
     for r in rows:
         ship = (r.get("ship_rate") or 0) / 100
         t1, l1 = r.get("rnk1_total") or 0, r.get("rnk1_left")
-        idx = round((l1 / t1) / (1 - ship), 3) if t1 and l1 is not None and ship < 0.999 else None
-        out.append(dict(r, index=idx))
-    out.sort(key=lambda r: -(r["index"] or 0))
+        near_end = ship >= 0.95   # 출고 거의 끝 — 남은 1등은 판매점 재고이거나 팔렸지만 아직 안 찾아간 표일 수 있어 지수를 쓰지 않는다
+        idx = round((l1 / t1) / (1 - ship), 3) if t1 and l1 is not None and not near_end else None
+        out.append(dict(r, index=idx, near_end=near_end))
+    out.sort(key=lambda r: (r["near_end"], -(r["index"] or 0)))
     return {"status": "ok", "snap_date": snap, "editions": out,
             "rule": "남은 1등 지수 = (남은 1등 ÷ 전체 1등) ÷ (1 − 출고율) · 1보다 크면 출고된 만큼보다 1등이 많이 남음"}
 

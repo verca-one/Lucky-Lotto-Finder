@@ -38,6 +38,9 @@ class SpeettoEdition {
   final int edition;
   final double? shipRate, index;
   final int? rnk1Total, rnk1Left, rnk2Total, rnk2Left;
+
+  /// 출고율 95% 이상 — 지수를 쓰지 않음
+  bool get nearEnd => (shipRate ?? 0) >= 95;
   final String? prize1, prize2, saleEnd;
   const SpeettoEdition({required this.game, required this.edition, this.shipRate, this.index, this.rnk1Total, this.rnk1Left,
       this.rnk2Total, this.rnk2Left, this.prize1, this.prize2, this.saleEnd});
@@ -226,7 +229,13 @@ class _SpeettoBriefingViewState extends State<SpeettoBriefingView> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Expanded(child: Text('${e.label} ${e.edition}회', style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900))),
-          if (e.index != null)
+          if (e.nearEnd)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(color: Colors.orange.shade700, borderRadius: BorderRadius.circular(12)),
+              child: const Text('출고 거의 끝', style: TextStyle(fontSize: 10.5, color: Colors.white, fontWeight: FontWeight.w800)),
+            )
+          else if (e.index != null)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(color: good ? kSpeettoColor : Colors.grey.shade400, borderRadius: BorderRadius.circular(12)),
@@ -242,6 +251,9 @@ class _SpeettoBriefingViewState extends State<SpeettoBriefingView> {
               backgroundColor: Colors.white, borderRadius: BorderRadius.circular(3))),
         ]),
         const SizedBox(height: 6),
+        if (e.nearEnd)
+          Text('판매점으로 거의 다 나간 차수입니다. 남은 1등은 판매점 재고이거나, 이미 팔렸지만 아직 찾아가지 않은 표일 수 있습니다.',
+              style: TextStyle(fontSize: 10.5, color: Colors.orange.shade900)),
         Text('1등${e.prize1 == null ? '' : '(${e.prize1})'} 남은 ${e.rnk1Left ?? '-'} / ${e.rnk1Total ?? '-'}장'
             '   ·   2등${e.prize2 == null ? '' : '(${e.prize2})'} 남은 ${e.rnk2Left ?? '-'} / ${e.rnk2Total ?? '-'}장',
             style: TextStyle(fontSize: 11.5, color: Colors.grey.shade800)),

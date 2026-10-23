@@ -99,6 +99,7 @@ void main() {
         'prize1': '2억원', 'prize2': '1백만원', 'index': 1.429},
       {'game': 'SP2000', 'edition': 70, 'ship_rate': 28, 'rnk1_total': 8, 'rnk1_left': 8, 'rnk2_total': 24, 'rnk2_left': 21,
         'prize1': '10억원', 'index': 1.389},
+      {'game': 'SP2000', 'edition': 69, 'ship_rate': 99, 'rnk1_total': 10, 'rnk1_left': 1, 'near_end': true},
     ]}});
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: SpeettoBriefingView(admin: false, loader: () async => b))));
     await tester.pumpAndSettle();
@@ -107,5 +108,7 @@ void main() {
     expect(find.text('남은 1등 지수 1.43'), findsOneWidget);
     expect(find.text('출고율 58%'), findsOneWidget);
     expect(find.textContaining('1등(2억원) 남은 3 / 5장'), findsOneWidget);
+    await tester.scrollUntilVisible(find.byKey(const ValueKey('speetto_edition_SP2000_69')), 200);
+    expect(find.text('출고 거의 끝'), findsOneWidget);
   });
 }
