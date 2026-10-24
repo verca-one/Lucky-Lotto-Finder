@@ -225,7 +225,7 @@ class _PensionBriefingViewState extends State<PensionBriefingView> {
                 Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
                   Text('역대 1등 ${e.value.first}회 · 2등 ${e.value.second}회', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800)),
                   if (widget.admin && e.value.pNext != null)
-                    Text('다음 회차 1·2등 추정 ${(e.value.pNext! * 100).toStringAsFixed(2)}%', style: TextStyle(fontSize: 9.5, color: Colors.grey.shade600)),
+                    Text('당첨확률 추정치: ${(e.value.pNext! * 100).toStringAsFixed(2)}%', style: TextStyle(fontSize: 9.5, color: Colors.grey.shade600)),
                 ]),
                 if (e.value.code.isNotEmpty) FavoriteStoreStar(code: e.value.code, name: e.value.name),
               ]),

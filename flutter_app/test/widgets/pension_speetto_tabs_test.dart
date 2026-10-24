@@ -34,7 +34,7 @@ void main() {
     expect(find.textContaining('50회부터 가동'), findsOneWidget);
     expect(find.byKey(const ValueKey('pension_input_shortcut')), findsOneWidget);
     expect(find.text('하당복권방'), findsOneWidget);
-    expect(find.text('다음 회차 1·2등 추정 2.73%'), findsOneWidget);
+    expect(find.text('당첨확률 추정치: 2.73%'), findsOneWidget);
     await tester.scrollUntilVisible(find.textContaining('제미나이 연금 가설이 아직 없습니다'), 200);
     expect(find.textContaining('제미나이 연금 가설이 아직 없습니다'), findsOneWidget);
   });
