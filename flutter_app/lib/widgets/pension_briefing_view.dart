@@ -223,7 +223,7 @@ class _PensionBriefingViewState extends State<PensionBriefingView> {
                   ]),
                 ),
                 Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                  Text('1등 ${e.value.first} · 2등 ${e.value.second}', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800)),
+                  Text('역대 1등 ${e.value.first}회 · 2등 ${e.value.second}회', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800)),
                   if (widget.admin && e.value.pNext != null)
                     Text('다음 회차 1·2등 추정 ${(e.value.pNext! * 100).toStringAsFixed(2)}%', style: TextStyle(fontSize: 9.5, color: Colors.grey.shade600)),
                 ]),

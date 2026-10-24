@@ -308,7 +308,7 @@ class _SpeettoBriefingViewState extends State<SpeettoBriefingView> {
                       style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600)),
                 ]),
               ),
-              Text('1등 ${e.value.first}${e.value.second > 0 ? ' · 2등 ${e.value.second}' : ''}',
+              Text('역대 1등 ${e.value.first}회${e.value.second > 0 ? ' · 2등 ${e.value.second}회' : ''}',
                   style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800)),
               if (e.value.code.isNotEmpty) FavoriteStoreStar(code: e.value.code, name: e.value.name),
             ]),
