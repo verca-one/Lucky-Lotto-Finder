@@ -137,7 +137,7 @@ class _PensionBriefingViewState extends State<PensionBriefingView> {
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(color: Colors.white.withValues(alpha: b.isFinal ? 0.95 : 0.25),
                   borderRadius: BorderRadius.circular(12)),
-              child: Text(b.isFinal ? '추첨일 아침 8시 최종 점검본' : '초안 · 추첨일(목) 아침 8시 최종 점검 뒤 다시 냅니다',
+              child: Text(b.isFinal ? '목요일 8시 최종본' : '초안 · 목요일 8시 최종본 예정',
                   style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800,
                       color: b.isFinal ? const Color(0xFFEF6C00) : Colors.white)),
             ),
@@ -250,6 +250,6 @@ class _PensionBriefingViewState extends State<PensionBriefingView> {
                 _small('검증 전 가설 기반 예측입니다.'),
               ])
             : _note(b.trackNote ?? '연금 가설을 준비하고 있습니다.'),
-        chip: _chip('가설 기반', const Color(0xFF6A1B9A)),
+        chip: _chip(b.isFinal ? '목요일 8시 최종본' : '가설 기반', const Color(0xFF6A1B9A)),
       );
 }

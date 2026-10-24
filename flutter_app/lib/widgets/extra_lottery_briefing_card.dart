@@ -114,7 +114,7 @@ class _ExtraLotteryBriefingCardState extends State<ExtraLotteryBriefingCard> {
         lines.add(_line('명당 ${b.stores.take(3).map((s) => s.name).join(' · ')}'));
       }
       lines.add(_line(b.trackStatus == 'ok' ? '가설 트랙 ${b.trackTickets.length}장 · 가설 ${b.trackHyps.length}개 사용' : (b.trackNote ?? '연금 가설 트랙 대기')));
-      lines.add(_line(b.isFinal ? '추첨일 아침 8시 최종 점검본' : '초안 — 추첨일(목) 아침 8시 최종 점검 뒤 다시 발행'));
+      lines.add(_line(b.isFinal ? '목요일 8시 최종본' : '초안 — 목요일 8시 최종본 예정'));
     }
     return _box(
       key: const ValueKey('extra_pension'),
