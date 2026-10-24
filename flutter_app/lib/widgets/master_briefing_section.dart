@@ -89,6 +89,9 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
           Text('추첨 후 회차 검증은 아래 구매할 번호(①~③)와 추천 명당(④)만 같은 번호로 채점합니다.',
               style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600)),
           const SizedBox(height: 6),
+          // ⑤ 가설 트랙(제미나이) — 구매할 번호 세트보다 위
+          HypothesisTrackCard(key: ValueKey('track_${b.targetRound}'), target: b.targetRound, released: open),
+          const SizedBox(height: 12),
           BriefingSection(
             key: const ValueKey('buy_section'),
             title: '구매할 번호 — ${b.targetRound}회',
@@ -117,8 +120,6 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
           ),
           const SizedBox(height: 12),
           _storeCard(b, '4'),
-          const SizedBox(height: 12),
-          HypothesisTrackCard(key: ValueKey('track_${b.targetRound}'), target: b.targetRound, released: open),
         ]);
       },
     );
