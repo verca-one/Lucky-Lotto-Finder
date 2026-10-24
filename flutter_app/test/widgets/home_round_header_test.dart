@@ -73,6 +73,19 @@ void main() {
       expect(q.front.status, RoundStatus.awaiting);
     });
 
+    test('당첨번호만 수집 · 지점 수집 전: 번호 수집 완료 (3단계 중 2단계)', () {
+      final d = lotto();
+      final withNumbers = GameRoundData(type: d.type, crawlRows: d.crawlRows, roundsWithWinners: d.roundsWithWinners,
+          dbDrawDates: d.dbDrawDates, latestNumbersRound: 1246);
+      final p = decideRoundPair(withNumbers, kst(2026, 10, 17, 22))!;
+      expect([p.front.round, p.front.status], [1246, RoundStatus.numbersReady]);
+      expect(RoundStatus.numbersReady.label, '번호 수집 완료');
+      // 번호 표가 직전 회차까지면 그대로 결과 대기
+      final older = GameRoundData(type: d.type, crawlRows: d.crawlRows, roundsWithWinners: d.roundsWithWinners,
+          dbDrawDates: d.dbDrawDates, latestNumbersRound: 1245);
+      expect(decideRoundPair(older, kst(2026, 10, 17, 22))!.front.status, RoundStatus.awaiting);
+    });
+
     test('결과 수집 완료: 앞 카드 갱신, 뒤 = 직전 회차', () {
       final t1246 = DateTime.utc(2026, 10, 17, 17, 40);
       final p = decideRoundPair(

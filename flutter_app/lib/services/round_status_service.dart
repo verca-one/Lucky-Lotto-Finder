@@ -13,6 +13,7 @@ import 'supabase_service.dart';
 enum RoundStatus {
   scheduled('추첨 예정'),
   awaiting('결과 대기'),
+  numbersReady('번호 수집 완료'), // 당첨번호는 들어왔고 당첨 지점(판매점)은 수집 전
   complete('업데이트 완료'),
   error('데이터 오류');
 
@@ -54,6 +55,9 @@ class GameRoundData {
   final DateTime? lastRunSuccessAt; // crawl_logs 최근 성공 (UTC)
   final DateTime? lastRunFailureAt; // crawl_logs 최근 실패 (UTC)
 
+  /// 당첨번호 표(lotto_winning_numbers / pension_winning_numbers)의 최신 회차 — 번호 수집 단계 판단
+  final int? latestNumbersRound;
+
   const GameRoundData({
     required this.type,
     this.crawlRows = const [],
@@ -62,6 +66,7 @@ class GameRoundData {
     this.fallbackLatestRound,
     this.lastRunSuccessAt,
     this.lastRunFailureAt,
+    this.latestNumbersRound,
   });
 }
 
@@ -132,6 +137,9 @@ RoundPair? decideRoundPair(GameRoundData d, DateTime nowUtc) {
   } else if (row?.storesStatus == 'failed' || row?.storesStatus == 'success' || runFailed) {
     // failed = 수집 실패, success인데 당첨 판매점 기록 없음 = 검증 불일치
     status = RoundStatus.error;
+  } else if ((d.latestNumbersRound ?? 0) >= target) {
+    // 당첨번호는 수집됐고 당첨 지점은 아직
+    status = RoundStatus.numbersReady;
   } else {
     status = RoundStatus.awaiting;
   }
@@ -160,6 +168,7 @@ class RoundStatusService {
     final results = await Future.wait([
       SupabaseService.getRoundsWithWinners(type, probe),
       SupabaseService.getDrawDates(type, probe),
+      SupabaseService.getLatestNumbersRound(type),
     ]);
     final rawDates = results[1] as Map<int, String>;
 
@@ -184,6 +193,7 @@ class RoundStatusService {
       fallbackLatestRound: fallback,
       lastRunSuccessAt: lastOf('success'),
       lastRunFailureAt: lastOf('failure') ?? lastOf('failed'),
+      latestNumbersRound: results[2] as int?,
     );
   }
 }

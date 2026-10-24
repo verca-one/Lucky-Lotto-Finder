@@ -283,6 +283,8 @@ class _FrontCard extends StatelessWidget {
         return '${_weekdays[d.weekday - 1]} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')} 추첨';
       case RoundStatus.awaiting:
         return '공식 결과 수집 전';
+      case RoundStatus.numbersReady:
+        return '당첨번호 수집 완료 · 지점 수집 전';
       case RoundStatus.error:
         return '수집 실패 · 확인 중';
     }
@@ -291,7 +293,7 @@ class _FrontCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // 수집·검증 완료 전(추첨 예정·결과 대기·데이터 오류)에는 모든 글자·아이콘·선이 옅은 회색
-    final pending = card.status != RoundStatus.complete;
+    final pending = card.status != RoundStatus.complete && card.status != RoundStatus.numbersReady;
     final ink = pending ? kPendingText : const Color(0xFF14213D);
     final dot = pending ? kPendingSubText : theme.accent;
     final label = pending ? kPendingText : theme.ink;
@@ -426,6 +428,7 @@ class RoundStatusPill extends StatelessWidget {
     var (fg, bg, icon) = switch (status) {
       RoundStatus.scheduled => (const Color(0xFF1565C0), const Color(0xFFE3F0FF), Icons.event_rounded),
       RoundStatus.awaiting => (const Color(0xFFB45309), const Color(0xFFFFF1DC), Icons.hourglass_top_rounded),
+      RoundStatus.numbersReady => (const Color(0xFF00796B), const Color(0xFFE0F2F1), Icons.pin_rounded),
       RoundStatus.complete => (const Color(0xFF1E7D4C), const Color(0xFFE3F6EA), Icons.check_circle_rounded),
       RoundStatus.error => (const Color(0xFFC62828), const Color(0xFFFDE4E4), Icons.error_outline_rounded),
     };

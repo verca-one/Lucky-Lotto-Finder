@@ -45,6 +45,21 @@ class SupabaseService {
     }
   }
 
+  /// 당첨번호 표의 최신 회차 (로또: lotto_winning_numbers · 연금: pension_winning_numbers) — 없거나 오류면 null
+  static Future<int?> getLatestNumbersRound(String type) async {
+    try {
+      final rows = await _supabase
+          .from(type == 'pension' ? 'pension_winning_numbers' : 'lotto_winning_numbers')
+          .select('round')
+          .order('round', ascending: false)
+          .limit(1);
+      final l = rows as List;
+      return l.isEmpty ? null : (l.first['round'] as num).toInt();
+    } catch (e) {
+      return null;
+    }
+  }
+
   // 특정 코드 목록으로 판매점 조회 (즐겨찾기용) — 로또 판매점 우선, 없는 코드는 연금 → 스피또 판매점에서 찾는다
   static Future<List<LotteryStore>> getStoresByCodes(List<String> codes) async {
     if (codes.isEmpty) return [];

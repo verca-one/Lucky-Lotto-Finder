@@ -38,7 +38,7 @@ class _RoundResultScreenState extends State<RoundResultScreen> {
   void initState() {
     super.initState();
     _result = RoundResultScreen._cache[_key];
-    if (_result == null && c.status == RoundStatus.complete) _load();
+    if (_result == null && (c.status == RoundStatus.complete || c.status == RoundStatus.numbersReady)) _load();
   }
 
   Future<void> _load() async {
@@ -104,6 +104,17 @@ class _RoundResultScreenState extends State<RoundResultScreen> {
         return [
           _notice(Icons.hourglass_top_rounded, '추첨은 끝났고 공식 당첨 결과를 수집하기 전입니다.',
               '공식 데이터가 수집·검증되면 당첨번호와 당첨 판매점이 표시됩니다.'),
+        ];
+      case RoundStatus.numbersReady:
+        final r = _result;
+        return [
+          _notice(Icons.pin_rounded, '당첨번호는 수집됐고, 당첨 지점(판매점)은 아직 수집 전입니다.',
+              '당첨 판매점이 수집·검증되면 이 화면에 함께 표시됩니다.'),
+          const SizedBox(height: 12),
+          if (r != null) _numbers(r)
+          else if (_failed) _notice(Icons.cloud_off_rounded, '결과를 불러오지 못했습니다.', '잠시 후 다시 열어 주세요.')
+          else const Padding(padding: EdgeInsets.all(24),
+              child: Center(child: SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 2)))),
         ];
       case RoundStatus.error:
         return [
