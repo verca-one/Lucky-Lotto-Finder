@@ -177,7 +177,9 @@ class _AdminCouponScreenState extends State<AdminCouponScreen> {
       context: context,
       builder: (_) => AlertDialog(
         title: const Text('만료된 쿠폰 모두 삭제'),
-        content: const Text('만료된 쿠폰을 모두 삭제하시겠습니까?\n이 작업은 되돌릴 수 없습니다.'),
+        content: const Text('등록기한이 지난 쿠폰을 모두 삭제하시겠습니까?\n'
+            '사용 완료 쿠폰은 사용자 혜택 기록을 지키기 위해 지우지 않습니다 (필요하면 하나씩 삭제).\n'
+            '이 작업은 되돌릴 수 없습니다.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('취소')),
           TextButton(onPressed: () => Navigator.pop(context, true),
@@ -200,6 +202,15 @@ class _AdminCouponScreenState extends State<AdminCouponScreen> {
     return DateTime.now().isAfter(DateTime.parse(e));
   }
 
+  /// 사용 횟수를 다 쓴 쿠폰 (예: 1회용 1/1 사용) — 더 쓸 수 없으므로 만료 쪽으로
+  bool _isUsedUp(Map<String, dynamic> c) {
+    final used = (c['used_count'] as num?)?.toInt() ?? 0;
+    final max = (c['max_uses'] as num?)?.toInt() ?? 1;
+    return max > 0 && used >= max;
+  }
+
+  bool _isClosed(Map<String, dynamic> c) => _isExpired(c) || _isUsedUp(c);
+
   String _formatDate(String iso) {
     final d = DateTime.parse(iso);
     return '${d.year}.${d.month.toString().padLeft(2,'0')}.${d.day.toString().padLeft(2,'0')}';
@@ -214,8 +225,8 @@ class _AdminCouponScreenState extends State<AdminCouponScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final activeCoupons  = _coupons.where((c) => !_isExpired(c)).toList();
-    final expiredCoupons = _coupons.where(_isExpired).toList();
+    final activeCoupons  = _coupons.where((c) => !_isClosed(c)).toList();
+    final expiredCoupons = _coupons.where(_isClosed).toList();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF6F7FB),
@@ -487,7 +498,7 @@ class _AdminCouponScreenState extends State<AdminCouponScreen> {
                       Icon(Icons.schedule_outlined, size: 18, color: Colors.red.shade400),
                       const SizedBox(width: 8),
                       Expanded(
-                        child: Text('만료된 쿠폰 (${expiredCoupons.length}건)',
+                        child: Text('만료·사용 완료 쿠폰 (${expiredCoupons.length}건)',
                             style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold,
                                 color: Colors.red.shade700)),
                       ),
@@ -517,7 +528,7 @@ class _AdminCouponScreenState extends State<AdminCouponScreen> {
                                 ? const SizedBox(width: 14, height: 14,
                                     child: CircularProgressIndicator(strokeWidth: 2))
                                 : const Icon(Icons.delete_sweep, size: 18, color: Colors.red),
-                            label: const Text('만료된 쿠폰 모두 삭제',
+                            label: const Text('등록기한 지난 쿠폰 모두 삭제',
                                 style: TextStyle(color: Colors.red)),
                             style: OutlinedButton.styleFrom(
                               side: const BorderSide(color: Colors.red),
@@ -642,11 +653,14 @@ class _AdminCouponScreenState extends State<AdminCouponScreen> {
     final durationDays = coupon['duration_days'] as int?;
     final expiresAt  = coupon['expires_at']  as String?;
 
-    final expiryLabel = expiresAt == null
-        ? '무기한 등록 가능'
-        : expired
-            ? '등록기한 만료: ${_formatDate(expiresAt)}'
-            : '등록기한: ~${_formatDate(expiresAt)}';
+    final usedUp = _isUsedUp(coupon);
+    final expiryLabel = usedUp
+        ? '사용 완료'
+        : expiresAt == null
+            ? '무기한 등록 가능'
+            : expired
+                ? '등록기한 만료: ${_formatDate(expiresAt)}'
+                : '등록기한: ~${_formatDate(expiresAt)}';
 
     final (appColor, appLabel) = switch (targetApp) {
       'cartdamda' => (Colors.deepPurple, '카트담다'),
