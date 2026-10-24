@@ -330,19 +330,15 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
             final h = r.history;
             final first = h.first > 0 ? h.first : r.store.firstCount;
             final second = h.second > 0 ? h.second : r.store.secondCount;
-            return Container(
-              margin: const EdgeInsets.only(bottom: 8), padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(color: color.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: color.withValues(alpha: 0.2))),
+            return CollapsibleStoreRow(
+              key: ValueKey('pick_${r.store.code}'),
+              rank: e.key + 1,
+              code: r.store.code,
+              name: r.store.name,
+              subtitle: r.store.address,
+              trailing: e.value.pAdj == null ? '1등 $first · 2등 $second' : pct(e.value.pAdj!),
+              color: color,
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                Row(children: [
-                  Text('${e.key + 1}', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: color)),
-                  const SizedBox(width: 8),
-                  Expanded(child: Text(r.store.name, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800))),
-                  FavoriteStoreStar(code: r.store.code, name: r.store.name),
-                ]),
-                Text(r.store.address, style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600), maxLines: 1, overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 6),
                 StoreHitLine(pFirst: e.value.pFirst, factor: e.value.factor, hypotheses: e.value.hypotheses),
                 const SizedBox(height: 6),
                 StoreWinHistoryPanel(history: h, firstCount: first, secondCount: second, latestRound: b.targetRound - 1),
@@ -376,6 +372,9 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
               ]),
             );
           }),
+        if (b.stores.isNotEmpty)
+          Text('명당 이름을 누르면 예측 · 당첨 이력 · 선정 이유 · 지도가 펼쳐집니다.',
+              style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
         const SizedBox(height: 4),
         StoreHitRankingCard(ranking: b.hitRanking, targetRound: b.targetRound,
             pickCodes: {for (final p in b.stores) p.ranked.store.code}),

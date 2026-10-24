@@ -373,6 +373,7 @@ class StoreHitRankingCard extends StatefulWidget {
 }
 
 class _StoreHitRankingCardState extends State<StoreHitRankingCard> {
+  bool _open = false; // 접혀 있다가 누르면 목록
   bool _all = false;
   bool _online = false;
   static const _preview = 20;
@@ -397,16 +398,31 @@ class _StoreHitRankingCardState extends State<StoreHitRankingCard> {
     final list = r.ranking.where((e) => _online || !e.isOnline).toList();
     final shown = _all ? list : list.take(_preview).toList();
     final moved = r.ranking.where((e) => e.rank != e.baseRank).length;
-    return Container(
-      key: const ValueKey('store_hit_ranking'),
-      width: double.infinity, padding: const EdgeInsets.all(12), decoration: box,
+    final header = InkWell(
+      key: const ValueKey('store_hit_toggle'),
+      onTap: () => setState(() => _open = !_open),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           const Icon(Icons.leaderboard_rounded, color: _green, size: 20),
           const SizedBox(width: 4),
           Expanded(child: Text('적중 예측 높은 순 — ${r.targetRound}회 전국',
               style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: _green))),
+          Icon(_open ? Icons.expand_less_rounded : Icons.expand_more_rounded, color: _green),
         ]),
+        if (!_open)
+          Text('${list.take(3).map((e) => '${e.rank}. ${e.name} ${pct(e.pAdj)}').join(' · ')} … 누르면 ${list.length}곳 전체',
+              maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: Colors.grey.shade800)),
+      ]),
+    );
+    if (!_open) {
+      return Container(key: const ValueKey('store_hit_ranking'), width: double.infinity, padding: const EdgeInsets.all(12),
+          decoration: box, child: header);
+    }
+    return Container(
+      key: const ValueKey('store_hit_ranking'),
+      width: double.infinity, padding: const EdgeInsets.all(12), decoration: box,
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        header,
         const SizedBox(height: 2),
         Text('지방장 1등 추정 확률 × 검증 통과 판매점 가설 배수(여러 개면 가장 큰 것) · ${r.storesScored}곳 계산 · '
             '가설 반영으로 순위가 바뀐 곳 $moved곳 (상위 ${r.ranking.length}곳 중)',
@@ -512,4 +528,58 @@ class _StoreHitRankingCardState extends State<StoreHitRankingCard> {
         decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(6)),
         child: Text(t, style: const TextStyle(fontSize: 9.5, color: Colors.white, fontWeight: FontWeight.w800)),
       );
+}
+
+/// 추천 명당 한 줄 — 이름만 보이다가 누르면 자세한 내용이 펼쳐진다
+class CollapsibleStoreRow extends StatefulWidget {
+  final int rank;
+  final String code, name, subtitle, trailing;
+  final Color color;
+  final Widget child;
+  final bool initiallyOpen;
+  const CollapsibleStoreRow({super.key, required this.rank, required this.code, required this.name, this.subtitle = '',
+      this.trailing = '', required this.color, required this.child, this.initiallyOpen = false});
+  @override
+  State<CollapsibleStoreRow> createState() => _CollapsibleStoreRowState();
+}
+
+class _CollapsibleStoreRowState extends State<CollapsibleStoreRow> {
+  late bool _open = widget.initiallyOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = widget.color;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 8),
+      decoration: BoxDecoration(color: c.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: c.withValues(alpha: _open ? 0.45 : 0.2))),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        InkWell(
+          key: ValueKey('store_row_${widget.code}'),
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => setState(() => _open = !_open),
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(10, 6, 0, 6),
+            child: Row(children: [
+              SizedBox(width: 20, child: Text('${widget.rank}', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: c))),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(widget.name, style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w800)),
+                  if (widget.subtitle.isNotEmpty)
+                    Text(widget.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600)),
+                ]),
+              ),
+              if (widget.trailing.isNotEmpty)
+                Text(widget.trailing, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800, color: c)),
+              FavoriteStoreStar(code: widget.code, name: widget.name),
+              Icon(_open ? Icons.expand_less_rounded : Icons.expand_more_rounded, color: c),
+              const SizedBox(width: 4),
+            ]),
+          ),
+        ),
+        if (_open) Padding(padding: const EdgeInsets.fromLTRB(10, 0, 10, 10), child: widget.child),
+      ]),
+    );
+  }
 }

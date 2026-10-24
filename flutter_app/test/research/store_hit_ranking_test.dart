@@ -61,6 +61,10 @@ void main() {
         child: StoreHitRankingCard(ranking: hit, targetRound: 1247, pickCodes: const {'B'})))));
     await tester.pumpAndSettle();
     expect(find.text('적중 예측 높은 순 — 1247회 전국'), findsOneWidget);
+    expect(find.textContaining('누르면'), findsOneWidget); // 처음엔 접힘 (위 3곳 미리보기)
+    expect(find.text('부일카서비스'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('store_hit_toggle')));
+    await tester.pumpAndSettle();
     expect(find.text('인터넷 복권판매사이트'), findsNothing);
     expect(find.text('부일카서비스'), findsOneWidget);
     expect(find.text('가설 ×1.33'), findsOneWidget);
