@@ -423,7 +423,7 @@ def public_summary(p):
     stores = [{k: s.get(k) for k in ("store_code", "name", "region", "address", "first", "second", "last_round")}
               for s in (p.get("stores") or {}).get("stores", [])]
     return {
-        "lottery": "pension", "target_round": p["target_round"], "draw_date": p["draw_date"],
+        "lottery": "pension", "target_round": p["target_round"], "draw_date": p["draw_date"], "final": p.get("final", False),
         "engine": {"status": eng["status"], "tickets": eng.get("tickets", []),
                    "note": None if eng["status"] == "ok" else "연금 번호 엔진을 준비하고 있습니다 (당첨번호 기록을 모으는 중).",
                    "rule": "최근 당첨번호 자리별 숫자 빈도 기반 추천" if eng["status"] == "ok" else None},
@@ -432,7 +432,8 @@ def public_summary(p):
     }
 
 
-def run(db, dry=False, now=None):
+def run(db, dry=False, now=None, final=False):
+    """final: 추첨일(목) 아침 8시 최종 점검 — 그때까지 모인 자료로 다시 계산해 '최종본'으로 다시 낸다. 그 뒤로는 고정."""
     now = now or datetime.now(timezone.utc)
     nk = now.astimezone(KST)
     latest = latest_drawn(nk)
@@ -441,6 +442,11 @@ def run(db, dry=False, now=None):
     if nk >= datetime(td.year, td.month, td.day, 18, tzinfo=KST):
         print(f"연금 {target}회 추첨일 18시 이후 — 고정 (다시 계산하지 않음)")
         return None
+    cur = db.get("research_results", {"select": "payload", "research_type": f"eq.{RESULT_TYPE}",
+                                      "model_version": f"eq.{VERSION}", "target_round": f"eq.{target}", "limit": "1"})
+    if cur and (cur[0]["payload"] or {}).get("final") and not final:
+        print(f"연금 {target}회 최종본(추첨일 아침 8시) 이미 발행 — 고정")
+        return None
     nums = load_numbers(db)
     prev = db.get("research_results", {"select": "target_round,payload", "research_type": f"eq.{RESULT_TYPE}",
                                        "model_version": f"eq.{VERSION}", "target_round": f"eq.{latest}", "limit": "1"})
@@ -448,7 +454,8 @@ def run(db, dry=False, now=None):
     p = {"version": VERSION, "target_round": target, "latest_round": latest, "draw_date": td.isoformat(),
          "numbers_entered": len([r for r in nums if r <= latest]),
          "stores": stores_block(db, latest), "engine": engine_block(nums, latest, target),
-         "track": track_block(db, nums, latest, target, prev_payload), "generated_at": now.isoformat()}
+         "track": track_block(db, nums, latest, target, prev_payload), "generated_at": now.isoformat(),
+         "final": bool(final), "final_at": now.isoformat() if final else None}
     print(f"연금 {target}회 ({td}) · 당첨번호 입력 {p['numbers_entered']}회 · 엔진 {p['engine']['status']} · 가설 트랙 {p['track']['status']}")
     for s in p["stores"].get("stores", []):
         print(f"  명당 {s['name']} ({s['region']}) 1등 {s['first']} · 2등 {s['second']} · 최근 {s['last_round']}회 · 추정 {s['p_next'] * 100:.2f}%")
@@ -479,13 +486,14 @@ def run(db, dry=False, now=None):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--final", action="store_true", help="추첨일(목) 아침 8시 최종 점검 · 최종본 발행")
     a = ap.parse_args()
     url, key = os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_KEY")
     if not url or not key:
         sys.exit("SUPABASE_URL / SUPABASE_KEY 환경변수가 필요합니다")
     if not a.dry_run and os.environ.get("GITHUB_ACTIONS") != "true":
         sys.exit("저장은 서버(GitHub Actions)에서만 합니다. 로컬은 --dry-run 만 허용")
-    run(R.Db(url, key, dry=a.dry_run), a.dry_run)
+    run(R.Db(url, key, dry=a.dry_run), a.dry_run, final=a.final)
 
 
 if __name__ == "__main__":

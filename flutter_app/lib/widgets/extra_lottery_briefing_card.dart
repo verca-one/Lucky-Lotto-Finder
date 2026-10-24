@@ -6,10 +6,26 @@ import '../services/research/pension_briefing.dart';
 import 'pension_briefing_view.dart' show kPensionColor;
 import 'speetto_briefing_view.dart';
 
+/// 이번 로또 주의 추첨일(토) — 오늘이 토요일이면 오늘, 아니면 다음 토요일 (KST)
+DateTime lottoWeekSaturday(DateTime nowKst) {
+  final d = DateTime(nowKst.year, nowKst.month, nowKst.day);
+  return d.add(Duration(days: (DateTime.saturday - d.weekday + 7) % 7));
+}
+
+/// 연금 추첨일이 이번 로또 주(토요일까지)를 넘으면 '다음 주'
+bool isNextLottoWeek(String? drawDate, DateTime nowKst) {
+  final d = DateTime.tryParse((drawDate ?? '').length >= 10 ? drawDate!.substring(0, 10) : '');
+  if (d == null) return false;
+  return d.isAfter(lottoWeekSaturday(nowKst));
+}
+
 class ExtraLotteryBriefingCard extends StatefulWidget {
   final Future<PensionBriefing?> Function()? pensionLoader;
   final Future<SpeettoBriefing?> Function()? speettoLoader;
-  const ExtraLotteryBriefingCard({super.key, this.pensionLoader, this.speettoLoader});
+
+  /// 테스트용 현재 시각 (KST)
+  final DateTime? now;
+  const ExtraLotteryBriefingCard({super.key, this.pensionLoader, this.speettoLoader, this.now});
   @override
   State<ExtraLotteryBriefingCard> createState() => _ExtraLotteryBriefingCardState();
 }
@@ -36,7 +52,7 @@ class _ExtraLotteryBriefingCardState extends State<ExtraLotteryBriefingCard> {
   }
 
   Widget _box({required Color color, required IconData icon, required String title, required List<Widget> lines,
-          required VoidCallback onTap, Key? key}) =>
+          required VoidCallback onTap, Key? key, bool dim = false}) =>
       InkWell(
         key: key,
         onTap: onTap,
@@ -45,7 +61,7 @@ class _ExtraLotteryBriefingCardState extends State<ExtraLotteryBriefingCard> {
           width: double.infinity,
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color: Colors.white,
+            color: dim ? Colors.grey.shade100 : Colors.white,
             borderRadius: BorderRadius.circular(14),
             border: Border.all(color: color.withValues(alpha: 0.35)),
           ),
@@ -79,7 +95,12 @@ class _ExtraLotteryBriefingCardState extends State<ExtraLotteryBriefingCard> {
       style: TextStyle(fontSize: 11.5, color: Colors.grey.shade800, height: 1.35));
 
   Widget _pension(PensionBriefing? b, bool done) {
+    final nowKst = widget.now ?? DateTime.now().toUtc().add(const Duration(hours: 9));
+    final next = b != null && isNextLottoWeek(b.drawDate, nowKst);
     final lines = <Widget>[];
+    if (next) {
+      lines.add(_line('이번 주 로또 추첨(${_md(lottoWeekSaturday(nowKst).toIso8601String())}) 뒤 이번 주로 바뀝니다'));
+    }
     if (!done) {
       lines.add(_line('불러오는 중…'));
     } else if (b == null) {
@@ -93,12 +114,14 @@ class _ExtraLotteryBriefingCardState extends State<ExtraLotteryBriefingCard> {
         lines.add(_line('명당 ${b.stores.take(3).map((s) => s.name).join(' · ')}'));
       }
       lines.add(_line(b.trackStatus == 'ok' ? '가설 트랙 ${b.trackTickets.length}장 · 가설 ${b.trackHyps.length}개 사용' : (b.trackNote ?? '연금 가설 트랙 대기')));
+      lines.add(_line(b.isFinal ? '추첨일 아침 8시 최종 점검본' : '초안 — 추첨일(목) 아침 8시 최종 점검 뒤 다시 발행'));
     }
     return _box(
       key: const ValueKey('extra_pension'),
-      color: kPensionColor,
+      color: next ? Colors.grey.shade500 : kPensionColor,
+      dim: next,
       icon: Icons.card_giftcard,
-      title: b == null ? '이번 주 연금복권' : '이번 주 연금복권 ${b.targetRound}회 · ${_md(b.drawDate)}(목) 추첨',
+      title: b == null ? '이번 주 연금복권' : '${next ? '다음 주' : '이번 주'} 연금복권 ${b.targetRound}회 · ${_md(b.drawDate)}(목) 추첨',
       lines: lines,
       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AdminPensionResearchScreen())),
     );

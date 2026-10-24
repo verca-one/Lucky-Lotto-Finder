@@ -1,0 +1,34 @@
+name: Research Pension Final
+
+# 연금복권 추첨일(목) 아침 8시 최종 점검 — 그 주 동안 모인 가설·당첨번호·판매점 자료로 다시 계산해 '최종본'으로 다시 낸다.
+# (매일 17시 Research Strategy 의 연금 계산은 '초안'. 최종본이 나온 뒤에는 그 회차를 다시 계산하지 않는다.)
+on:
+  schedule:
+    - cron: '0 23 * * 3'   # 목 08:00 KST (= 수 23:00 UTC)
+  workflow_dispatch:
+
+concurrency:
+  group: research-strategy
+  cancel-in-progress: false
+
+jobs:
+  final:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests numpy scipy
+      - name: 연금 지방장 최신 (판매점 · 시·군·구 TOP5)
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python research_agent_extra.py
+      - name: 연금 최종 점검 · 최종본 발행 (번호 엔진 · 명당 · 가설 트랙)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python research_pension.py --final

@@ -56,12 +56,15 @@ class PensionBriefing {
   final List<PensionHyp> trackHyps;
   final int trackTotal;
   final String disclaimer;
+
+  /// 추첨일(목) 아침 8시 최종 점검본이면 true (그 전은 초안)
+  final bool isFinal;
   const PensionBriefing({
     required this.targetRound, this.latestRound = 0, this.numbersEntered = 0, this.drawDate = '',
     this.engineStatus = 'waiting', this.engineNote, this.engineRule, this.engineTickets = const [], this.groupCounts = const {},
     this.stores = const [], this.storeRule, this.eventsPerRound,
     this.trackStatus = 'waiting', this.trackNote, this.trackTickets = const [], this.trackHyps = const [], this.trackTotal = 0,
-    this.disclaimer = '',
+    this.disclaimer = '', this.isFinal = false,
   });
 
   /// 관리자 저장본 (research_results.payload)
@@ -81,6 +84,7 @@ class PensionBriefing {
         for (final u in _maps(t['used'])) PensionHyp('${u['statement'] ?? ''}'.replaceFirst('[연금] ', ''), '${u['status'] ?? ''}', _dn(u['z']), _dn(u['m'])),
       ],
       trackTotal: _i(t['hypotheses_total']),
+      isFinal: p['final'] == true,
     );
   }
 
@@ -96,6 +100,7 @@ class PensionBriefing {
       trackTickets: _maps(t['tickets']).map(PensionTicket.fromJson).toList(),
       trackHyps: [for (final h in (t['hypotheses'] as List? ?? const [])) PensionHyp('$h', '', null, null)],
       disclaimer: '${p['disclaimer'] ?? ''}',
+      isFinal: p['final'] == true,
     );
   }
 

@@ -130,6 +130,18 @@ class _PensionBriefingViewState extends State<PensionBriefingView> {
           if (widget.admin && b != null)
             Text('당첨번호 입력 ${b.numbersEntered}회 · 명당 기록 ${b.latestRound}회까지',
                 style: const TextStyle(color: Colors.white, fontSize: 11.5)),
+          if (b != null) ...[
+            const SizedBox(height: 6),
+            Container(
+              key: const ValueKey('pension_final_chip'),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+              decoration: BoxDecoration(color: Colors.white.withValues(alpha: b.isFinal ? 0.95 : 0.25),
+                  borderRadius: BorderRadius.circular(12)),
+              child: Text(b.isFinal ? '추첨일 아침 8시 최종 점검본' : '초안 · 추첨일(목) 아침 8시 최종 점검 뒤 다시 냅니다',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800,
+                      color: b.isFinal ? const Color(0xFFEF6C00) : Colors.white)),
+            ),
+          ],
         ]),
       );
 

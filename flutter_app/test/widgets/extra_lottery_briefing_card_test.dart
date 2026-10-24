@@ -17,7 +17,7 @@ void main() {
       {'game': 'SP500', 'edition': 48, 'ship_rate': 58, 'rnk1_total': 5, 'rnk1_left': 3, 'index': 1.43,
         'sale_start': '2025-12-29T00:00:00+09:00'}]}});
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(child: ExtraLotteryBriefingCard(
-        pensionLoader: () async => p, speettoLoader: () async => s)))));
+        now: DateTime(2026, 10, 25, 10), pensionLoader: () async => p, speettoLoader: () async => s)))));
     await tester.pumpAndSettle();
     expect(find.text('이번 주 연금복권 339회 · 10/29(목) 추첨'), findsOneWidget);
     expect(find.text('이번 주 스피또'), findsOneWidget);
@@ -26,5 +26,23 @@ void main() {
     expect(find.text('명당 하당복권방 · 목화휴게소'), findsOneWidget);
     expect(find.textContaining('남은 1등 지수 1위 스피또500 48회 · 출고율 58% · 1등 3/5장 남음'), findsOneWidget);
     expect(find.textContaining('예전 기록 정리 필요'), findsOneWidget);
+  });
+
+  test('로또 주 기준 이번 주 / 다음 주', () {
+    expect(lottoWeekSaturday(DateTime(2026, 10, 24, 15)), DateTime(2026, 10, 24));
+    expect(lottoWeekSaturday(DateTime(2026, 10, 25, 9)), DateTime(2026, 10, 31));
+    expect(isNextLottoWeek('2026-10-29', DateTime(2026, 10, 24, 15)), isTrue);
+    expect(isNextLottoWeek('2026-10-29', DateTime(2026, 10, 25, 9)), isFalse);
+  });
+
+  testWidgets('다음 주 연금 카드 — 회색 · 다음 주 표기 · 초안 안내', (tester) async {
+    final p = PensionBriefing.fromPayload({'target_round': 339, 'draw_date': '2026-10-29',
+      'engine': {'status': 'waiting'}, 'stores': {'stores': []}, 'track': {'status': 'waiting'}});
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(child: ExtraLotteryBriefingCard(
+        now: DateTime(2026, 10, 24, 15), pensionLoader: () async => p, speettoLoader: () async => null)))));
+    await tester.pumpAndSettle();
+    expect(find.text('다음 주 연금복권 339회 · 10/29(목) 추첨'), findsOneWidget);
+    expect(find.textContaining('이번 주 로또 추첨(10/24) 뒤 이번 주로 바뀝니다'), findsOneWidget);
+    expect(find.textContaining('초안'), findsOneWidget);
   });
 }
