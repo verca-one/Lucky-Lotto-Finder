@@ -159,7 +159,8 @@ void main() {
       final front = find.byKey(const ValueKey('header_lotto_front_1245_complete'));
       expect(find.descendant(of: front, matching: find.text('1245')), findsOneWidget);
       expect(find.descendant(of: front, matching: find.text('2026.10.10 (토) 추첨')), findsOneWidget);
-      expect(find.descendant(of: front, matching: find.text('업데이트 완료')), findsOneWidget);
+      expect(find.descendant(of: front, matching: find.text('번호 수집 완료')), findsOneWidget);
+      expect(find.descendant(of: front, matching: find.text('판매점 수집 완료')), findsOneWidget);
       expect(find.descendant(of: front, matching: find.text('${formatUpdateTime(t1245)} 수집')), findsOneWidget);
       expect(find.text('로또 1244회 · ${formatUpdateTime(t1244)} 업데이트'), findsOneWidget);
       expect(find.byKey(const ValueKey('header_pension_front_336_complete')), findsOneWidget);
@@ -170,7 +171,8 @@ void main() {
     testWidgets('추첨일 도래 → 결과 대기 상태 카드', (tester) async {
       await tester.pumpWidget(app(HomeRoundHeader(lotto: lotto(), pension: pension(), clock: () => kst(2026, 10, 17, 21))));
       final front = find.byKey(const ValueKey('header_lotto_front_1246_awaiting'));
-      expect(find.descendant(of: front, matching: find.text('결과 대기')), findsOneWidget);
+      expect(find.descendant(of: front, matching: find.text('번호 수집 전')), findsOneWidget);
+      expect(find.descendant(of: front, matching: find.text('판매점 수집 전')), findsOneWidget);
       // 연금 337회(목 추첨)도 수집 전이면 독립적으로 결과 대기
       expect(find.byKey(const ValueKey('header_pension_front_337_awaiting')), findsOneWidget);
       expect(find.text('로또 1245회 · ${formatUpdateTime(t1245)} 업데이트'), findsOneWidget);
@@ -211,15 +213,16 @@ void main() {
     testWidgets('신규 회차 대기 카드: 흰 배경, 글자·상태 모두 옅은 회색, 완료 표시 없음, 뒤 카드는 테마색을 흐릿하게', (tester) async {
       for (final (now, key, label) in [
         (kst(2026, 10, 17, 10), 'header_lotto_front_1246_scheduled', '추첨 예정'),
-        (kst(2026, 10, 17, 21), 'header_lotto_front_1246_awaiting', '결과 대기'),
+        (kst(2026, 10, 17, 21), 'header_lotto_front_1246_awaiting', '번호 수집 전'),
       ]) {
         await tester.pumpWidget(app(HomeRoundHeader(lotto: lotto(), pension: pension(), clock: () => now)));
         await tester.pumpAndSettle();
         final front = find.byKey(ValueKey(key));
         expect(front, findsOneWidget);
-        for (final t in ['로또 6/45', '1246', '회', '2026.10.17 (토) 추첨', label]) {
+        for (final t in ['로또 6/45', '1246', '회', '2026.10.17 (토) 추첨']) {
           expect(colorOf(tester, front, t), kPendingText, reason: t);
         }
+        expect([kPendingText, kPendingSubText], contains(colorOf(tester, front, label)), reason: label);
         expect(find.descendant(of: front, matching: find.text('업데이트 완료')), findsNothing);
         expect(find.descendant(of: front, matching: find.byIcon(Icons.check_circle_rounded)), findsNothing);
         for (final icon in tester.widgetList<Icon>(find.descendant(of: front, matching: find.byType(Icon)))) {
@@ -239,8 +242,8 @@ void main() {
       final lf = find.byKey(const ValueKey('header_lotto_front_1245_complete'));
       expect(colorOf(tester, lf, '1245'), const Color(0xFF14213D));
       expect(colorOf(tester, lf, '로또 6/45'), const Color(0xFF8A6100));
-      expect(colorOf(tester, lf, '업데이트 완료'), const Color(0xFF1E7D4C));
-      expect(find.descendant(of: lf, matching: find.byIcon(Icons.check_circle_rounded)), findsOneWidget);
+      expect(colorOf(tester, lf, '판매점 수집 완료'), const Color(0xFF1E7D4C));
+      expect(find.descendant(of: lf, matching: find.byIcon(Icons.check_circle_rounded)), findsNWidgets(2));
       final pf = find.byKey(const ValueKey('header_pension_front_336_complete'));
       expect(colorOf(tester, pf, '연금복권720+'), const Color(0xFF1C7A49));
     });
@@ -291,5 +294,14 @@ void main() {
       expect(find.text('회차 정보를 불러오는 중…'), findsNWidgets(2));
       expect(find.textContaining('회 ·'), findsNothing);
     });
+  });
+
+  testWidgets('수집 단계 표시 — 번호 · 판매점 각각 색', (tester) async {
+    await tester.pumpWidget(const MaterialApp(home: Scaffold(body: Row(children: [
+      CollectStageChip(key: ValueKey('n'), label: '번호', done: true),
+      CollectStageChip(key: ValueKey('s'), label: '판매점', done: false),
+    ]))));
+    expect(find.text('번호 수집 완료'), findsOneWidget);
+    expect(find.text('판매점 수집 전'), findsOneWidget);
   });
 }

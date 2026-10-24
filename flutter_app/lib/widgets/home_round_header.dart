@@ -284,7 +284,7 @@ class _FrontCard extends StatelessWidget {
       case RoundStatus.awaiting:
         return '공식 결과 수집 전';
       case RoundStatus.numbersReady:
-        return '당첨번호 수집 완료 · 지점 수집 전';
+        return '당첨 판매점 수집을 기다리는 중';
       case RoundStatus.error:
         return '수집 실패 · 확인 중';
     }
@@ -343,8 +343,15 @@ class _FrontCard extends StatelessWidget {
             const SizedBox(height: 8),
             Divider(height: 1, color: line),
             const SizedBox(height: 7),
-            // 번호만 수집된 단계는 아래 상태 표시로만 구분 (색 유지)
-            RoundStatusPill(status: card.status, muted: pending && card.status != RoundStatus.numbersReady),
+            // 아래쪽: 추첨 뒤에는 [번호 수집] [판매점 수집] 두 표시 — 각자 수집되는 대로 색
+            if (card.status == RoundStatus.awaiting || card.status == RoundStatus.numbersReady || card.status == RoundStatus.complete)
+              Wrap(spacing: 4, runSpacing: 4, children: [
+                CollectStageChip(key: ValueKey('stage_numbers_${card.type}'), label: '번호',
+                    done: card.status == RoundStatus.numbersReady || card.status == RoundStatus.complete),
+                CollectStageChip(key: ValueKey('stage_stores_${card.type}'), label: '판매점', done: card.status == RoundStatus.complete),
+              ])
+            else
+              RoundStatusPill(status: card.status, muted: pending),
             const SizedBox(height: 4),
             Text(_detail,
                 maxLines: 1,
@@ -413,6 +420,33 @@ class _FrontPlaceholder extends StatelessWidget {
         Text(loading ? '회차 정보를 불러오는 중…' : '회차 정보를 불러오지 못했습니다',
             style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
       ]),
+    );
+  }
+}
+
+/// 수집 단계 표시 하나 — 수집되면 초록 체크, 아니면 회색 모래시계
+class CollectStageChip extends StatelessWidget {
+  final String label;
+  final bool done;
+  const CollectStageChip({super.key, required this.label, required this.done});
+
+  @override
+  Widget build(BuildContext context) {
+    final fg = done ? const Color(0xFF1E7D4C) : kPendingSubText;
+    final bg = done ? const Color(0xFFE3F6EA) : const Color(0xFFF1F3F6);
+    // 좁은 화면(카드 폭 부족)에서는 넘치지 않게 글씨째 줄인다
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      alignment: Alignment.centerLeft,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+        decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(20)),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Icon(done ? Icons.check_circle_rounded : Icons.hourglass_top_rounded, size: 12, color: fg),
+          const SizedBox(width: 3),
+          Text('$label ${done ? '수집 완료' : '수집 전'}', style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: fg)),
+        ]),
+      ),
     );
   }
 }
