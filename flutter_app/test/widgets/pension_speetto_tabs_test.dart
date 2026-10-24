@@ -39,6 +39,16 @@ void main() {
     expect(find.textContaining('제미나이 연금 가설이 아직 없습니다'), findsOneWidget);
   });
 
+  testWidgets('관리자 연금 탭 — 추천번호(엔진 · 가설 트랙)가 명당보다 위', (tester) async {
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: PensionBriefingView(
+        loader: () async => PensionBriefing.fromPayload(_waiting)))));
+    await tester.pumpAndSettle();
+    final engine = tester.getTopLeft(find.text('연금 번호 엔진')).dy;
+    final track = tester.getTopLeft(find.text('연금 가설 트랙 — 제미나이')).dy;
+    final stores = tester.getTopLeft(find.textContaining('연금 명당 TOP')).dy;
+    expect(engine < track && track < stores, isTrue);
+  });
+
   testWidgets('일반 모드 연금 탭 — 상단 당첨번호 → ① 추천번호 · ② 연금 판매점(★ 저장) · 가설 트랙 없음', (tester) async {
     SharedPreferences.setMockInitialValues({});
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: PensionBriefingView(

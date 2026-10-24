@@ -1,5 +1,5 @@
 // 연금복권720+ 브리핑 화면 — 관리자 엔진 브리핑 '연금복권' 탭 · 일반 모드 추천 '연금' 탭 (같은 화면, 데이터 출처만 다름)
-//  ① 연금 번호 엔진 · ② 연금 명당 · ③ 연금 가설 트랙
+//  관리자: 추천번호(① 연금 번호 엔진 · ② 연금 가설 트랙) 먼저 → ③ 연금 명당 → 지방장 / 일반: ① 추천번호 · ② 연금 판매점
 import 'package:flutter/material.dart';
 
 import '../screens/admin_pension_numbers_input_screen.dart';
@@ -78,11 +78,12 @@ class _PensionBriefingViewState extends State<PensionBriefingView> {
                   ? '연금 브리핑 저장본이 아직 없습니다 — 서버가 매일 17시(가설 공장 뒤)에 만듭니다.'
                   : '연금복권 추천을 준비하고 있습니다.')
             else ...[
+              // 추천번호(엔진 · 가설 트랙)를 연금 연구 맨 위에 모은다
               _engine(b),
               const SizedBox(height: 12),
-              _stores(b),
-              const SizedBox(height: 12),
               _track(b),
+              const SizedBox(height: 12),
+              _stores(b),
               const SizedBox(height: 12),
               const AgentExtraSection(lottery: 'pension', color: kPensionColor),
               const SizedBox(height: 12),
@@ -203,7 +204,7 @@ class _PensionBriefingViewState extends State<PensionBriefingView> {
       );
 
   Widget _stores(PensionBriefing b) => _card(
-        '2',
+        widget.admin ? '3' : '2',
         widget.admin ? '연금 명당 TOP${b.stores.length}' : '연금 판매점',
         Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           if (!widget.admin) _small('연금복권 1·2등이 나온 판매점 · ★를 누르면 즐겨찾기에 저장됩니다'),
@@ -234,7 +235,7 @@ class _PensionBriefingViewState extends State<PensionBriefingView> {
       );
 
   Widget _track(PensionBriefing b) => _card(
-        '3',
+        '2',
         '연금 가설 트랙 — 제미나이',
         b.trackStatus == 'ok'
             ? Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
