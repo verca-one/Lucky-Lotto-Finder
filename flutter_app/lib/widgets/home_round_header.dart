@@ -293,7 +293,8 @@ class _FrontCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     // 수집·검증 완료 전(추첨 예정·결과 대기·데이터 오류)에는 모든 글자·아이콘·선이 옅은 회색
-    final pending = card.status != RoundStatus.complete && card.status != RoundStatus.numbersReady;
+    // 카드 윗부분은 당첨번호·당첨 지점 둘 다 수집돼야(업데이트 완료) 색을 넣는다
+    final pending = card.status != RoundStatus.complete;
     final ink = pending ? kPendingText : const Color(0xFF14213D);
     final dot = pending ? kPendingSubText : theme.accent;
     final label = pending ? kPendingText : theme.ink;
@@ -342,7 +343,8 @@ class _FrontCard extends StatelessWidget {
             const SizedBox(height: 8),
             Divider(height: 1, color: line),
             const SizedBox(height: 7),
-            RoundStatusPill(status: card.status, muted: pending),
+            // 번호만 수집된 단계는 아래 상태 표시로만 구분 (색 유지)
+            RoundStatusPill(status: card.status, muted: pending && card.status != RoundStatus.numbersReady),
             const SizedBox(height: 4),
             Text(_detail,
                 maxLines: 1,
