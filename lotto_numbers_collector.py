@@ -19,6 +19,7 @@ import random
 import re
 import sys
 import time
+from datetime import date, datetime, timedelta, timezone
 
 import requests
 import urllib3
@@ -96,9 +97,19 @@ def main():
     if not url or not key:
         sys.exit("SUPABASE_URL / SUPABASE_KEY 환경변수가 필요합니다")
     db = Db(url, key)
-    latest = db.get({"select": "round", "order": "round.desc", "limit": "1"})
+    latest = db.get({"select": "round,draw_date", "order": "round.desc", "limit": "1"})
+    last_draw = str(latest[0].get("draw_date") or "")[:10] if latest else ""
     latest = int(latest[0]["round"]) if latest else 0
     target = latest + 1
+    # 다음 회차 추첨(토 20:35 KST) 결과가 올라올 때(20:45)까지는 동행복권에 접속하지 않고 끝낸다
+    # (GitHub 예약 실행이 밀려도 놓치지 않게 토요일 밤에 자주 돌리므로, 받을 게 없는 실행은 요청 없이 바로 끝)
+    if last_draw:
+        kst = timezone(timedelta(hours=9))
+        d = date.fromisoformat(last_draw) + timedelta(days=7)
+        ready = datetime(d.year, d.month, d.day, 20, 45, tzinfo=kst)
+        if datetime.now(kst) < ready:
+            print(f"{target}회 추첨 결과 전 ({ready:%m/%d %H:%M} KST 이후 수집) — 접속하지 않음")
+            return
     got, bad = parse(fetch(target))
     if not got:
         print(f"{target}회 아직 없음 (동행복권에 결과가 올라오기 전) — 저장 안 함")
