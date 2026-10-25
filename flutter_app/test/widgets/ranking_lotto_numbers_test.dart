@@ -6,8 +6,10 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   testWidgets('최신 회차 · 추첨일 · 번호 6개(작은 순) + 보너스', (tester) async {
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: RankingLottoNumbers(loader: () async =>
-        LottoWinningNumber(drawDate: '2026-10-24', round: 1247, numbers: [45, 8, 21, 14, 42, 22], bonusNumber: 24)))));
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: RankingLottoNumbers(
+        clock: () => DateTime.utc(2026, 10, 25, 3), // 일 12:00 KST
+        loader: () async =>
+            LottoWinningNumber(drawDate: '2026-10-24', round: 1247, numbers: [45, 8, 21, 14, 42, 22], bonusNumber: 24)))));
     await tester.pumpAndSettle();
     expect(find.text('로또 1247회 당첨번호'), findsOneWidget);
     expect(find.text('2026.10.24 추첨'), findsOneWidget);
@@ -45,12 +47,33 @@ void main() {
           numbers: [1, 2, 3, 4, 5, 6], bonusNumber: 7),
     ))));
     await tester.pump();
-    expect(find.text('로또 1246회 당첨번호'), findsOneWidget);
+    // 토 21:00 · 1247회 번호 아직 → 회색 '번호 수집 전'
+    expect(find.byKey(const ValueKey('ranking_lotto_pending')), findsOneWidget);
+    expect(find.text('로또 1247회 당첨번호'), findsOneWidget);
+    expect(find.text('번호 수집 전'), findsOneWidget);
     round = 1247;
     await tester.pump(const Duration(seconds: 1));
     await tester.pump();
+    // 수집되면 바로 색 공
+    expect(find.byKey(const ValueKey('ranking_lotto_pending')), findsNothing);
+    expect(find.byKey(const ValueKey('ranking_lotto_numbers')), findsOneWidget);
     expect(find.text('로또 1247회 당첨번호'), findsOneWidget);
     expect(called, 1);
     await tester.pumpWidget(const SizedBox());
+  });
+
+  test('발표 당일 단계 — 토 0시 추첨 예정 · 20:35 뒤 번호 수집 전 · 수집되면 없음 · 월 12시 지나면 없음', () {
+    final last = LottoWinningNumber(drawDate: '2026-10-17', round: 1246, numbers: [1, 2, 3, 4, 5, 6], bonusNumber: 7);
+    final now = LottoWinningNumber(drawDate: '2026-10-24', round: 1247, numbers: [1, 2, 3, 4, 5, 6], bonusNumber: 7);
+    DateTime kst(int d, int h, int m) => DateTime.utc(2026, 10, d, h, m).subtract(const Duration(hours: 9));
+    expect(pendingLottoStage(last, kst(23, 23, 59)), isNull); // 금요일 밤 = 지난 회차 색
+    final a = pendingLottoStage(last, kst(24, 0, 0))!;
+    expect((a.$1, a.$3), (1247, '추첨 예정'));
+    expect(a.$2, DateTime.utc(2026, 10, 24));
+    expect(pendingLottoStage(last, kst(24, 20, 34))!.$3, '추첨 예정');
+    expect(pendingLottoStage(last, kst(24, 20, 35))!.$3, '번호 수집 전');
+    expect(pendingLottoStage(last, kst(25, 9, 0))!.$3, '번호 수집 전');
+    expect(pendingLottoStage(now, kst(24, 21, 0)), isNull);
+    expect(pendingLottoStage(last, kst(26, 12, 1)), isNull);
   });
 }
