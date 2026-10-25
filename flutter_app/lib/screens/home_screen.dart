@@ -9,6 +9,7 @@ import '../services/badge_service.dart';
 import '../services/ranking_extras_service.dart';
 import '../services/round_status_service.dart';
 import '../widgets/home_round_header.dart';
+import '../widgets/ranking_lotto_numbers.dart';
 import 'round_result_screen.dart';
 import '../widgets/ranking_store_card.dart';
 import '../widgets/store_detail_popup.dart';
@@ -516,9 +517,12 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
     }
   }
 
+  int _numbersRefresh = 0;
+
   Future<void> _loadRanking() async {
     // 당겨서 새로고침이면 부가 정보 캐시도 무시
     final isRefresh = _rankedStores.isNotEmpty;
+    if (isRefresh) setState(() => _numbersRefresh++); // 랭킹 위 당첨번호도 다시 읽기
     // 캐시 데이터가 있으면 먼저 표시 (로딩 스켈레톤 없이 즉시 보임)
     if (_rankedStores.isEmpty) {
       setState(() {
@@ -722,6 +726,8 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
                 ),
               ),
             ),
+            // 랭킹 위 — 최신 로또 당첨번호
+            SliverToBoxAdapter(child: RankingLottoNumbers(key: ValueKey('ranking_numbers_$_numbersRefresh'))),
             _rankedStores.isEmpty
                 ? const SliverFillRemaining(
                     child: Center(child: Text('당첨지점 데이터가 없습니다')),
