@@ -1,4 +1,5 @@
-// 브리핑 추천 당첨확인 (관리자) — 회차 목록(4영역 추천번호 전부 · 당첨 표시 · 페이지 번호) → 회차별 당첨내역 (좌우로 넘김)
+// 브리핑 추천 당첨확인 (관리자) — 최신 회차 카드(4영역 추천번호 전부 · 당첨 표시) + 지난 회차 카드
+//   → 지난 회차 게시판 (10개씩 · 페이지 번호) → 회차를 누르면 당첨내역 (좌우로 넘김)
 import 'package:flutter/material.dart';
 
 import '../services/research/briefing_hit_check.dart';
@@ -34,6 +35,17 @@ String hitSummary(HitRound r) {
       ' · ${known ? wonText(sum) : '${wonText(sum)} + 당첨금 미확보'}';
 }
 
+/// 첫 화면에 펼쳐 보일 회차: 최신 등록 회차 (추첨 전이면 직전 추첨 회차도 함께) · 나머지는 '지난 회차'
+(List<HitRound>, List<HitRound>) splitCurrent(List<HitRound> all) {
+  if (all.isEmpty) return (const [], const []);
+  final cur = [all.first];
+  if (!all.first.drawn) {
+    final d = all.skip(1).where((r) => r.drawn).firstOrNull;
+    if (d != null) cur.add(d);
+  }
+  return (cur, all.where((r) => !cur.contains(r)).toList());
+}
+
 class AdminBriefingHitCheckScreen extends StatefulWidget {
   final Future<List<HitRound>> Function()? loader;
   const AdminBriefingHitCheckScreen({super.key, this.loader});
@@ -43,20 +55,6 @@ class AdminBriefingHitCheckScreen extends StatefulWidget {
 
 class _AdminBriefingHitCheckScreenState extends State<AdminBriefingHitCheckScreen> {
   late Future<List<HitRound>> _f;
-  int _page = 0;
-  final _sc = ScrollController();
-
-  @override
-  void dispose() {
-    _sc.dispose();
-    super.dispose();
-  }
-
-  /// 페이지를 바꾸면 맨 위부터 보이게
-  void _setPage(int p) {
-    setState(() => _page = p);
-    if (_sc.hasClients) _sc.jumpTo(0);
-  }
 
   @override
   void initState() {
@@ -83,25 +81,20 @@ class _AdminBriefingHitCheckScreenState extends State<AdminBriefingHitCheckScree
           if (snap.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
           if (snap.hasError) return Center(child: Text('불러오지 못했습니다: ${snap.error}'));
           final all = snap.data ?? const <HitRound>[];
-          final pages = (all.length / kHitPageSize).ceil();
-          final page = pages == 0 ? 0 : _page.clamp(0, pages - 1);
-          final items = all.skip(page * kHitPageSize).take(kHitPageSize).toList();
+          final (cur, past) = splitCurrent(all);
           return RefreshIndicator(
             onRefresh: _reload,
-            child: ListView(controller: _sc, padding: const EdgeInsets.all(16), children: [
+            child: ListView(padding: const EdgeInsets.all(16), children: [
               Text('브리핑이 회차마다 추천한 번호 4영역(① 엔진 추천 · ② 비인기 · ③ 구매예측 · ④ 제미나이 가설)을 '
-                  '그 회차 당첨번호와 맞춰 봅니다. 맞힌 번호는 색 공, 당첨 세트는 초록 칸입니다. 회차 카드를 누르면 당첨내역(크게 보기)으로 넘어갑니다.',
+                  '그 회차 당첨번호와 맞춰 봅니다. 맞힌 번호는 색 공, 당첨 세트는 초록 칸입니다.',
                   style: TextStyle(fontSize: 12, color: Colors.grey.shade700, height: 1.4)),
               const SizedBox(height: 4),
               Text('번호는 추첨 전에 사전 등록 장부에 올린 그대로입니다 · 당첨금은 각 세트를 1게임씩 샀다고 볼 때 금액',
                   style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600)),
               const SizedBox(height: 12),
               if (all.isEmpty) const Text('등록된 브리핑 추천번호가 아직 없습니다.'),
-              for (final r in items) _roundCard(context, r, all),
-              if (pages > 1) ...[
-                const SizedBox(height: 8),
-                _pager(page, pages),
-              ],
+              for (final r in cur) HitRoundCard(round: r),
+              if (all.isNotEmpty) _pastEntry(context, past),
             ]),
           );
         },
@@ -109,7 +102,108 @@ class _AdminBriefingHitCheckScreenState extends State<AdminBriefingHitCheckScree
     );
   }
 
-  Widget _pager(int page, int pages) => Wrap(
+  /// 지난 회차 카드 → 게시판 (10개씩 · 페이지 번호)
+  Widget _pastEntry(BuildContext context, List<HitRound> past) {
+    final wonRounds = past.where((r) => r.wonCount > 0).length;
+    return Card(
+      key: const ValueKey('hit_past_entry'),
+      margin: const EdgeInsets.only(top: 4, bottom: 16),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: BorderSide(color: Colors.grey.shade300)),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(14),
+        onTap: past.isEmpty
+            ? null
+            : () => Navigator.push(context, MaterialPageRoute(builder: (_) => BriefingHitPastScreen(rounds: past))),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(children: [
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(color: kHitColor.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
+              child: const Icon(Icons.history_rounded, color: kHitColor),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                const Text('지난 회차', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
+                Text(
+                    past.isEmpty
+                        ? '아직 지난 회차 기록이 없습니다.'
+                        : '${past.first.round}회 ~ ${past.last.round}회 · ${past.length}회차 · 당첨 나온 회차 $wonRounds',
+                    style: TextStyle(fontSize: 11.5, color: Colors.grey.shade700)),
+              ]),
+            ),
+            Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400),
+          ]),
+        ),
+      ),
+    );
+  }
+}
+
+/// 회차 카드 (펼친 모양) — 당첨번호 · 요약 · 4영역 추천번호 전부
+class HitRoundCard extends StatelessWidget {
+  final HitRound round;
+  const HitRoundCard({super.key, required this.round});
+
+  @override
+  Widget build(BuildContext context) {
+    final r = round;
+    final c = hitColorOf(r);
+    return Card(
+      key: ValueKey('hit_round_${r.round}'),
+      margin: const EdgeInsets.only(bottom: 10),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: BorderSide(color: c.withValues(alpha: 0.35))),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            Text('${r.round}회', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
+            const SizedBox(width: 8),
+            Expanded(child: Text(r.drawn ? _dateText(r.drawDate) : '', style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600))),
+            hitResultChip(r),
+          ]),
+          if (r.drawn) ...[
+            const SizedBox(height: 6),
+            miniWinBalls(r),
+          ],
+          const SizedBox(height: 6),
+          Text(hitSummary(r), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: c)),
+          const SizedBox(height: 4),
+          // 4영역 추천번호 전부 (당첨 세트는 초록)
+          for (final g in r.groups) HitGroupBlock(round: r, group: g, compact: true),
+        ]),
+      ),
+    );
+  }
+}
+
+Color hitColorOf(HitRound r) => !r.drawn ? Colors.grey.shade600 : (r.wonCount > 0 ? kHitColor : Colors.red.shade400);
+
+Widget hitResultChip(HitRound r) {
+  final c = hitColorOf(r);
+  return Container(
+    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+    decoration: BoxDecoration(color: c.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(20)),
+    child: Text(!r.drawn ? '추첨 전' : (r.wonCount > 0 ? '당첨 · 최고 ${r.bestRank}등' : '낙첨'),
+        style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900, color: c)),
+  );
+}
+
+Widget miniWinBalls(HitRound r) => Wrap(spacing: 3, runSpacing: 3, crossAxisAlignment: WrapCrossAlignment.center, children: [
+      for (final n in r.win!) numberBall('$n', lottoRangeColor(n), size: 24, fontSize: 10.5),
+      const Text(' + ', style: TextStyle(fontWeight: FontWeight.w900)),
+      numberBall('${r.bonus}', lottoRangeColor(r.bonus!), size: 24, fontSize: 10.5),
+    ]);
+
+/// 페이지 번호 (‹ 1 2 3 ›)
+class HitPager extends StatelessWidget {
+  final int page, pages;
+  final ValueChanged<int> onPage;
+  const HitPager({super.key, required this.page, required this.pages, required this.onPage});
+
+  @override
+  Widget build(BuildContext context) => Wrap(
         alignment: WrapAlignment.center,
         crossAxisAlignment: WrapCrossAlignment.center,
         spacing: 4,
@@ -117,14 +211,14 @@ class _AdminBriefingHitCheckScreenState extends State<AdminBriefingHitCheckScree
         children: [
           IconButton(
             key: const ValueKey('hit_page_prev'),
-            onPressed: page > 0 ? () => _setPage(page - 1) : null,
+            onPressed: page > 0 ? () => onPage(page - 1) : null,
             icon: const Icon(Icons.chevron_left_rounded),
           ),
           for (var i = 0; i < pages; i++)
             InkWell(
               key: ValueKey('hit_page_${i + 1}'),
               borderRadius: BorderRadius.circular(8),
-              onTap: () => _setPage(i),
+              onTap: () => onPage(i),
               child: Container(
                 width: 34, height: 34, alignment: Alignment.center,
                 decoration: BoxDecoration(
@@ -137,58 +231,100 @@ class _AdminBriefingHitCheckScreenState extends State<AdminBriefingHitCheckScree
             ),
           IconButton(
             key: const ValueKey('hit_page_next'),
-            onPressed: page < pages - 1 ? () => _setPage(page + 1) : null,
+            onPressed: page < pages - 1 ? () => onPage(page + 1) : null,
             icon: const Icon(Icons.chevron_right_rounded),
           ),
         ],
       );
+}
 
-  Widget _roundCard(BuildContext context, HitRound r, List<HitRound> all) {
-    final won = r.wonCount > 0;
-    final c = !r.drawn ? Colors.grey.shade600 : (won ? kHitColor : Colors.red.shade400);
-    return Card(
-      key: ValueKey('hit_round_${r.round}'),
-      margin: const EdgeInsets.only(bottom: 10),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14), side: BorderSide(color: c.withValues(alpha: 0.35))),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: () => Navigator.push(context,
-            MaterialPageRoute(builder: (_) => BriefingHitRoundScreen(rounds: all, initial: all.indexOf(r)))),
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Text('${r.round}회', style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w900)),
-              const SizedBox(width: 8),
-              Expanded(child: Text(r.drawn ? _dateText(r.drawDate) : '', style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600))),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-                decoration: BoxDecoration(color: c.withValues(alpha: 0.12), borderRadius: BorderRadius.circular(20)),
-                child: Text(!r.drawn ? '추첨 전' : (won ? '당첨 · 최고 ${r.bestRank}등' : '낙첨'),
-                    style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900, color: c)),
-              ),
-              Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400),
-            ]),
-            if (r.drawn) ...[
-              const SizedBox(height: 6),
-              _miniWin(r),
+/// 지난 회차 게시판 — 10개씩 · 페이지 번호 · 줄을 누르면 그 회차 당첨내역
+class BriefingHitPastScreen extends StatefulWidget {
+  final List<HitRound> rounds;
+  const BriefingHitPastScreen({super.key, required this.rounds});
+  @override
+  State<BriefingHitPastScreen> createState() => _BriefingHitPastScreenState();
+}
+
+class _BriefingHitPastScreenState extends State<BriefingHitPastScreen> {
+  int _page = 0;
+  final _sc = ScrollController();
+
+  @override
+  void dispose() {
+    _sc.dispose();
+    super.dispose();
+  }
+
+  /// 페이지를 바꾸면 맨 위부터 보이게
+  void _setPage(int p) {
+    setState(() => _page = p);
+    if (_sc.hasClients) _sc.jumpTo(0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final all = widget.rounds;
+    final pages = (all.length / kHitPageSize).ceil();
+    final page = pages == 0 ? 0 : _page.clamp(0, pages - 1);
+    final items = all.skip(page * kHitPageSize).take(kHitPageSize).toList();
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('지난 회차 당첨확인', style: TextStyle(fontWeight: FontWeight.w800)),
+        backgroundColor: kHitColor,
+        foregroundColor: Colors.white,
+      ),
+      body: ListView(controller: _sc, padding: const EdgeInsets.all(16), children: [
+        Text('총 ${all.length}회차 · ${page + 1} / ${pages == 0 ? 1 : pages} 페이지 · 회차를 누르면 당첨내역',
+            key: const ValueKey('hit_past_head'), style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
+        const SizedBox(height: 8),
+        Container(
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: Colors.grey.shade300)),
+          child: Column(children: [
+            for (final e in items.asMap().entries) ...[
+              if (e.key > 0) Divider(height: 1, color: Colors.grey.shade200),
+              _row(context, e.value, all),
             ],
-            const SizedBox(height: 6),
-            Text(hitSummary(r), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: c)),
-            const SizedBox(height: 4),
-            // 4영역 추천번호 전부 (당첨 세트는 초록)
-            for (final g in r.groups) HitGroupBlock(round: r, group: g, compact: true),
           ]),
         ),
-      ),
+        if (pages > 1) ...[
+          const SizedBox(height: 8),
+          HitPager(page: page, pages: pages, onPage: _setPage),
+        ],
+      ]),
     );
   }
 
-  Widget _miniWin(HitRound r) => Wrap(spacing: 3, runSpacing: 3, crossAxisAlignment: WrapCrossAlignment.center, children: [
-        for (final n in r.win!) numberBall('$n', lottoRangeColor(n), size: 24, fontSize: 10.5),
-        const Text(' + ', style: TextStyle(fontWeight: FontWeight.w900)),
-        numberBall('${r.bonus}', lottoRangeColor(r.bonus!), size: 24, fontSize: 10.5),
-      ]);
+  Widget _row(BuildContext context, HitRound r, List<HitRound> all) => InkWell(
+        key: ValueKey('hit_past_row_${r.round}'),
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => BriefingHitRoundScreen(rounds: all, initial: all.indexOf(r)))),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(children: [
+            SizedBox(width: 62, child: Text('${r.round}회', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900))),
+            Expanded(
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(hitSummary(r), maxLines: 1, overflow: TextOverflow.ellipsis,
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800, color: hitColorOf(r))),
+                Text(
+                  [
+                    if (r.drawn) _dateText(r.drawDate),
+                    for (final g in r.groups)
+                      '${g.def.short} ${!g.registered ? '없음' : (!r.drawn ? '${g.sets.length}세트' : (g.bestRank == null ? '낙첨' : '${g.bestRank}등'))}',
+                  ].join(' · '),
+                  maxLines: 2,
+                  style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600),
+                ),
+              ]),
+            ),
+            const SizedBox(width: 6),
+            hitResultChip(r),
+            Icon(Icons.chevron_right_rounded, color: Colors.grey.shade400),
+          ]),
+        ),
+      );
 }
 
 /// 회차별 당첨내역 — 좌우로 넘겨 다른 회차 (위에 n / 전체 페이지 번호)

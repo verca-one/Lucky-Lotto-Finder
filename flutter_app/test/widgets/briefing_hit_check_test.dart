@@ -46,41 +46,53 @@ void main() {
     expect(hitSummary(r), '당첨 3세트 (2등 1 · 4등 1 · 5등 1) · 65,594,446원');
   });
 
-  testWidgets('목록 — 페이지 번호로 넘기고, 회차를 누르면 당첨내역 (좌우 회차 이동 · n / 전체)', (tester) async {
+  testWidgets('첫 화면 = 최신 회차 카드(추첨 전이면 직전 회차도) + 지난 회차 카드 → 게시판 10개씩 · 페이지 번호 → 누르면 당첨내역', (tester) async {
     final regs = [
-      for (var t = 1235; t <= 1247; t++) reg('official_final', 'fr-1.0', t, [[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12]]),
+      for (var t = 1235; t <= 1248; t++) reg('official_final', 'fr-1.0', t, [[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12]]),
     ];
     final wins = {for (var t = 1235; t <= 1247; t++) t: ([1, 2, 3, 40, 41, 42], 43, '2026-10-24')};
     final rounds = buildHitRounds(regs, wins, const {});
     await tester.pumpWidget(MaterialApp(home: AdminBriefingHitCheckScreen(loader: () async => rounds)));
     await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('hit_round_1247')), findsOneWidget);
-    expect(find.byKey(const ValueKey('hit_round_1237')), findsNothing);
-    await tester.scrollUntilVisible(find.byKey(const ValueKey('hit_page_2')), 300);
-    await tester.tap(find.byKey(const ValueKey('hit_page_2')));
-    await tester.pumpAndSettle();
-    expect(find.byKey(const ValueKey('hit_round_1237')), findsOneWidget);
-    expect(find.byKey(const ValueKey('hit_round_1247')), findsNothing);
-    expect(find.textContaining('당첨 1세트 (5등 1) · 5,000원'), findsWidgets);
-    // 목록 카드 안에 4영역 추천번호 전부 (등록 없는 영역은 '등록 없음')
-    final card = find.byKey(const ValueKey('hit_round_1237'));
+    // 1248 추첨 전 + 직전 1247 결과만 펼침, 나머지는 지난 회차
+    expect(find.byKey(const ValueKey('hit_round_1248')), findsOneWidget);
+    final card = find.byKey(const ValueKey('hit_round_1247'));
+    expect(card, findsOneWidget);
     for (final k in ['official', 'popularity', 'purchase', 'hypothesis']) {
-      expect(find.descendant(of: card, matching: find.byKey(ValueKey('hit_group_1237_${k}_list'))), findsOneWidget);
+      expect(find.descendant(of: card, matching: find.byKey(ValueKey('hit_group_1247_${k}_list'))), findsOneWidget);
     }
     expect(find.descendant(of: card, matching: find.text('① 엔진 추천번호')), findsOneWidget);
     expect(find.descendant(of: card, matching: find.text('5등 1세트 당첨')), findsOneWidget);
     expect(find.descendant(of: card, matching: find.text('등록 없음')), findsNWidgets(3));
     expect(find.descendant(of: card, matching: find.text('5등 · 3개 일치')), findsOneWidget);
+    expect(find.byKey(const ValueKey('hit_round_1246')), findsNothing);
+    await tester.scrollUntilVisible(find.byKey(const ValueKey('hit_past_entry')), 300);
+    expect(find.text('1246회 ~ 1235회 · 12회차 · 당첨 나온 회차 12'), findsOneWidget);
 
-    await tester.tap(find.byKey(const ValueKey('hit_round_1237')));
+    await tester.tap(find.byKey(const ValueKey('hit_past_entry')));
     await tester.pumpAndSettle();
-    expect(find.text('1237회 당첨내역'), findsOneWidget);
-    expect(find.text('11 / 13'), findsOneWidget);
+    expect(find.text('지난 회차 당첨확인'), findsOneWidget);
+    expect(find.byKey(const ValueKey('hit_past_row_1246')), findsOneWidget);
+    expect(find.byKey(const ValueKey('hit_past_row_1236')), findsNothing);
+    expect(find.text('총 12회차 · 1 / 2 페이지 · 회차를 누르면 당첨내역'), findsOneWidget);
+    // 게시판 줄에는 번호 세트가 없고 (누르면 내역)
+    expect(find.text('5등 · 3개 일치'), findsNothing);
+    await tester.scrollUntilVisible(find.byKey(const ValueKey('hit_page_2')), 300);
+    await tester.tap(find.byKey(const ValueKey('hit_page_2')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('hit_past_row_1236')), findsOneWidget);
+    expect(find.byKey(const ValueKey('hit_past_row_1246')), findsNothing);
+    expect(find.text('총 12회차 · 2 / 2 페이지 · 회차를 누르면 당첨내역'), findsOneWidget);
+
+    await tester.tap(find.byKey(const ValueKey('hit_past_row_1236')));
+    await tester.pumpAndSettle();
+    expect(find.text('1236회 당첨내역'), findsOneWidget);
+    expect(find.text('11 / 12'), findsOneWidget);
     expect(find.text('5등 · 3개 일치'), findsOneWidget);
     expect(find.text('낙첨 · 0개 일치'), findsOneWidget);
     await tester.tap(find.byKey(const ValueKey('hit_detail_older')));
     await tester.pumpAndSettle();
-    expect(find.text('1236회 당첨내역'), findsOneWidget);
-    expect(find.text('12 / 13'), findsOneWidget);
+    expect(find.text('1235회 당첨내역'), findsOneWidget);
+    expect(find.text('12 / 12'), findsOneWidget);
   });
 }
