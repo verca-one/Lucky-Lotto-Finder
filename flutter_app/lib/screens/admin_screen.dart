@@ -10,6 +10,7 @@ import 'admin_pension_round_screen.dart';
 import 'admin_pension_numbers_input_screen.dart';
 import 'admin_pension_store_screen.dart';
 import 'admin_coupon_screen.dart';
+import 'admin_briefing_hit_check_screen.dart';
 import 'admin_report_screen.dart';
 import 'admin_crawl_status_screen.dart';
 import 'admin_review_screen.dart';
@@ -75,6 +76,22 @@ class _AdminScreenState extends State<AdminScreen> {
                 MaterialPageRoute(builder: (_) => const AdminRpaScreen()),
               );
             }),
+            const SizedBox(height: 8),
+            // ── 브리핑 추천 당첨확인 (회차별 추천번호 · 제미나이 가설 번호 당첨 여부) ──
+            Card(
+              key: const ValueKey('menu_briefing_hit_check'),
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: _buildAdminMenuItem(
+                  icon: Icons.fact_check_rounded,
+                  title: '브리핑 추천 당첨확인',
+                  subtitle: '회차별 브리핑 추천번호(① 공식 · ② 비인기 · ③ 구매예측) · 제미나이 가설 추천번호 당첨 여부와 당첨내역',
+                  color: const Color(0xFF2E7D32),
+                  onTap: () => Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => const AdminBriefingHitCheckScreen())),
+                ),
+              ),
+            ),
             const SizedBox(height: 8),
             // ── DB 사용량 (Worker 측정값, 경고 시 배너) ─────────────
             const DbUsageCard(),
