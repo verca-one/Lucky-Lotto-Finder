@@ -726,8 +726,13 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
                 ),
               ),
             ),
-            // 랭킹 위 — 최신 로또 당첨번호
-            SliverToBoxAdapter(child: RankingLottoNumbers(key: ValueKey('ranking_numbers_$_numbersRefresh'))),
+            // 랭킹 위 — 최신 로또 당첨번호 (번호 수집되면 바로 반영)
+            SliverToBoxAdapter(
+              child: RankingLottoNumbers(
+                key: ValueKey('ranking_numbers_$_numbersRefresh'),
+                onNewRound: _loadRoundCards, // 새 회차 번호가 들어오면 위 회차 카드도 다시 읽기
+              ),
+            ),
             _rankedStores.isEmpty
                 ? const SliverFillRemaining(
                     child: Center(child: Text('당첨지점 데이터가 없습니다')),
