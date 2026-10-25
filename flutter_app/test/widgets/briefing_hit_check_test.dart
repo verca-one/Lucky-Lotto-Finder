@@ -62,6 +62,15 @@ void main() {
     expect(find.byKey(const ValueKey('hit_round_1237')), findsOneWidget);
     expect(find.byKey(const ValueKey('hit_round_1247')), findsNothing);
     expect(find.textContaining('당첨 1세트 (5등 1) · 5,000원'), findsWidgets);
+    // 목록 카드 안에 4영역 추천번호 전부 (등록 없는 영역은 '등록 없음')
+    final card = find.byKey(const ValueKey('hit_round_1237'));
+    for (final k in ['official', 'popularity', 'purchase', 'hypothesis']) {
+      expect(find.descendant(of: card, matching: find.byKey(ValueKey('hit_group_1237_${k}_list'))), findsOneWidget);
+    }
+    expect(find.descendant(of: card, matching: find.text('① 엔진 추천번호')), findsOneWidget);
+    expect(find.descendant(of: card, matching: find.text('5등 1세트 당첨')), findsOneWidget);
+    expect(find.descendant(of: card, matching: find.text('등록 없음')), findsNWidgets(3));
+    expect(find.descendant(of: card, matching: find.text('5등 · 3개 일치')), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('hit_round_1237')));
     await tester.pumpAndSettle();

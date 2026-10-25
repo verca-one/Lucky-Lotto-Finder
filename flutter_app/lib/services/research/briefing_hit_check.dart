@@ -1,8 +1,8 @@
 // 브리핑 추천 당첨확인 — 브리핑이 회차별로 추천한 번호를 그 회차 당첨번호와 맞춰 본다 (관리자 메뉴)
 //
 // 번호 출처 = 사전 등록 장부(research_predictions, 등록 후 변경 불가) — 회차 검증(db-1.0)과 같은 세트 고르기 규칙
-//   ① 공식 5세트 (official_final · fr-1.0) · ② 비인기 5세트 (popularity_pick · pop-1.0)
-//   ③ 구매예측 5세트 (purchase_prediction · 최신 버전) · 제미나이 가설 트랙 (hypothesis_track · 토요일 최종본 ht-1.0-sat 우선)
+//   ① 엔진 추천번호 = 공식 5세트 (official_final · fr-1.0) · ② 비인기 5세트 (popularity_pick · pop-1.0)
+//   ③ 구매예측 5세트 (purchase_prediction · 최신 버전) · ④ 제미나이 가설 (hypothesis_track · 토요일 최종본 ht-1.0-sat 우선)
 // 당첨번호 = lotto_winning_numbers · 등수별 당첨금 = research_prize_stats (읽기만, 새 계산 규칙 없음 — 일치 개수로 등수만 셈)
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -14,10 +14,10 @@ class HitGroupDef {
 }
 
 const kHitGroups = [
-  HitGroupDef('official', 'official_final', '① 공식 추천번호', '공식', version: 'fr-1.0'),
+  HitGroupDef('official', 'official_final', '① 엔진 추천번호', '엔진 추천', version: 'fr-1.0'),
   HitGroupDef('popularity', 'popularity_pick', '② 비인기 추천조합', '비인기', version: 'pop-1.0'),
   HitGroupDef('purchase', 'purchase_prediction', '③ 구매예측 번호', '구매예측'),
-  HitGroupDef('hypothesis', 'hypothesis_track', '제미나이 가설 추천번호', '제미나이', prefer: ['ht-1.0-sat', 'ht-1.0']),
+  HitGroupDef('hypothesis', 'hypothesis_track', '④ 제미나이 가설 추천번호', '제미나이', prefer: ['ht-1.0-sat', 'ht-1.0']),
 ];
 
 /// 4등 · 5등은 고정 당첨금 (1~3등은 회차별 research_prize_stats)

@@ -1,4 +1,4 @@
-// 브리핑 추천 당첨확인 (관리자) — 회차 목록(당첨 여부 · 페이지 번호) → 회차별 당첨내역 (좌우로 넘김)
+// 브리핑 추천 당첨확인 (관리자) — 회차 목록(4영역 추천번호 전부 · 당첨 표시 · 페이지 번호) → 회차별 당첨내역 (좌우로 넘김)
 import 'package:flutter/material.dart';
 
 import '../services/research/briefing_hit_check.dart';
@@ -44,6 +44,19 @@ class AdminBriefingHitCheckScreen extends StatefulWidget {
 class _AdminBriefingHitCheckScreenState extends State<AdminBriefingHitCheckScreen> {
   late Future<List<HitRound>> _f;
   int _page = 0;
+  final _sc = ScrollController();
+
+  @override
+  void dispose() {
+    _sc.dispose();
+    super.dispose();
+  }
+
+  /// 페이지를 바꾸면 맨 위부터 보이게
+  void _setPage(int p) {
+    setState(() => _page = p);
+    if (_sc.hasClients) _sc.jumpTo(0);
+  }
 
   @override
   void initState() {
@@ -75,9 +88,9 @@ class _AdminBriefingHitCheckScreenState extends State<AdminBriefingHitCheckScree
           final items = all.skip(page * kHitPageSize).take(kHitPageSize).toList();
           return RefreshIndicator(
             onRefresh: _reload,
-            child: ListView(padding: const EdgeInsets.all(16), children: [
-              Text('브리핑이 회차마다 추천한 번호(① 공식 · ② 비인기 · ③ 구매예측)와 제미나이 가설 추천번호를 '
-                  '그 회차 당첨번호와 맞춰 봅니다. 회차를 누르면 당첨내역으로 넘어갑니다.',
+            child: ListView(controller: _sc, padding: const EdgeInsets.all(16), children: [
+              Text('브리핑이 회차마다 추천한 번호 4영역(① 엔진 추천 · ② 비인기 · ③ 구매예측 · ④ 제미나이 가설)을 '
+                  '그 회차 당첨번호와 맞춰 봅니다. 맞힌 번호는 색 공, 당첨 세트는 초록 칸입니다. 회차 카드를 누르면 당첨내역(크게 보기)으로 넘어갑니다.',
                   style: TextStyle(fontSize: 12, color: Colors.grey.shade700, height: 1.4)),
               const SizedBox(height: 4),
               Text('번호는 추첨 전에 사전 등록 장부에 올린 그대로입니다 · 당첨금은 각 세트를 1게임씩 샀다고 볼 때 금액',
@@ -104,14 +117,14 @@ class _AdminBriefingHitCheckScreenState extends State<AdminBriefingHitCheckScree
         children: [
           IconButton(
             key: const ValueKey('hit_page_prev'),
-            onPressed: page > 0 ? () => setState(() => _page = page - 1) : null,
+            onPressed: page > 0 ? () => _setPage(page - 1) : null,
             icon: const Icon(Icons.chevron_left_rounded),
           ),
           for (var i = 0; i < pages; i++)
             InkWell(
               key: ValueKey('hit_page_${i + 1}'),
               borderRadius: BorderRadius.circular(8),
-              onTap: () => setState(() => _page = i),
+              onTap: () => _setPage(i),
               child: Container(
                 width: 34, height: 34, alignment: Alignment.center,
                 decoration: BoxDecoration(
@@ -124,7 +137,7 @@ class _AdminBriefingHitCheckScreenState extends State<AdminBriefingHitCheckScree
             ),
           IconButton(
             key: const ValueKey('hit_page_next'),
-            onPressed: page < pages - 1 ? () => setState(() => _page = page + 1) : null,
+            onPressed: page < pages - 1 ? () => _setPage(page + 1) : null,
             icon: const Icon(Icons.chevron_right_rounded),
           ),
         ],
@@ -163,16 +176,8 @@ class _AdminBriefingHitCheckScreenState extends State<AdminBriefingHitCheckScree
             const SizedBox(height: 6),
             Text(hitSummary(r), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: c)),
             const SizedBox(height: 4),
-            Wrap(spacing: 6, runSpacing: 4, children: [
-              for (final g in r.groups)
-                Text(
-                  !g.registered
-                      ? '${g.def.short} 없음'
-                      : '${g.def.short} ${!r.drawn ? '${g.sets.length}세트' : (g.bestRank == null ? '낙첨' : '${g.bestRank}등 ${g.won.length}')}',
-                  style: TextStyle(fontSize: 10.5, color: g.bestRank != null ? kHitColor : Colors.grey.shade600,
-                      fontWeight: g.bestRank != null ? FontWeight.w800 : FontWeight.w500),
-                ),
-            ]),
+            // 4영역 추천번호 전부 (당첨 세트는 초록)
+            for (final g in r.groups) HitGroupBlock(round: r, group: g, compact: true),
           ]),
         ),
       ),
@@ -283,28 +288,49 @@ class _BriefingHitRoundScreenState extends State<BriefingHitRoundScreen> {
           ]),
         ),
         const SizedBox(height: 12),
-        for (final g in r.groups) _group(r, g),
+        for (final g in r.groups) HitGroupBlock(round: r, group: g),
       ]);
+}
 
-  Widget _group(HitRound r, HitGroup g) => Container(
-        key: ValueKey('hit_group_${r.round}_${g.def.key}'),
-        width: double.infinity,
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.grey.shade300)),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Row(children: [
-            Expanded(child: Text(g.def.label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900))),
-            if (g.version != null) Text(g.version!, style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600)),
-          ]),
-          const SizedBox(height: 6),
-          if (!g.registered)
-            Text('${r.round}회에는 등록된 번호가 없습니다.', style: TextStyle(fontSize: 12, color: Colors.grey.shade600))
-          else
-            for (final e in g.sets.asMap().entries) _setRow(r, e.key, e.value),
+/// 한 영역(① 엔진 추천 · ② 비인기 · ③ 구매예측 · ④ 제미나이)의 추천번호 전부 + 세트별 당첨 표시
+class HitGroupBlock extends StatelessWidget {
+  final HitRound round;
+  final HitGroup group;
+  final bool compact; // 목록 카드 안(작게)
+  const HitGroupBlock({super.key, required this.round, required this.group, this.compact = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final r = round, g = group;
+    final res = !g.registered
+        ? '등록 없음'
+        : (!r.drawn ? '${g.sets.length}세트 · 추첨 전' : (g.bestRank == null ? '낙첨' : '${g.bestRank}등 ${g.won.length}세트 당첨'));
+    final c = g.bestRank != null ? kHitColor : Colors.grey.shade600;
+    return Container(
+      key: ValueKey('hit_group_${r.round}_${g.def.key}${compact ? '_list' : ''}'),
+      width: double.infinity,
+      margin: EdgeInsets.only(top: compact ? 8 : 0, bottom: compact ? 0 : 12),
+      padding: EdgeInsets.all(compact ? 8 : 12),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(compact ? 10 : 14),
+          border: Border.all(color: g.bestRank != null ? kHitColor.withValues(alpha: 0.5) : Colors.grey.shade300)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(child: Text(g.def.label, style: TextStyle(fontSize: compact ? 12.5 : 14, fontWeight: FontWeight.w900))),
+          Text(res, style: TextStyle(fontSize: compact ? 11 : 12, fontWeight: FontWeight.w900, color: c)),
+          if (!compact && g.version != null) ...[
+            const SizedBox(width: 6),
+            Text(g.version!, style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600)),
+          ],
         ]),
-      );
+        const SizedBox(height: 6),
+        if (!g.registered)
+          Text('${r.round}회에는 이 영역의 사전 등록 번호가 없습니다 (이 영역 기록 시작 전).',
+              style: TextStyle(fontSize: compact ? 11 : 12, color: Colors.grey.shade600))
+        else
+          for (final e in g.sets.asMap().entries) _setRow(r, e.key, e.value),
+      ]),
+    );
+  }
 
   Widget _setRow(HitRound r, int i, HitSet s) {
     final won = s.rank != null;
@@ -333,13 +359,13 @@ class _BriefingHitRoundScreenState extends State<BriefingHitRoundScreen> {
                   child: numberBall('$n',
                       !r.drawn || s.hits.contains(n) ? lottoRangeColor(n)
                           : (s.rank == 2 && n == r.bonus ? lottoRangeColor(n) : Colors.grey.shade300),
-                      size: 28, fontSize: 12),
+                      size: compact ? 24 : 28, fontSize: compact ? 10.5 : 12),
                 ),
             ]),
           ),
         ),
         const SizedBox(width: 6),
-        Text(label, style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900, color: won ? kHitColor : Colors.grey.shade600)),
+        Text(label, style: TextStyle(fontSize: compact ? 10.5 : 11.5, fontWeight: FontWeight.w900, color: won ? kHitColor : Colors.grey.shade600)),
       ]),
     );
   }
