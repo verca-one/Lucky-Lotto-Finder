@@ -41,6 +41,35 @@ void main() {
     expect(notified, 1);
     expect(find.byKey(const ValueKey('manual_recommend_waiting')), findsOneWidget);
     expect(find.textContaining('수동 추천'), findsOneWidget);
+    // 이미 요청했으면 '엔진 바로 시작'은 요청됨 표시(누를 수 없음)
+    expect(find.text('1247회 엔진 시작 요청됨 · 서버 처리 중'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  testWidgets('수요일 실행 대기 — 위에 엔진 바로 시작 버튼 → 서버 요청 · 만들어지면 흐릿한 가동 완료', (tester) async {
+    final store = <int, Map<String, dynamic>>{};
+    RecommendRelease.fetchRequest = (t) async => store[t];
+    RecommendRelease.insertRequest = (t) async => store[t] = {'target_round': t, 'requested_at': '2026-10-28T03:00:00Z', 'status': 'pending'};
+    var made = false;
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: ManualRecommendCard(
+        target: () async => (1248, '2026-10-24'), generated: (_) async => made, nowUtc: DateTime.utc(2026, 10, 28, 3)))));
+    await tester.pumpAndSettle();
+    final btn = find.byKey(const ValueKey('engine_start_now'));
+    expect(btn, findsOneWidget);
+    expect(find.text('엔진 바로 시작 · 1248회'), findsOneWidget);
+    expect(tester.getTopLeft(btn).dy < tester.getTopLeft(find.byKey(const ValueKey('manual_recommend_waiting'))).dy, isTrue);
+    await tester.tap(btn);
+    await tester.pumpAndSettle();
+    expect(store.keys, [1248]);
+    expect(find.text('1248회 엔진 시작 요청됨 · 서버 처리 중'), findsOneWidget);
+    // 서버가 만들면 1분 확인에서 가동 완료로 바뀌고 흐려짐
+    made = true;
+    await tester.pump(const Duration(minutes: 1));
+    await tester.pumpAndSettle();
+    expect(find.text('엔진 1248회 가동 완료 · 수동 추천'), findsOneWidget);
+    final op = tester.widget<Opacity>(find.ancestor(of: find.byKey(const ValueKey('manual_recommend_done')), matching: find.byType(Opacity)).first);
+    expect(op.opacity, closeTo(0.5, 0.01));
+    await tester.pumpWidget(const SizedBox());
   });
 
   testWidgets('번호가 만들어지면 완료 표시 · 수요일 이후엔 버튼 없음', (tester) async {
@@ -50,6 +79,8 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('manual_recommend_button')), findsNothing);
     expect(find.byKey(const ValueKey('manual_recommend_done')), findsOneWidget);
-    expect(find.textContaining('수요일 자동 실행'), findsOneWidget);
+    expect(find.text('엔진 1247회 가동 완료 · 수요일 자동 실행'), findsOneWidget);
+    expect(find.byKey(const ValueKey('engine_start_now')), findsNothing);
+    await tester.pumpWidget(const SizedBox());
   });
 }

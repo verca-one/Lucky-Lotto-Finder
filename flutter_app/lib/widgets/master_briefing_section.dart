@@ -1,4 +1,6 @@
 // 엔진 브리핑 — 마스터 주요 브리핑 3종 (엔진 추천번호 · 구매예측 번호 · 이번 주 엔진 추천 명당)
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../screens/nearby_engine_stores_screen.dart';
@@ -542,11 +544,40 @@ class _ManualRecommendCardState extends State<ManualRecommendCard> {
   ReleaseState? _s;
   bool _made = false;
   bool _busy = false;
+  Timer? _watch;
 
   @override
   void initState() {
     super.initState();
     _load();
+    // 실행 대기 중이면 1분마다 다시 확인 → 만들어지면 '가동 완료'로 바뀜
+    _watch = Timer.periodic(const Duration(minutes: 1), (_) {
+      if (_s != null && _s!.released && !_made) _load();
+    });
+  }
+
+  @override
+  void dispose() {
+    _watch?.cancel();
+    super.dispose();
+  }
+
+  /// 엔진 바로 시작 — 실행 대기 중에 서버에 바로 실행 요청 (요청 1행, 서버가 10분 안에 시작)
+  Future<void> _startNow() async {
+    final s = _s!;
+    setState(() => _busy = true);
+    try {
+      await RecommendRelease.requestRun(s.target);
+      OfficialPredictionService.instance.clearCache();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('${s.target}회 엔진 시작 요청 — 서버가 10분 안에 시작합니다 (실행 10~20분)')));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('엔진 시작 요청 실패: $e')));
+    }
+    await _load();
+    if (mounted) setState(() => _busy = false);
   }
 
   Future<void> _load() async {
@@ -633,11 +664,37 @@ class _ManualRecommendCardState extends State<ManualRecommendCard> {
     if (s.released) {
       final how = s.manualAt != null ? '수동 추천' : '수요일 자동 실행';
       if (_made) {
-        return _note('manual_recommend_done', Icons.check_circle_rounded, const Color(0xFF2E7D32), const Color(0xFFE8F5E9),
-            '${s.target}회 추천번호 생성 완료 · $how');
+        // 가동 완료 — 선명하게 나타났다가 흐릿하게 가라앉음
+        return TweenAnimationBuilder<double>(
+          tween: Tween(begin: 1, end: 0.5),
+          duration: const Duration(milliseconds: 1600),
+          curve: Curves.easeOut,
+          builder: (_, o, child) => Opacity(opacity: o, child: child),
+          child: _note('manual_recommend_done', Icons.check_circle_rounded, const Color(0xFF2E7D32), const Color(0xFFE8F5E9),
+              '엔진 ${s.target}회 가동 완료 · $how'),
+        );
       }
-      return _note('manual_recommend_waiting', Icons.hourglass_top_rounded, const Color(0xFFE65100), const Color(0xFFFFF3E0),
-          '${s.target}회 엔진 실행 대기 · $how — 서버 실행 후 표시 (보통 10~20분)', refresh: true);
+      final asked = s.manualAt != null;
+      return Column(children: [
+        Container(
+          width: double.infinity,
+          margin: const EdgeInsets.only(bottom: 8),
+          child: FilledButton.icon(
+            key: const ValueKey('engine_start_now'),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFF4527A0),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            onPressed: _busy || asked ? null : _startNow,
+            icon: Icon(asked ? Icons.sync_rounded : Icons.rocket_launch_rounded, size: 18),
+            label: Text(asked ? '${s.target}회 엔진 시작 요청됨 · 서버 처리 중' : '엔진 바로 시작 · ${s.target}회',
+                style: const TextStyle(fontWeight: FontWeight.w900)),
+          ),
+        ),
+        _note('manual_recommend_waiting', Icons.hourglass_top_rounded, const Color(0xFFE65100), const Color(0xFFFFF3E0),
+            '${s.target}회 엔진 실행 대기 · $how — 서버 실행 후 표시 (보통 10~20분)', refresh: true),
+      ]);
     }
     return Container(
       key: const ValueKey('manual_recommend_card'),
