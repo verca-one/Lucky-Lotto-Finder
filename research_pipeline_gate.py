@@ -68,15 +68,26 @@ def readiness(db, latest):
         why.append(f"판매점 크롤링 완료 표시 없음({rcs[0].get('stores_status') if rcs else '행 없음'})")
     first = db.count("winning_history", {"lottery_type": "eq.lotto", "round": f"eq.{latest}", "prize_tier": "eq.first"})
     second = db.count("winning_history", {"lottery_type": "eq.lotto", "round": f"eq.{latest}", "prize_tier": "eq.second"})
-    p = db.get("research_prize_stats", {"select": "rank1_winners", "round": f"eq.{latest}"})
+    p = db.get("research_prize_stats", {"select": "rank1_winners,auto_winners,semi_auto_winners,manual_winners",
+                                        "round": f"eq.{latest}"})
     p1 = p[0].get("rank1_winners") if p else None
     if second == 0:
         why.append("2등 판매점 기록 없음")
     if first == 0 and p1 != 0:
         why.append("1등 판매점 기록 없음")
-    elif p1 and first < 0.8 * p1:
-        why.append(f"1등 판매점 기록 부족 {first}/{p1}")
+    elif p1 and first < need_first(p[0]):
+        why.append(f"1등 판매점 기록 부족 {first}/{p1} (최소 {need_first(p[0])})")
     return why
+
+
+def need_first(p):
+    """1등 판매점 기록 최소 수 — 수동은 한 사람이 같은 판매점에서 같은 번호를 여러 장 사는 경우가 많아
+    판매점 기록 1건으로 남는다 (1247회: 1등 8명 = 자동 5 + 수동 3, 판매점 기록 6 = 자동 5 + 수동 1).
+    자동·반자동 수 + 수동 있으면 1. 내역이 없으면 이전 기준(1등 수의 80%)."""
+    a, s, m = p.get("auto_winners"), p.get("semi_auto_winners"), p.get("manual_winners")
+    if a is None or s is None or m is None:
+        return 0.8 * (p.get("rank1_winners") or 0)
+    return a + s + (1 if m > 0 else 0)
 
 
 def output(**kv):
