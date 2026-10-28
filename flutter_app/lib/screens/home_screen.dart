@@ -10,6 +10,7 @@ import '../services/ranking_extras_service.dart';
 import '../services/round_status_service.dart';
 import '../widgets/home_round_header.dart';
 import '../widgets/ranking_lotto_numbers.dart';
+import '../widgets/ranking_pension_numbers.dart';
 import 'round_result_screen.dart';
 import '../widgets/ranking_store_card.dart';
 import '../widgets/store_detail_popup.dart';
@@ -628,16 +629,30 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
         slivers: [
           // 헤더 (파란 배경) — 로딩 중에도 먼저 표시
           SliverToBoxAdapter(child: _buildHeader()),
+          // 최신 당첨번호 — 로또 · 연금 (번호 수집되면 바로 반영 · 발표 당일 회색 단계), 그 아래 복권명당 순위
+          const SliverToBoxAdapter(child: SizedBox(height: 16)),
+          SliverToBoxAdapter(
+            child: RankingLottoNumbers(
+              key: ValueKey('ranking_numbers_$_numbersRefresh'),
+              onNewRound: _loadRoundCards, // 새 회차 번호가 들어오면 위 회차 카드도 다시 읽기
+            ),
+          ),
+          SliverToBoxAdapter(
+            child: RankingPensionNumbers(
+              key: ValueKey('ranking_pension_$_numbersRefresh'),
+              onNewRound: _loadRoundCards,
+            ),
+          ),
 
           if (_isLoading) ...[
             // ── 스켈레톤 로딩 UI ──────────────────────────────
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 4),
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 4),
                 child: Row(
                   children: [
                     const Text(
-                      '랭킹',
+                      '복권명당',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
@@ -699,11 +714,11 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
               SliverToBoxAdapter(child: _buildBadgeFailBanner()),
             SliverToBoxAdapter(
               child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+                padding: const EdgeInsets.fromLTRB(20, 8, 20, 10),
                 child: Row(
                   children: [
                     const Text(
-                      '랭킹',
+                      '복권명당',
                       style: TextStyle(
                         fontSize: 18,
                         fontWeight: FontWeight.w800,
@@ -724,13 +739,6 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
                     ),
                   ],
                 ),
-              ),
-            ),
-            // 랭킹 위 — 최신 로또 당첨번호 (번호 수집되면 바로 반영)
-            SliverToBoxAdapter(
-              child: RankingLottoNumbers(
-                key: ValueKey('ranking_numbers_$_numbersRefresh'),
-                onNewRound: _loadRoundCards, // 새 회차 번호가 들어오면 위 회차 카드도 다시 읽기
               ),
             ),
             _rankedStores.isEmpty
