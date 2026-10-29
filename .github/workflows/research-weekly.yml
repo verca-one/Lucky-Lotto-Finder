@@ -1,7 +1,7 @@
 name: Research Weekly Check
 
-# 비서 토요일 아침 최종 점검 — 08:00 KST. 가설 공장을 한 번 더 돌린 뒤 수요일 취합과 비교해 '변경점 있음/없음'을 남긴다.
-# (수요일 취합은 research-engine.yml publish 단계에서 엔진이 구매할 번호를 등록한 시점에 만든다)
+# 비서 토요일 아침 최종 점검 — 08:00 KST. 가설 공장을 한 번 더 돌린 뒤 월요일 취합과 비교해 '변경점 있음/없음'을 남긴다.
+# (월요일 취합은 research-engine.yml publish 단계에서 엔진이 구매할 번호를 등록한 시점에 만든다)
 on:
   schedule:
     - cron: '0 23 * * 5'  # 토 08:00 KST (= 금 23:00 UTC)
@@ -47,7 +47,7 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: python research_hypothesis_track.py --final
-      - name: 토요일 최종 점검 — 수요일 대비 변경점
+      - name: 토요일 최종 점검 — 월요일 대비 변경점
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}

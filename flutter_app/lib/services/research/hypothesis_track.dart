@@ -61,7 +61,7 @@ class HypothesisTrack {
   /// 누적 실전 성적 (가설 코드 → [사용, 맞힘])
   final Map<String, List<int>> record;
 
-  /// 토요일 08:00 최종 점검 뒤 재선정본이면 true · 수요일 선정과 비교용
+  /// 토요일 08:00 최종 점검 뒤 재선정본이면 true · 월요일 선정과 비교용
   final bool isFinal;
   final List<List<int>> wedSets;
   final List<String> wedStores;
@@ -78,7 +78,7 @@ class HypothesisTrack {
   /// 보완 규칙 (추천번호 복기)
   List<TrackHypothesis> get reviewRules => used.where((h) => h.isReview).toList();
 
-  /// 수요일 선정과 다른 번호 세트 수 · 명당 수 (최종본일 때)
+  /// 월요일 선정과 다른 번호 세트 수 · 명당 수 (최종본일 때)
   int get changedSets {
     final w = {for (final s in wedSets) ([...s]..sort()).join(',')};
     return sets.where((s) => !w.contains(([...s.numbers]..sort()).join(','))).length;

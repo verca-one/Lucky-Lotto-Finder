@@ -154,7 +154,7 @@ class MasterBriefing {
   /// 번호 인기도 (pop-1.0 · 서버 저장본) — 공식 세트 인기도 · 비인기 추천 5세트
   final NumberPopularity? popularity;
 
-  /// 이번 회차 추천번호 공개 상태 (수요일 0시 KST 또는 수동 추천). null = 확인 실패(공개로 취급)
+  /// 이번 회차 추천번호 공개 상태 (월요일 0시 KST 또는 수동 추천). null = 확인 실패(공개로 취급)
   final ReleaseState? release;
 
   /// 사전 등록 장부(research_predictions)의 이번 회차 세트 — 알고리즘별 최신 버전 (④ Number 엔진 · ⑤ 무작위 대조군 표시용)

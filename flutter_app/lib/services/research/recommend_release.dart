@@ -1,4 +1,4 @@
-// 다음 회차 추천번호 엔진 실행 시점 — 추첨(토) 후 바로 예측하지 않고 수요일 0시(KST)에 서버가 자동 실행.
+// 다음 회차 추천번호 엔진 실행 시점 — 추첨(토) 후 바로 예측하지 않고 월요일 0시(KST)에 서버가 자동 실행.
 // 그 전에 필요하면 관리자가 [수동 추천]으로 엔진 실행을 요청한다 (research_engine_requests, 회차당 1번).
 // 앱은 요청 1행만 넣고, 실행은 서버(research_request_poll.py → Research Engine)가 한다. 규칙은 research_release.py 와 같다.
 import 'package:flutter/foundation.dart';
@@ -14,16 +14,16 @@ class ReleaseState {
   final DateTime? manualAt;
   final String? requestStatus;
 
-  /// 다음 회차 예측이 열렸는지 (수요일 0시가 지났거나 수동 추천 요청이 있음)
+  /// 다음 회차 예측이 열렸는지 (월요일 0시가 지났거나 수동 추천 요청이 있음)
   final bool released;
   const ReleaseState(this.target, this.releaseAtUtc, this.manualAt, this.released, {this.requestStatus});
 
-  /// '10/21(수) 0시'
+  /// '10/21(월) 0시'
   String get releaseLabel {
     final r = releaseAtUtc;
-    if (r == null) return '수요일 0시';
+    if (r == null) return '월요일 0시';
     final k = r.add(const Duration(hours: 9));
-    return '${k.month}/${k.day}(수) 0시';
+    return '${k.month}/${k.day}(월) 0시';
   }
 }
 
@@ -35,11 +35,11 @@ class RecommendRelease {
   static Future<Map<String, dynamic>?> Function(int target) fetchRequest = _fetch;
   static Future<void> Function(int target) insertRequest = _insert;
 
-  /// 목표 회차 자동 실행 시각: 직전 회차 추첨일(토) + 4일 = 수요일 0시 KST (= 화요일 15:00 UTC)
+  /// 목표 회차 자동 실행 시각: 직전 회차 추첨일(토) + 2일 = 월요일 0시 KST (= 일요일 15:00 UTC)
   static DateTime? releaseAtUtc(String? prevDrawDate) {
     final d = DateTime.tryParse((prevDrawDate ?? '').trim().replaceAll('.', '-'));
     if (d == null) return null;
-    return DateTime.utc(d.year, d.month, d.day).add(const Duration(days: 4)).subtract(const Duration(hours: 9));
+    return DateTime.utc(d.year, d.month, d.day).add(const Duration(days: 2)).subtract(const Duration(hours: 9));
   }
 
   /// 예측이 열렸는지 (순수 계산 — 단위 테스트 대상)
@@ -58,7 +58,7 @@ class RecommendRelease {
         requestStatus: req?['status'] as String?);
   }
 
-  /// 수동 추천 — 수요일 자동 실행 전에 이 회차 엔진 실행을 서버에 요청 (회차당 1번)
+  /// 수동 추천 — 월요일 자동 실행 전에 이 회차 엔진 실행을 서버에 요청 (회차당 1번)
   static Future<void> requestRun(int target) async {
     await insertRequest(target);
     changes.value++;

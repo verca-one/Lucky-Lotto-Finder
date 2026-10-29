@@ -74,6 +74,6 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: HypothesisTrackCard(
         target: 1248, released: false, loader: (_) async => null))));
     await tester.pumpAndSettle();
-    expect(find.textContaining('수요일 0시(또는 수동 추천) 이후'), findsOneWidget);
+    expect(find.textContaining('월요일 0시(또는 수동 추천) 이후'), findsOneWidget);
   });
 }

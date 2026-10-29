@@ -1,4 +1,4 @@
-// 비서 주간 점검 — 수요일 취합(엔진 실행 시점) · 토요일 아침 최종 점검 '변경점 있음/없음' (서버 저장본만 표시)
+// 비서 주간 점검 — 월요일 취합(엔진 실행 시점) · 토요일 아침 최종 점검 '변경점 있음/없음' (서버 저장본만 표시)
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -52,8 +52,8 @@ class WeeklyCheckCard extends StatelessWidget {
         final w = s.data;
         final (Color c, IconData icon, String title, String sub) = switch (w) {
           null => (Colors.blueGrey, Icons.event_note_rounded, '이번 주 비서 점검',
-              '수요일 엔진 실행 때 이번 주 가설을 취합하고, 토요일 아침 8시에 최종 점검합니다.'),
-          WeeklyCheck(sat: null) => (const Color(0xFF1565C0), Icons.inventory_2_outlined, '수요일 취합 완료 · 토요일 아침 8시 최종 점검 예정',
+              '월요일 엔진 실행 때 이번 주 가설을 취합하고, 토요일 아침 8시에 최종 점검합니다.'),
+          WeeklyCheck(sat: null) => (const Color(0xFF1565C0), Icons.inventory_2_outlined, '월요일 취합 완료 · 토요일 아침 8시 최종 점검 예정',
               '취합 ${_time(w.wed?['at'] as String?)} · 이번 주 가설 ${(w.wed?['activity'] as Map?)?['hypotheses'] ?? 0}개 · '
                   '적용 후보 ${((w.wed?['qualifying'] as List?) ?? const []).length}개'),
           _ when w.noChange => (const Color(0xFF2E7D32), Icons.verified_rounded, '토요일 8시 최종 점검: 변경점 없음',

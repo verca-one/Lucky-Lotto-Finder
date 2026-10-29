@@ -75,7 +75,7 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
         // 고정 영역: ① 공식 · ② 비인기 · ③ 구매예측 · ④ Number 엔진(연구용) · ⑤ 무작위 대조군(비교 기준) · ⑥ 명당
         // 회차 검증도 같은 번호로 같은 세트를 채점한다 (뒤에서 따로 채점하는 영역 없음)
         final open = b.numbersReleased;
-        final wait = '${b.targetRound}회 번호는 ${b.release?.releaseLabel ?? '수요일 0시'}에 공개됩니다 (수동 추천으로 먼저 받을 수 있음).';
+        final wait = '${b.targetRound}회 번호는 ${b.release?.releaseLabel ?? '월요일 0시'}에 공개됩니다 (수동 추천으로 먼저 받을 수 있음).';
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             const Text('주요 브리핑', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: _purple)),
@@ -239,7 +239,7 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
           Text(e?.note ?? '엔진 예측을 불러오지 못했습니다.', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
           const SizedBox(height: 8),
           if (!b.numbersReleased)
-            Text('${b.targetRound}회 번호는 ${b.release?.releaseLabel ?? '수요일 0시'}에 공개됩니다 (수동 추천으로 먼저 받을 수 있음).',
+            Text('${b.targetRound}회 번호는 ${b.release?.releaseLabel ?? '월요일 0시'}에 공개됩니다 (수동 추천으로 먼저 받을 수 있음).',
                 style: TextStyle(fontSize: 12, color: Colors.orange.shade900))
           else if (e == null || e.baseSets.isEmpty)
             Text('${b.targetRound}회 Number 엔진 기본 조합이 아직 없습니다. 새 회차 처리 후 자동 생성됩니다.',
@@ -527,7 +527,7 @@ class PopularityPicksCard extends StatelessWidget {
 }
 
 
-/// 브리핑 맨 위 — 수동 추천 버튼: 수요일 0시 자동 실행 전에 다음 회차 추천번호 엔진을 지금 실행 요청
+/// 브리핑 맨 위 — 수동 추천 버튼: 월요일 0시 자동 실행 전에 다음 회차 추천번호 엔진을 지금 실행 요청
 class ManualRecommendCard extends StatefulWidget {
   /// 테스트용: (목표 회차, 직전 회차 추첨일)
   final Future<(int, String?)> Function()? target;
@@ -662,7 +662,7 @@ class _ManualRecommendCardState extends State<ManualRecommendCard> {
     final s = _s;
     if (s == null) return const SizedBox.shrink();
     if (s.released) {
-      final how = s.manualAt != null ? '수동 추천' : '수요일 자동 실행';
+      final how = s.manualAt != null ? '수동 추천' : '월요일 자동 실행';
       if (_made) {
         // 가동 완료 — 선명하게 나타났다가 흐릿하게 가라앉음
         return TweenAnimationBuilder<double>(
@@ -714,7 +714,7 @@ class _ManualRecommendCardState extends State<ManualRecommendCard> {
               style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: Color(0xFFE65100)))),
         ]),
         const SizedBox(height: 4),
-        Text('추첨 후에는 지난 회차 검증을 먼저 하고, 추천번호 엔진은 수요일에 돌립니다. 그 전에 필요하면 수동 추천으로 지금 실행하세요.',
+        Text('추첨 후에는 지난 회차 검증을 먼저 하고, 추천번호 엔진은 월요일에 돌립니다. 그 전에 필요하면 수동 추천으로 지금 실행하세요.',
             style: TextStyle(fontSize: 11.5, color: Colors.grey.shade700, height: 1.4)),
         const SizedBox(height: 10),
         SizedBox(

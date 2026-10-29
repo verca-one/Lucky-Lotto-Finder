@@ -14,12 +14,12 @@ void main() {
         LedgerSetsCard(no: '4', title: '1247회 Number 엔진 기본 조합', chip: '연구용 · 최종 추천 아님', color: Colors.grey,
             sets: const [[3, 5, 19, 23, 43, 45]], note: '연구용'),
         LedgerSetsCard(no: '5', title: '1247회 무작위 대조군', chip: '비교 기준 · 엔진 추천 아님', color: Colors.blueGrey,
-            sets: null, note: '1247회 번호는 10/21(수) 0시에 공개됩니다'),
+            sets: null, note: '1247회 번호는 10/19(월) 0시에 공개됩니다'),
       ],
     )))));
     expect(find.text('참고 — 구매 대상 아님'), findsOneWidget);
     expect(find.byKey(const ValueKey('ledger_area_4')), findsOneWidget);
     expect(find.text('23'), findsOneWidget);
-    expect(find.text('1247회 번호는 10/21(수) 0시에 공개됩니다'), findsOneWidget);
+    expect(find.text('1247회 번호는 10/19(월) 0시에 공개됩니다'), findsOneWidget);
   });
 }

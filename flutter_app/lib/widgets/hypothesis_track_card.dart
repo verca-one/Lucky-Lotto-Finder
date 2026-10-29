@@ -10,7 +10,7 @@ const kTrackColor = Color(0xFF6A1B9A);
 class HypothesisTrackCard extends StatefulWidget {
   final int target;
 
-  /// 이번 회차 추천번호 공개 여부 (수요일 0시 · 수동 추천)
+  /// 이번 회차 추천번호 공개 여부 (월요일 0시 · 수동 추천)
   final bool released;
 
   /// 테스트용 (null = 서버 조회)
@@ -65,7 +65,7 @@ class _HypothesisTrackCardState extends State<HypothesisTrackCard> {
             if (snap.connectionState != ConnectionState.done)
               const Center(child: Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator(strokeWidth: 2)))
             else if (!widget.released)
-              _note('${widget.target}회 가설 트랙은 수요일 0시(또는 수동 추천) 이후 서버가 만듭니다.')
+              _note('${widget.target}회 가설 트랙은 월요일 0시(또는 수동 추천) 이후 서버가 만듭니다.')
             else if (t == null)
               _note('${widget.target}회 가설 트랙 저장본 없음 — 공개 후 서버 실행(엔진 실행 직후 · 매일 17시) 뒤 표시됩니다.')
             else
@@ -91,8 +91,8 @@ class _HypothesisTrackCardState extends State<HypothesisTrackCard> {
         decoration: BoxDecoration(color: kTrackColor.withValues(alpha: 0.07), borderRadius: BorderRadius.circular(8)),
         child: Text(
             t.isFinal
-                ? '토요일 아침 8시 최종 점검 뒤 이번 주 가설로 다시 뽑았습니다 — 수요일 선정 대비 번호 ${t.changedSets}세트 · 명당 ${t.changedStores}곳 바뀜'
-                : '수요일 선정본입니다. 토요일 아침 8시 최종 점검 뒤 이번 주 가설로 다시 뽑습니다.',
+                ? '토요일 아침 8시 최종 점검 뒤 이번 주 가설로 다시 뽑았습니다 — 월요일 선정 대비 번호 ${t.changedSets}세트 · 명당 ${t.changedStores}곳 바뀜'
+                : '월요일 선정본입니다. 토요일 아침 8시 최종 점검 뒤 이번 주 가설로 다시 뽑습니다.',
             style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: kTrackColor)),
       ),
       Text(

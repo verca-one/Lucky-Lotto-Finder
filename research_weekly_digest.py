@@ -1,10 +1,10 @@
 """
-비서 주간 취합 (wd-1.0) — AI 전략기획부가 매일 낸 가설을 모아 수요일 엔진 실행 기준으로 묶고, 토요일 아침 최종 점검
+비서 주간 취합 (wd-1.0) — AI 전략기획부가 매일 낸 가설을 모아 월요일 엔진 실행 기준으로 묶고, 토요일 아침 최종 점검
 
-  · 수요일 (--stage wed): 다음 회차(N) 엔진이 돌아 구매할 번호가 사전 등록되면 그 시점 스냅샷을 남긴다
+  · 월요일 (--stage wed): 다음 회차(N) 엔진이 돌아 구매할 번호가 사전 등록되면 그 시점 스냅샷을 남긴다
       - 구매할 번호 ①②③ (장부 등록 세트), 적용 후보 가설(검증 통과·유지 + 번호 가설은 모의에서 확률 상승),
         이번 주 AI·비서 활동(가설 수·판정·아깝게 탈락한 가설)
-  · 토요일 아침 (--stage sat): 같은 항목을 다시 계산해 수요일과 비교 → '변경점 없음' / '변경점 있음(무엇이)'
+  · 토요일 아침 (--stage sat): 같은 항목을 다시 계산해 월요일과 비교 → '변경점 없음' / '변경점 있음(무엇이)'
       - 구매할 번호는 사전 등록 장부에 잠겨 있어 자동으로 바뀌지 않는다. 새로 적용 후보가 생기면 '반영 여부 결정 필요'로 알린다.
 저장: research_results (research_type weekly_digest, model_version wd-1.0, training_end_round=D, target_round=N) — 서버 전용
 읽기: research_predictions · strategy_hypotheses · strategy_directions · lotto_winning_numbers (크롤링 테이블은 읽기만)
@@ -95,16 +95,16 @@ def compare(wed, sat):
     for key, _, _, label in AREAS:
         a, b = (wed["buy"].get(key) or {}).get("sets"), (sat["buy"].get(key) or {}).get("sets")
         if a != b:
-            changes.append({"type": "sets", "area": label, "note": f"{label} 세트가 수요일과 다릅니다"})
+            changes.append({"type": "sets", "area": label, "note": f"{label} 세트가 월요일과 다릅니다"})
     qa, qb = {x["code"]: x for x in wed["qualifying"]}, {x["code"]: x for x in sat["qualifying"]}
     for c in sorted(set(qb) - set(qa)):
         changes.append({"type": "new_hypothesis", "code": c, "note": f"새로 적용 후보가 된 가설: {qb[c]['statement']}"})
     for c in sorted(set(qa) - set(qb)):
         changes.append({"type": "dropped_hypothesis", "code": c, "note": f"적용 후보에서 빠진 가설: {qa[c]['statement']}"})
     if not changes:
-        verdict = "변경점 없음 — 수요일에 정한 구매할 번호 그대로 구매하시면 됩니다"
+        verdict = "변경점 없음 — 월요일에 정한 구매할 번호 그대로 구매하시면 됩니다"
     elif any(c["type"] == "sets" for c in changes):
-        verdict = "변경점 있음 — 구매할 번호가 수요일과 다릅니다. 아래 내용을 확인하세요"
+        verdict = "변경점 있음 — 구매할 번호가 월요일과 다릅니다. 아래 내용을 확인하세요"
     else:
         verdict = ("변경점 있음 — 이번 주에 적용 후보 가설이 바뀌었습니다. 구매할 번호는 장부에 잠겨 그대로이며, "
                    "새 가설 반영 여부는 관리자가 결정합니다")
@@ -119,17 +119,17 @@ def run(db, stage, dry=False):
     payload = rows[0]["payload"] if rows else {"version": VERSION, "round": D, "next": N}
     if stage == "wed":
         if payload.get("wed"):
-            print(f"{N}회 수요일 취합 이미 있음 — 건너뜀")
+            print(f"{N}회 월요일 취합 이미 있음 — 건너뜀")
             return payload
         snap = snapshot(db, D, N, w["draw_date"])
         if not snap["buy"]:
-            print(f"{N}회 구매할 번호가 아직 없음 (엔진 실행 전) — 수요일 취합 대기")
+            print(f"{N}회 구매할 번호가 아직 없음 (엔진 실행 전) — 월요일 취합 대기")
             return None
         payload["wed"] = snap
     else:
         snap = snapshot(db, D, N, w["draw_date"])
         if not payload.get("wed"):
-            payload["sat"] = dict(snap, changes=[], verdict="수요일 취합 기록이 없어 비교할 수 없습니다 (엔진 실행 여부 확인 필요)")
+            payload["sat"] = dict(snap, changes=[], verdict="월요일 취합 기록이 없어 비교할 수 없습니다 (엔진 실행 여부 확인 필요)")
         else:
             changes, verdict = compare(payload["wed"], snap)
             payload["sat"] = dict(snap, changes=changes, verdict=verdict)

@@ -2,7 +2,7 @@
 다음 회차 예측 실행 시점 (서버 공통 규칙)
 
   · 추첨(토) 후 바로 예측하지 않는다. 지난 회차 검증·지방장 복기를 먼저 하고,
-    다음 회차 추천번호 엔진은 수요일 0시(KST)에 자동 실행한다.
+    다음 회차 추천번호 엔진은 월요일 0시(KST)에 자동 실행한다.
   · 그 전에 필요하면 관리자가 앱의 [수동 추천]으로 엔진 실행을 요청한다 (research_engine_requests, 회차당 1번).
   · 요청은 research_request_poll.py(10분마다)가 research-engine.yml 을 바로 실행시킨다.
 이 파일은 판단만 한다 (DB 읽기). 크롤링 테이블은 lotto_winning_numbers 만 읽는다.
@@ -10,11 +10,11 @@
 
 from datetime import datetime, timedelta, timezone
 
-RELEASE_DAYS = 4   # 토요일 추첨 + 4일 = 수요일
+RELEASE_DAYS = 2   # 토요일 추첨 + 2일 = 월요일 (2026-10-29 수요일 → 월요일로 변경)
 
 
 def release_at_utc(prev_draw_date, prev_round=None):
-    """목표 회차 자동 실행 시각(UTC) = 직전 회차 추첨일 + 4일 0시 KST (= 화요일 15:00 UTC)"""
+    """목표 회차 자동 실행 시각(UTC) = 직전 회차 추첨일 + 2일 0시 KST (= 일요일 15:00 UTC)"""
     try:
         d = datetime.strptime(str(prev_draw_date)[:10].replace(".", "-"), "%Y-%m-%d")
     except (TypeError, ValueError):
@@ -42,6 +42,6 @@ def prediction_allowed(get, target, prev_draw_date, prev_round, now=None):
         return True, f"수동 추천 요청 ({req['requested_at'][:16]})", req
     at = release_at_utc(prev_draw_date, prev_round)
     if at is None or now >= at:
-        return True, "수요일 0시 자동 실행", None
+        return True, "월요일 0시 자동 실행", None
     k = at + timedelta(hours=9)
-    return False, f"예측 대기: {k.month}/{k.day}(수) 0시 자동 실행 · 앱 [수동 추천]으로 먼저 실행 가능", None
+    return False, f"예측 대기: {k.month}/{k.day}(월) 0시 자동 실행 · 앱 [수동 추천]으로 먼저 실행 가능", None

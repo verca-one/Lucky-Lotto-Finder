@@ -22,7 +22,7 @@
     · 지난 회차 추천 20세트가 당첨번호 특징과 어긋난 쪽을 제미나이가 보완 규칙(특징 · 방향)으로 낸 것
     · 당첨번호 특징 가설처럼 번호 점수에 더한다 (힘 = 반복해서 어긋난 정도 0.3~1.2 × 실전 성적 배수, 코드 'SR:특징:방향')
   공개·등록 규칙
-    · 다음 회차 예측 실행 시점 규칙(research_release: 수요일 0시 또는 수동 추천) 이후 · 판매 마감(토 20:00 KST) 전만
+    · 다음 회차 예측 실행 시점 규칙(research_release: 월요일 0시 또는 수동 추천) 이후 · 판매 마감(토 20:00 KST) 전만
     · 번호는 사전 등록 장부(research_predictions, hypothesis_track · ht-1.0)에 올린다 — 등록 후 변경 불가
     · 등록되면 그 회차 결과는 고정 (다시 계산하지 않음)
   이것은 검증된 확률이 아니라 가설 기반 예측이다. 복권 한 장의 1등 확률(1/8,145,060)은 바뀌지 않는다.
@@ -51,7 +51,7 @@ import research_store_hypotheses as H
 from research_region_worker import Db as PDb
 
 VERSION = "ht-1.0"
-FINAL_VERSION = "ht-1.0-sat"   # 토요일 08:00 최종 점검 뒤 재선정 (수요일 선정본과 따로 등록)
+FINAL_VERSION = "ht-1.0-sat"   # 토요일 08:00 최종 점검 뒤 재선정 (월요일 선정본과 따로 등록)
 ALGO = "hypothesis_track"
 RESULT_TYPE = "hypothesis_track"
 AGENT_MODEL = "ag-1.1"
