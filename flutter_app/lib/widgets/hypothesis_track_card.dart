@@ -129,6 +129,29 @@ class _HypothesisTrackCardState extends State<HypothesisTrackCard> {
               Text('인기 ${e.value.popularityPct!.toStringAsFixed(0)}%', style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700)),
           ]),
         ),
+      // AI 전략기획부 추천번호 복기를 반영해 뽑았으면 표시
+      if (t.reviewRound != null && t.reviewRules.isNotEmpty)
+        Container(
+          key: const ValueKey('track_review_applied'),
+          width: double.infinity,
+          margin: const EdgeInsets.only(top: 2),
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(color: const Color(0xFFE8F5E9), borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFFA5D6A7))),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Row(children: [
+              const Icon(Icons.task_alt_rounded, size: 16, color: Color(0xFF2E7D32)),
+              const SizedBox(width: 4),
+              const Text('엔진추천번호 복기반영',
+                  style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900, color: Color(0xFF2E7D32))),
+              const Spacer(),
+              Text('${t.reviewRound}회 추천 20세트 복기', style: TextStyle(fontSize: 10.5, color: Colors.green.shade800)),
+            ]),
+            const SizedBox(height: 2),
+            for (final h in t.reviewRules)
+              Text('· ${h.plainStatement}', style: TextStyle(fontSize: 11, color: Colors.green.shade900, height: 1.4)),
+          ]),
+        ),
       const SizedBox(height: 8),
       // 명당
       const Row(children: [
@@ -179,7 +202,7 @@ class _HypothesisTrackCardState extends State<HypothesisTrackCard> {
                 '${h.z != null ? ' — 최근 200회 z ${h.z!.toStringAsFixed(2)}' : ''}'
                 '${h.factor != null ? ' · 배수 ×${h.factor!.toStringAsFixed(2)}' : ''}'
                 '${h.m != null ? ' · 실전 성적 ×${h.m!.toStringAsFixed(2)}' : ''}'
-                '${h.status == 'rejected' ? ' (가설 공장 기각 · 그래도 사용)' : h.status == 'validated' || h.status == 'maintained' ? ' (검증 통과)' : ''}',
+                '${h.isReview ? ' (추천번호 복기 보완)' : h.status == 'rejected' ? ' (가설 공장 기각 · 그래도 사용)' : h.status == 'validated' || h.status == 'maintained' ? ' (검증 통과)' : ''}',
                 style: TextStyle(fontSize: 10.5, color: Colors.grey.shade800)),
           ),
       const SizedBox(height: 4),

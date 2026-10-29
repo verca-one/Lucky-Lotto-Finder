@@ -18,6 +18,9 @@
       (인터넷 판매 제외 · 이미 고른 곳·같은 시·군·구 제외 · 이력 전국 상위 20곳은 기존 트랙 몫이라 제외)
       → 5곳. 가게마다 '어느 가설 때문인지'가 붙는다
     · 표시 확률 = 지방장 확률 × 그 가설의 최근 200회 배수(성적 배수만큼 거듭제곱)
+  보완 규칙 (AI 전략기획부 추천번호 복기 sr-1.0, research_set_review.py)
+    · 지난 회차 추천 20세트가 당첨번호 특징과 어긋난 쪽을 제미나이가 보완 규칙(특징 · 방향)으로 낸 것
+    · 당첨번호 특징 가설처럼 번호 점수에 더한다 (힘 = 반복해서 어긋난 정도 0.3~1.2 × 실전 성적 배수, 코드 'SR:특징:방향')
   공개·등록 규칙
     · 다음 회차 예측 실행 시점 규칙(research_release: 수요일 0시 또는 수동 추천) 이후 · 판매 마감(토 20:00 KST) 전만
     · 번호는 사전 등록 장부(research_predictions, hypothesis_track · ht-1.0)에 올린다 — 등록 후 변경 불가
@@ -250,6 +253,33 @@ def store_picks(db, sd, latest, target, store_used, capital_used):
     return out, None
 
 
+def review_rules(db, target, recent):
+    """추천번호 복기(sr-1.0)의 보완 규칙 → 번호 가설 형태 (없으면 빈 목록)"""
+    try:
+        r = db.get("research_results", {"select": "payload", "research_type": "eq.set_review", "model_version": "eq.sr-1.0",
+                                        "target_round": f"eq.{target}", "order": "created_at.desc", "limit": "1"})
+    except Exception as e:  # 표·권한 문제여도 가설 트랙은 그대로
+        print(f"  보완 규칙 읽기 실패 — 건너뜀 ({e})")
+        return [], None
+    if not r:
+        return [], None
+    p = r[0]["payload"] or {}
+    out = []
+    for x in p.get("rules") or []:
+        f, e = x.get("feature"), x.get("expect")
+        if f not in NUM_OUT or e not in ("higher", "lower"):
+            continue
+        vals = [float(rw["out"][f]) for rw in recent if rw["out"].get(f) is not None]
+        if not vals:
+            continue
+        out.append({"code": x.get("code") or f"SR:{f}:{e}", "statement": f"[보완] {x.get('statement') or ''}".strip(),
+                    "status": "review", "outcome": f, "expect": e, "conds": [], "kind": "review",
+                    "source": x.get("source"), "why": x.get("why"), "review_round": p.get("round"),
+                    "w": float(x.get("w") or 0.3), "median": float(np.median(vals)),
+                    "recent": {"z": None, "repeat": x.get("repeat"), "weeks": x.get("weeks")}})
+    return out, p.get("round")
+
+
 def run(url, key, dry=False, final=False):
     ver = FINAL_VERSION if final else VERSION
     db = R.Db(url, key, dry=dry)
@@ -350,6 +380,12 @@ def run(url, key, dry=False, final=False):
             fac = (st["mean_cond"] / allm) if allm > 0 else 1.0
             capital_used.append(dict(u, family="capital", factor=float(np.clip(fac, *FACTOR_CLIP))))
 
+    # AI 전략기획부 추천번호 복기 — 보완 규칙을 번호 가설처럼 함께 쓴다
+    rv_rules, rv_round = review_rules(db, target, recent)
+    for u in rv_rules:
+        m = record_m(rec, u["code"])
+        used_num.append(dict(u, family="num", m=round(m, 3), w_eff=round(u["w"] * m, 3)))
+
     data = P.load_rounds(PDb(url, key))
     pw = [rows[-1]["nums"]][0]
     sc = P.Scorer(data, pw, seed=P.SEED + target + 7)
@@ -377,6 +413,7 @@ def run(url, key, dry=False, final=False):
         "stores": stores, "store_error": store_err,
         "used": used_pop + used_num + store_used + capital_used,
         "skipped": skipped, "hypotheses_total": len(hyps),
+        "review": {"round": rv_round, "rules": len(rv_rules)} if rv_rules else None,
         "record": {k: list(v) for k, v in rec.items()}, "scored_previous": scored_prev,
         "rule": "제미나이 가설 · 최근 200회 방향 일치 가중 × 실전 성적 배수 — 검증 전 가설 기반 예측",
         "deadline_at": deadline.isoformat(), "generated_at": now.isoformat(),

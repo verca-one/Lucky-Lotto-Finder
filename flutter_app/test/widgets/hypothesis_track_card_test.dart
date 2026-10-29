@@ -47,6 +47,29 @@ void main() {
     expect(find.textContaining('가설 공장 기각 · 그래도 사용'), findsNWidgets(2));
   });
 
+  testWidgets('추천번호 복기를 반영했으면 번호 세트 아래 "엔진추천번호 복기반영" · 아니면 없음', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    expect(HypothesisTrack.fromPayload(_payload).reviewRound, isNull);
+    final p = Map<String, dynamic>.from(_payload)
+      ..['review'] = {'round': 1246, 'rules': 1}
+      ..['used'] = [
+        ...(_payload['used'] as List),
+        {'code': 'SR:win_odd:lower', 'statement': '[보완] 다음 회차는 홀수 개수가 낮은 쪽 조합을 더 고른다', 'family': 'num',
+          'outcome': 'win_odd', 'expect': 'lower', 'status': 'review', 'kind': 'review', 'recent': {'z': null}, 'w': 0.9, 'm': 1.0},
+      ];
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(
+        child: HypothesisTrackCard(target: 1247, loader: (_) async => HypothesisTrack.fromPayload(p))))));
+    await tester.pumpAndSettle();
+    final box = find.byKey(const ValueKey('track_review_applied'));
+    expect(box, findsOneWidget);
+    expect(find.descendant(of: box, matching: find.text('엔진추천번호 복기반영')), findsOneWidget);
+    expect(find.descendant(of: box, matching: find.text('1246회 추천 20세트 복기')), findsOneWidget);
+    expect(find.descendant(of: box, matching: find.text('· 다음 회차는 홀수 개수가 낮은 쪽 조합을 더 고른다')), findsOneWidget);
+    // 번호 세트 아래 · 명당 위
+    expect(tester.getTopLeft(box).dy > tester.getTopLeft(find.text('가설 번호 5세트')).dy, isTrue);
+    expect(tester.getTopLeft(box).dy < tester.getTopLeft(find.text('가설 명당 5곳')).dy, isTrue);
+  });
+
   testWidgets('공개 전이면 안내만', (tester) async {
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: HypothesisTrackCard(
         target: 1248, released: false, loader: (_) async => null))));

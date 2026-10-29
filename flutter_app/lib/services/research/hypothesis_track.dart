@@ -7,21 +7,28 @@ int _i(dynamic v) => (v as num?)?.toInt() ?? 0;
 class TrackHypothesis {
   final String code, statement, family, outcome, expect, status;
 
+  /// 'review' = AI 전략기획부 추천번호 복기의 보완 규칙
+  final String kind;
+
   /// 최근 200회 힘(z) · 실전 성적 배수 · 판매점 배수
   final double? z, w, m, factor;
   const TrackHypothesis({
     required this.code, required this.statement, required this.family, required this.outcome, required this.expect,
-    required this.status, this.z, this.w, this.m, this.factor,
+    required this.status, this.z, this.w, this.m, this.factor, this.kind = 'base',
   });
   factory TrackHypothesis.fromJson(Map<String, dynamic> j) {
     final rc = j['recent'] is Map ? Map<String, dynamic>.from(j['recent']) : const <String, dynamic>{};
     return TrackHypothesis(
       code: '${j['code'] ?? ''}', statement: '${j['statement'] ?? ''}', family: '${j['family'] ?? ''}',
       outcome: '${j['outcome'] ?? ''}', expect: '${j['expect'] ?? ''}', status: '${j['status'] ?? ''}',
-      z: _dn(rc['z']), w: _dn(j['w']), m: _dn(j['m']), factor: _dn(j['factor']),
+      z: _dn(rc['z']), w: _dn(j['w']), m: _dn(j['m']), factor: _dn(j['factor']), kind: '${j['kind'] ?? 'base'}',
     );
   }
   bool get isStore => family == 'store' || family == 'capital';
+  bool get isReview => kind == 'review';
+
+  /// '[보완] ' 머리말을 뗀 문장
+  String get plainStatement => statement.startsWith('[보완] ') ? statement.substring(5) : statement;
 }
 
 class TrackSet {
@@ -58,11 +65,18 @@ class HypothesisTrack {
   final bool isFinal;
   final List<List<int>> wedSets;
   final List<String> wedStores;
+
+  /// 추천번호 복기를 반영했으면 복기한 회차 (예: 1248회 번호에 1247회 복기 반영), 아니면 null
+  final int? reviewRound;
   const HypothesisTrack({
     required this.targetRound, required this.trainingEndRound, this.hypothesesTotal = 0, this.status = 'pending',
     this.window = const [], this.sets = const [], this.targetPct, this.drive, this.used = const [], this.stores = const [],
     this.skipped = const {}, this.record = const {}, this.isFinal = false, this.wedSets = const [], this.wedStores = const [],
+    this.reviewRound,
   });
+
+  /// 보완 규칙 (추천번호 복기)
+  List<TrackHypothesis> get reviewRules => used.where((h) => h.isReview).toList();
 
   /// 수요일 선정과 다른 번호 세트 수 · 명당 수 (최종본일 때)
   int get changedSets {
@@ -104,6 +118,7 @@ class HypothesisTrack {
           [for (final n in (s as List? ?? const [])) (n as num).toInt()],
       ],
       wedStores: [for (final c in ((p['wednesday'] as Map?)?['stores'] as List? ?? const [])) '$c'],
+      reviewRound: ((p['review'] as Map?)?['round'] as num?)?.toInt(),
     );
   }
 

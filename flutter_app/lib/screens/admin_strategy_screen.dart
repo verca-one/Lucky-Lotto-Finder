@@ -1,7 +1,9 @@
 // AI 전략기획부 — AI 는 방향만 제시, 가설 검증·유지·폐기는 비서(서버 가설 공장)가 한다. 저장본만 표시.
 import 'package:flutter/material.dart';
 
+import '../services/research/set_review.dart';
 import '../services/research/strategy_repository.dart';
+import '../widgets/set_review_card.dart';
 
 const _ink = Color(0xFF1A1446);
 const _ai = Color(0xFF6A1B9A);
@@ -42,7 +44,10 @@ Widget _pill(String text, Color c, {IconData? icon}) => Container(
 
 class AdminStrategyScreen extends StatefulWidget {
   final Future<StrategyData> Function()? loader;
-  const AdminStrategyScreen({super.key, this.loader});
+
+  /// 추천번호 복기 (테스트용)
+  final Future<SetReview?> Function()? reviewLoader;
+  const AdminStrategyScreen({super.key, this.loader, this.reviewLoader});
   @override
   State<AdminStrategyScreen> createState() => _AdminStrategyScreenState();
 }
@@ -119,6 +124,11 @@ class _AdminStrategyScreenState extends State<AdminStrategyScreen> {
             child: ListView(padding: const EdgeInsets.all(16), children: [
               _hero(d),
               const SizedBox(height: 12),
+              // 로또: 매주 추천번호 복기 → 보완 규칙 → 제미나이 추천번호 반영
+              if (_lottery == 'lotto') ...[
+                SetReviewCard(loader: widget.reviewLoader),
+                const SizedBox(height: 12),
+              ],
               _pipeline(d),
               const SizedBox(height: 12),
               _filters(),
