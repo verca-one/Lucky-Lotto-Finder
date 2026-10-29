@@ -535,7 +535,10 @@ class ManualRecommendCard extends StatefulWidget {
   /// 테스트용: 목표 회차 공식 추천번호가 이미 만들어졌는지
   final Future<bool> Function(int target)? generated;
   final DateTime? nowUtc;
-  const ManualRecommendCard({super.key, this.target, this.generated, this.nowUtc});
+
+  /// true = 엔진 대시보드 맨 위 '엔진 바로 시작' 버튼 (요청됨 · 흐릿한 가동 완료) / false = 브리핑 (공개 전 수동 추천 · 실행 대기 · 완료)
+  final bool engineStart;
+  const ManualRecommendCard({super.key, this.target, this.generated, this.nowUtc, this.engineStart = false});
   @override
   State<ManualRecommendCard> createState() => _ManualRecommendCardState();
 }
@@ -562,7 +565,7 @@ class _ManualRecommendCardState extends State<ManualRecommendCard> {
     super.dispose();
   }
 
-  /// 엔진 바로 시작 — 실행 대기 중에 서버에 바로 실행 요청 (요청 1행, 서버가 10분 안에 시작)
+  /// 엔진 바로 시작 — 서버에 바로 실행 요청 (요청 1행 · 회차당 1번, 서버가 10분 안에 시작)
   Future<void> _startNow() async {
     final s = _s!;
     setState(() => _busy = true);
@@ -657,28 +660,27 @@ class _ManualRecommendCardState extends State<ManualRecommendCard> {
         ]),
       );
 
-  @override
-  Widget build(BuildContext context) {
-    final s = _s;
-    if (s == null) return const SizedBox.shrink();
-    if (s.released) {
-      final how = s.manualAt != null ? '수동 추천' : '월요일 자동 실행';
-      if (_made) {
-        // 가동 완료 — 선명하게 나타났다가 흐릿하게 가라앉음
-        return TweenAnimationBuilder<double>(
-          tween: Tween(begin: 1, end: 0.5),
-          duration: const Duration(milliseconds: 1600),
-          curve: Curves.easeOut,
-          builder: (_, o, child) => Opacity(opacity: o, child: child),
-          child: _note('manual_recommend_done', Icons.check_circle_rounded, const Color(0xFF2E7D32), const Color(0xFFE8F5E9),
-              '엔진 ${s.target}회 가동 완료 · $how'),
-        );
-      }
-      final asked = s.manualAt != null;
-      return Column(children: [
-        Container(
+  /// 가동 완료 — 선명하게 나타났다가 흐릿하게 가라앉음
+  Widget _doneFaded(ReleaseState s, String how) => TweenAnimationBuilder<double>(
+        tween: Tween(begin: 1, end: 0.5),
+        duration: const Duration(milliseconds: 1600),
+        curve: Curves.easeOut,
+        builder: (_, o, child) => Opacity(opacity: o, child: child),
+        child: _note('manual_recommend_done', Icons.check_circle_rounded, const Color(0xFF2E7D32), const Color(0xFFE8F5E9),
+            '엔진 ${s.target}회 가동 완료 · $how'),
+      );
+
+  /// 엔진 대시보드 맨 위 — 엔진 바로 시작 버튼
+  Widget _engineStart(ReleaseState s) {
+    final how = s.manualAt != null ? '수동 추천' : '월요일 자동 실행';
+    if (s.released && _made) return _doneFaded(s, how);
+    final asked = s.manualAt != null;
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 10),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        SizedBox(
           width: double.infinity,
-          margin: const EdgeInsets.only(bottom: 8),
           child: FilledButton.icon(
             key: const ValueKey('engine_start_now'),
             style: FilledButton.styleFrom(
@@ -692,9 +694,29 @@ class _ManualRecommendCardState extends State<ManualRecommendCard> {
                 style: const TextStyle(fontWeight: FontWeight.w900)),
           ),
         ),
-        _note('manual_recommend_waiting', Icons.hourglass_top_rounded, const Color(0xFFE65100), const Color(0xFFFFF3E0),
-            '${s.target}회 엔진 실행 대기 · $how — 서버 실행 후 표시 (보통 10~20분)', refresh: true),
-      ]);
+        const SizedBox(height: 4),
+        Text(
+            asked
+                ? '서버가 10분 안에 시작합니다 (실행 10~20분). 끝나면 여기에 가동 완료가 표시됩니다.'
+                : s.released
+                    ? '${s.target}회 엔진 실행 대기 중 — 지금 바로 서버에 실행을 요청합니다.'
+                    : '평소 ${s.releaseLabel} 자동 실행 — 누르면 지금 바로 서버에 실행을 요청합니다 (회차당 1번).',
+            style: TextStyle(fontSize: 11, color: Colors.grey.shade700)),
+      ]),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = _s;
+    if (s == null) return const SizedBox.shrink();
+    if (widget.engineStart) return _engineStart(s);
+    if (s.released) {
+      final how = s.manualAt != null ? '수동 추천' : '월요일 자동 실행';
+      if (_made) return _doneFaded(s, how);
+      // 엔진 바로 시작 버튼은 엔진 대시보드 맨 위에 있다
+      return _note('manual_recommend_waiting', Icons.hourglass_top_rounded, const Color(0xFFE65100), const Color(0xFFFFF3E0),
+          '${s.target}회 엔진 실행 대기 · $how — 서버 실행 후 표시 (보통 10~20분) · 바로 시작은 엔진 대시보드', refresh: true);
     }
     return Container(
       key: const ValueKey('manual_recommend_card'),

@@ -18,6 +18,7 @@ import '../services/rpa_unified_prediction.dart' show kRpaActiveModelVersion;
 import '../services/supabase_service.dart';
 import 'admin_comprehensive_prediction_screen.dart';
 import 'admin_mnd_screen.dart';
+import '../widgets/master_briefing_section.dart' show ManualRecommendCard;
 import '../widgets/pension_briefing_view.dart';
 import '../widgets/speetto_briefing_view.dart';
 import '../services/research/hypothesis_replay_engine.dart';
@@ -1538,6 +1539,8 @@ class _DashboardTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(12),
       children: [
+        // 맨 위 — 엔진 바로 시작 (서버에 다음 회차 엔진 실행 요청 · 끝나면 흐릿한 가동 완료)
+        if (latestRound > 0) const ManualRecommendCard(engineStart: true),
         // Summary header
         Card(
           color: Colors.deepPurple.shade50,

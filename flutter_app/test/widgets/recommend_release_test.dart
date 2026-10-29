@@ -41,23 +41,23 @@ void main() {
     expect(notified, 1);
     expect(find.byKey(const ValueKey('manual_recommend_waiting')), findsOneWidget);
     expect(find.textContaining('수동 추천'), findsOneWidget);
-    // 이미 요청했으면 '엔진 바로 시작'은 요청됨 표시(누를 수 없음)
-    expect(find.text('1247회 엔진 시작 요청됨 · 서버 처리 중'), findsOneWidget);
+    // 브리핑에는 '엔진 바로 시작' 버튼이 없다 (엔진 대시보드 맨 위로 옮김)
+    expect(find.byKey(const ValueKey('engine_start_now')), findsNothing);
     await tester.pumpWidget(const SizedBox());
   });
 
-  testWidgets('월요일 실행 대기 — 위에 엔진 바로 시작 버튼 → 서버 요청 · 만들어지면 흐릿한 가동 완료', (tester) async {
+  testWidgets('엔진 대시보드 맨 위 — 엔진 바로 시작 버튼 → 서버 요청 · 만들어지면 흐릿한 가동 완료', (tester) async {
     final store = <int, Map<String, dynamic>>{};
     RecommendRelease.fetchRequest = (t) async => store[t];
     RecommendRelease.insertRequest = (t) async => store[t] = {'target_round': t, 'requested_at': '2026-10-28T03:00:00Z', 'status': 'pending'};
     var made = false;
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: ManualRecommendCard(
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: ManualRecommendCard(engineStart: true,
         target: () async => (1248, '2026-10-24'), generated: (_) async => made, nowUtc: DateTime.utc(2026, 10, 28, 3)))));
     await tester.pumpAndSettle();
     final btn = find.byKey(const ValueKey('engine_start_now'));
     expect(btn, findsOneWidget);
     expect(find.text('엔진 바로 시작 · 1248회'), findsOneWidget);
-    expect(tester.getTopLeft(btn).dy < tester.getTopLeft(find.byKey(const ValueKey('manual_recommend_waiting'))).dy, isTrue);
+    expect(find.byKey(const ValueKey('manual_recommend_waiting')), findsNothing);
     await tester.tap(btn);
     await tester.pumpAndSettle();
     expect(store.keys, [1248]);
