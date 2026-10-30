@@ -23,6 +23,7 @@ import '../widgets/speetto_briefing_view.dart';
 import '../widgets/extra_lottery_briefing_card.dart';
 import '../widgets/agent_briefing_section.dart';
 import '../widgets/db_usage_card.dart';
+import '../widgets/briefing_top_reports.dart';
 import '../services/research/research_scheduler.dart';
 import '../services/rpa_monte_carlo_engine.dart';
 import 'admin_engine_review_screen.dart';
@@ -1285,7 +1286,6 @@ class BriefingDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final items = _generateItems(data);
     // 탭: 이번 회차 브리핑 · 지난 회차 검증(회차별 보라색 박스)
     // 이번 회차 브리핑 맨 위 회차 검증: 토·일 펼침 → 월·화 보라색 박스 → 수요일부터 '지난 회차 검증' 탭에만
     return DefaultTabController(
@@ -1312,6 +1312,10 @@ class BriefingDetailScreen extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         children: [
           const SpeettoAlertCard(),
+          // 맨 위 보고 — 수집 현황(실시간) · 지방장 적중(지역별 맞춘 판매점) · 지방장 연구 요약(문장만)
+          const CollectStatusReport(),
+          const AgentHitsReport(),
+          const AgentResearchDigest(),
           const ManualRecommendCard(),
           const RoundDebriefTop(),
           _buildHeader(context),
@@ -1323,17 +1327,6 @@ class BriefingDetailScreen extends StatelessWidget {
           const AgentBriefingSection(),
           const SizedBox(height: 16),
           const EngineReviewBriefingCard(),
-          const SizedBox(height: 20),
-          _buildSummaryRow(),
-          const SizedBox(height: 20),
-          const Text('안건 목록',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800,
-                  color: Color(0xFF4527A0))),
-          const SizedBox(height: 8),
-          ...items.asMap().entries.map((e) =>
-              _BriefingItemCard(index: e.key + 1, item: e.value)),
-          const SizedBox(height: 20),
-          _buildTechSummary(),
           const SizedBox(height: 32),
         ],
       ),
@@ -1392,95 +1385,6 @@ class BriefingDetailScreen extends StatelessWidget {
     ]),
   );
 
-  Widget _buildSummaryRow() => Container(
-    padding: const EdgeInsets.all(14),
-    decoration: BoxDecoration(
-      color: Colors.white,
-      borderRadius: BorderRadius.circular(12),
-      border: Border.all(color: const Color(0xFFEDE7F6)),
-    ),
-    child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      const Text('연구 현황 요약',
-          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
-              color: Color(0xFF4527A0))),
-      const SizedBox(height: 10),
-      Row(children: [
-        _summaryChip('발견/관찰',
-            (data.hypCounts['discovered'] ?? 0) + (data.hypCounts['observing'] ?? 0),
-            const Color(0xFF42A5F5)),
-        const SizedBox(width: 8),
-        _summaryChip('검증/발전',
-            (data.hypCounts['validating'] ?? 0) + (data.hypCounts['developing'] ?? 0),
-            const Color(0xFF7E57C2)),
-        const SizedBox(width: 8),
-        _summaryChip('채택', data.acceptedHyp, const Color(0xFF4CAF50)),
-        const SizedBox(width: 8),
-        _summaryChip('폐기', data.rejectedHyp, const Color(0xFF9E9E9E)),
-      ]),
-    ]),
-  );
-
-  Widget _summaryChip(String label, int count, Color color) => Expanded(
-    child: Container(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(children: [
-        Text('$count', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900,
-            color: color)),
-        Text(label, style: TextStyle(fontSize: 9, color: color,
-            fontWeight: FontWeight.w600)),
-      ]),
-    ),
-  );
-
-  Widget _buildTechSummary() {
-    if (data.avgCorrEffect == null && data.avgTheoryScore == null) {
-      return const SizedBox.shrink();
-    }
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFEEEEEE)),
-      ),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Row(children: [
-          Icon(Icons.analytics_outlined, size: 14, color: Color(0xFF888888)),
-          SizedBox(width: 4),
-          Text('엔진 성능 (최근 10회 평균)',
-              style: TextStyle(fontSize: 11, color: Color(0xFF888888),
-                  fontWeight: FontWeight.w600)),
-        ]),
-        const SizedBox(height: 10),
-        if (data.avgTheoryScore != null)
-          _techRow('이론 점수', '${(data.avgTheoryScore! * 100).toStringAsFixed(1)}%'),
-        if (data.avgCorrScore != null)
-          _techRow('보정 점수', '${(data.avgCorrScore! * 100).toStringAsFixed(1)}%'),
-        if (data.avgCorrEffect != null)
-          _techRow('보정 효과',
-              '${data.avgCorrEffect! >= 0 ? "+" : ""}${(data.avgCorrEffect! * 100).toStringAsFixed(2)}pp',
-              color: data.avgCorrEffect! >= 0 ? Colors.green : Colors.red),
-        if (data.jointPatterns > 0)
-          _techRow('Joint 패턴', '${data.jointPatterns}개 분석됨'),
-        if (data.jointAccuracy != null)
-          _techRow('Joint 정확도', '${(data.jointAccuracy! * 100).toStringAsFixed(1)}%'),
-      ]),
-    );
-  }
-
-  Widget _techRow(String label, String value, {Color? color}) => Padding(
-    padding: const EdgeInsets.symmetric(vertical: 3),
-    child: Row(children: [
-      Expanded(child: Text(label,
-          style: const TextStyle(fontSize: 12, color: Color(0xFF666666)))),
-      Text(value, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700,
-          color: color ?? const Color(0xFF333333))),
-    ]),
-  );
 }
 
 class _BriefingItemCard extends StatefulWidget {
