@@ -1539,8 +1539,6 @@ class _DashboardTab extends StatelessWidget {
     return ListView(
       padding: const EdgeInsets.all(12),
       children: [
-        // 맨 위 — 엔진 바로 시작 (서버에 다음 회차 엔진 실행 요청 · 끝나면 흐릿한 가동 완료)
-        if (latestRound > 0) const ManualRecommendCard(engineStart: true),
         // Summary header
         Card(
           color: Colors.deepPurple.shade50,
@@ -1589,8 +1587,10 @@ class _DashboardTab extends StatelessWidget {
           ),
         ),
 
-        // ── 모델 상태 패널 ──────────────────────────────
+        // ── 엔진 바로 시작 (현재 모델 위) — 서버에 다음 회차 엔진 실행 요청 · 끝나면 흐릿한 가동 완료 ──
         const SizedBox(height: 10),
+        if (latestRound > 0) const ManualRecommendCard(engineStart: true),
+        // ── 모델 상태 패널 ──────────────────────────────
         Card(
           color: ms.replayCompleted
               ? Colors.green.shade50
