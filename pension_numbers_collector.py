@@ -18,6 +18,7 @@ import random
 import re
 import sys
 import time
+from datetime import date, datetime, timedelta, timezone
 
 import requests
 import urllib3
@@ -73,6 +74,12 @@ class Db:
         if not key.startswith("sb_"):
             self.h["Authorization"] = f"Bearer {key}"
 
+    def latest(self):
+        r = requests.get(self.base + "pension_winning_numbers", params={"select": "round,draw_date", "order": "round.desc", "limit": "1"},
+                         headers=self.h, timeout=60)
+        r.raise_for_status()
+        return (r.json() or [None])[0]
+
     def existing(self):
         out, off = {}, 0
         while True:
@@ -106,10 +113,20 @@ def main():
     url, key = os.environ.get("SUPABASE_URL"), os.environ.get("SUPABASE_KEY")
     if not url or not key:
         sys.exit("SUPABASE_URL / SUPABASE_KEY 환경변수가 필요합니다")
+    db = Db(url, key)
+    # 다음 회차 추첨(목 19:05 KST) 결과가 올라올 때(19:15)까지는 동행복권에 접속하지 않고 끝낸다
+    # (GitHub 예약 실행이 밀려도 놓치지 않게 목요일 밤에 20분마다 돌리므로, 받을 게 없는 실행은 요청 없이 바로 끝)
+    last = db.latest()
+    if last and last.get("draw_date"):
+        kst = timezone(timedelta(hours=9))
+        d = date.fromisoformat(str(last["draw_date"])[:10]) + timedelta(days=7)
+        ready = datetime(d.year, d.month, d.day, 19, 15, tzinfo=kst)
+        if datetime.now(kst) < ready:
+            print(f"{last['round'] + 1}회 추첨 결과 전 ({ready:%m/%d %H:%M} KST 이후 수집) — 접속하지 않음")
+            return
     got, bad = parse(fetch())
     if not got:
         sys.exit("받은 당첨번호가 없습니다 — 응답 형식 변경 가능성, 저장하지 않음")
-    db = Db(url, key)
     have = db.existing()
     new = [got[r] for r in sorted(got) if r not in have]
     diff = [(r, have[r], got[r]) for r in sorted(got) if r in have and (
