@@ -18,13 +18,22 @@ class SaturdayChanges {
   final int storesChanged, storesTotal;
   final List<String> added, dropped;
   final Map<String, (num, num)> activity; // 이름 → (월요일, 토요일)
-  const SaturdayChanges(this.areas, this.storesChanged, this.storesTotal, this.added, this.dropped, this.activity);
 
-  int get setsChanged => areas.fold(0, (a, x) => a + x.$4);
-  bool get any => setsChanged > 0 || storesChanged > 0 || added.isNotEmpty || dropped.isNotEmpty;
+  /// 영역 이름 → (월요일 세트, 토요일 세트)
+  final Map<String, (List<List<int>>, List<List<int>>)> sets;
+  const SaturdayChanges(this.areas, this.storesChanged, this.storesTotal, this.added, this.dropped, this.activity,
+      {this.sets = const {}});
+
+  /// 월요일에 없다가 토요일에 새로 등록된 영역은 '바뀜'이 아니라 '새로 등록'
+  static bool isNew(AreaDiff a) => a.$2 == 0 && a.$3 > 0;
+  int get setsChanged => areas.where((x) => !isNew(x)).fold(0, (a, x) => a + x.$4);
+  int get setsNew => areas.where(isNew).fold(0, (a, x) => a + x.$3);
+  bool get any => setsChanged > 0 || setsNew > 0 || storesChanged > 0 || added.isNotEmpty || dropped.isNotEmpty;
 
   factory SaturdayChanges.of(WeeklyCheck? w, HypothesisTrack? t) {
     final areas = <AreaDiff>[];
+    final sets = <String, (List<List<int>>, List<List<int>>)>{};
+    List<List<int>> ints(List l) => [for (final x in l) ([for (final n in x as List) (n as num).toInt()]..sort())];
     final wb = Map<String, dynamic>.from((w?.wed?['buy'] as Map?) ?? const {});
     final sb = Map<String, dynamic>.from((w?.sat?['buy'] as Map?) ?? const {});
     for (final k in const ['official', 'popularity', 'purchase']) {
@@ -34,9 +43,11 @@ class SaturdayChanges {
       final label = '${(sb[k] as Map?)?['label'] ?? (wb[k] as Map?)?['label'] ?? k}';
       final ka = {for (final s in a) _key(s as List)};
       areas.add((label, a.length, b.length, b.where((s) => !ka.contains(_key(s as List))).length));
+      sets[label] = (ints(a), ints(b));
     }
     if (t != null && t.isFinal) {
       areas.add(('④ 제미나이 가설 트랙', t.wedSets.length, t.sets.length, t.changedSets));
+      sets['④ 제미나이 가설 트랙'] = (t.wedSets, [for (final x in t.sets) x.numbers]);
     }
     final changes = w?.changes ?? const [];
     final act = <String, (num, num)>{};
@@ -54,6 +65,7 @@ class SaturdayChanges {
       [for (final c in changes) if (c['type'] == 'new_hypothesis') '${c['note']}'.replaceFirst('새로 적용 후보가 된 가설: ', '')],
       [for (final c in changes) if (c['type'] == 'dropped_hypothesis') '${c['note']}'.replaceFirst('적용 후보에서 빠진 가설: ', '')],
       act,
+      sets: sets,
     );
   }
 }
@@ -80,7 +92,7 @@ class SaturdayFinalChangesScreen extends StatelessWidget {
           decoration: BoxDecoration(color: color.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(12)),
           child: Text(
               c.any
-                  ? '월요일 선정 대비 번호 ${c.setsChanged}세트 · 명당 ${c.storesChanged}곳 · 적용 후보 가설 +${c.added.length} / −${c.dropped.length}'
+                  ? '월요일 대비 바뀐 번호 ${c.setsChanged}세트${c.setsNew > 0 ? ' · 새로 등록 ${c.setsNew}세트' : ''} · 명당 ${c.storesChanged}곳 · 적용 후보 가설 +${c.added.length} / −${c.dropped.length}'
                   : '월요일 선정과 같습니다 — 바뀐 번호·명당·가설이 없습니다.',
               style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: color)),
         ),
@@ -91,17 +103,27 @@ class SaturdayFinalChangesScreen extends StatelessWidget {
         const SizedBox(height: 16),
         _title('영역별 번호 세트 (월요일 → 토요일)'),
         _table(['영역', '월요일', '토요일', '바뀜'], [
-          for (final (label, a, b, d) in c.areas) [label, '$a세트', '$b세트', d > 0 ? '$d세트' : '없음'],
+          for (final x in c.areas)
+            [x.$1, '${x.$2}세트', '${x.$3}세트',
+              SaturdayChanges.isNew(x) ? '새로 등록 ${x.$3}세트' : x.$4 > 0 ? '바뀜 ${x.$4}세트' : '유지'],
           if (track != null && track!.isFinal) ['④ 가설 명당', '${track!.wedStores.length}곳', '${c.storesTotal}곳', c.storesChanged > 0 ? '${c.storesChanged}곳' : '없음'],
         ]),
         const SizedBox(height: 10),
-        _title('바뀐 세트 수'),
-        for (final (label, _, b, d) in c.areas) _bar(label, d, b == 0 ? 5 : b, d > 0 ? const Color(0xFFE65100) : Colors.grey.shade400, '$d / ${b == 0 ? 5 : b}'),
-        if (track != null && track!.isFinal && track!.wedSets.isNotEmpty) ...[
+        _title('영역별 세트 — 유지 · 바뀜 · 새로 등록'),
+        for (final x in c.areas) _stack(x),
+        Row(children: [
+          _legend(const Color(0xFF43A047), '유지'),
+          const SizedBox(width: 12),
+          _legend(const Color(0xFFE65100), '바뀜'),
+          const SizedBox(width: 12),
+          _legend(const Color(0xFF1E88E5), '새로 등록'),
+        ]),
+        // 영역마다 번호 — 월요일 vs 토요일 (모든 영역)
+        for (final e in c.sets.entries) ...[
           const SizedBox(height: 16),
-          _title('④ 제미나이 가설 번호 — 월요일 vs 토요일'),
-          for (var i = 0; i < track!.sets.length; i++)
-            _setPair(i, i < track!.wedSets.length ? track!.wedSets[i] : const [], track!.sets[i].numbers),
+          _title('${e.key} — 월요일 vs 토요일'),
+          for (var i = 0; i < e.value.$2.length || i < e.value.$1.length; i++)
+            _setPair(i, i < e.value.$1.length ? e.value.$1[i] : const [], i < e.value.$2.length ? e.value.$2[i] : const []),
         ],
         const SizedBox(height: 16),
         _title('적용 후보 가설 변화'),
@@ -176,6 +198,42 @@ class SaturdayFinalChangesScreen extends StatelessWidget {
         ]),
       );
 
+  /// 한 영역 막대 — 유지(초록) · 바뀜(주황) · 새로 등록(파랑)
+  Widget _stack(AreaDiff x) {
+    final total = x.$3 == 0 ? (x.$2 == 0 ? 5 : x.$2) : x.$3;
+    final isNew = SaturdayChanges.isNew(x);
+    final kept = isNew ? 0 : (x.$3 - x.$4).clamp(0, total);
+    final changed = isNew ? 0 : x.$4;
+    final fresh = isNew ? x.$3 : 0;
+    Widget seg(int n, Color c) => n <= 0 ? const SizedBox.shrink() : Expanded(flex: n, child: Container(height: 14, color: c));
+    return Padding(
+      key: ValueKey('sat_stack_${x.$1}'),
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(children: [
+        SizedBox(width: 120, child: Text(x.$1, style: const TextStyle(fontSize: 11.5), overflow: TextOverflow.ellipsis)),
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(7),
+            child: Container(
+              color: Colors.grey.shade200,
+              child: Row(children: [
+                seg(kept, const Color(0xFF43A047)),
+                seg(changed, const Color(0xFFE65100)),
+                seg(fresh, const Color(0xFF1E88E5)),
+                seg(total - kept - changed - fresh, Colors.grey.shade200),
+              ]),
+            ),
+          ),
+        ),
+        SizedBox(
+          width: 64,
+          child: Text(isNew ? '신규 $fresh' : changed > 0 ? '바뀜 $changed' : '유지 $kept',
+              textAlign: TextAlign.right, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800)),
+        ),
+      ]),
+    );
+  }
+
   Widget _pairBar(String label, num a, num b) {
     final m = (a > b ? a : b) == 0 ? 1 : (a > b ? a : b);
     return Padding(
@@ -195,7 +253,9 @@ class SaturdayFinalChangesScreen extends StatelessWidget {
       ]);
 
   Widget _setPair(int i, List<int> wed, List<int> sat) {
-    Widget nums(List<int> s, Set<int> other) => Wrap(spacing: 3, children: [
+    Widget nums(List<int> s, Set<int> other) => s.isEmpty
+        ? Text('없음 (월요일엔 등록 전)', style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600))
+        : Wrap(spacing: 3, children: [
           for (final n in [...s]..sort())
             Container(
               width: 24, height: 24, alignment: Alignment.center,

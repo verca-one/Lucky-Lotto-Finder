@@ -89,4 +89,24 @@ void main() {
     expect(c.storesChanged, 1);
     expect(c.any, isTrue);
   });
+
+  testWidgets('변경점 화면 — ② 그대로면 유지(초록 막대) · 월요일 0세트면 새로 등록 · 모든 영역 번호 표시', (tester) async {
+    final s1 = [[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12]];
+    final w = WeeklyCheck.fromPayload({'round': 1247, 'next': 1248,
+      'wed': {'buy': {'popularity': {'label': '② 비인기', 'sets': s1}}, 'qualifying': []},
+      'sat': {'buy': {'official': {'label': '① 공식', 'sets': s1}, 'popularity': {'label': '② 비인기', 'sets': s1}},
+        'qualifying': [], 'changes': [], 'verdict': '변경점 있음'}});
+    final c = SaturdayChanges.of(w, null);
+    expect(c.setsChanged, 0);
+    expect(c.setsNew, 2);
+    expect(c.any, isTrue);
+    await tester.pumpWidget(MaterialApp(home: SaturdayFinalChangesScreen(target: 1248, weekly: w)));
+    await tester.pumpAndSettle();
+    expect(find.text('새로 등록 2세트'), findsOneWidget);
+    expect(find.text('유지'), findsNWidgets(2)); // 표 칸 · 범례
+    expect(find.byKey(const ValueKey('sat_stack_② 비인기')), findsOneWidget);
+    expect(find.text('유지 2'), findsOneWidget);
+    expect(find.text('② 비인기 — 월요일 vs 토요일'), findsOneWidget);
+    expect(find.text('① 공식 — 월요일 vs 토요일'), findsOneWidget);
+  });
 }
