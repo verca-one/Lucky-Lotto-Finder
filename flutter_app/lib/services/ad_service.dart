@@ -51,7 +51,8 @@ class AdService {
   // ════════════════════════════════════════════════════════════
   static Future<void> loadAdsRemovedState() async {
     final prefs = await SharedPreferences.getInstance();
-    _adsRemoved = prefs.getBool('ads_removed') ?? false;
+    // 관리자 폰은 배너도 받지 않음 — 개발자가 자기 앱 실광고를 반복 노출하면 무효 트래픽으로 광고 게재가 제한됨
+    _adsRemoved = (prefs.getBool('ads_removed') ?? false) || (prefs.getBool('isAdmin') ?? false);
   }
 
   static Future<void> setAdsRemoved(bool removed) async {
