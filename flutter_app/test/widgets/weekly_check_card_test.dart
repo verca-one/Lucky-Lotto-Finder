@@ -33,6 +33,7 @@ void main() {
     await show(t, {'round': 1246, 'next': 1247, 'wed': snap(),
       'sat': {...snap(), 'changes': [], 'verdict': '변경점 없음 — 월요일에 정한 구매할 번호 그대로 구매하시면 됩니다'}});
     expect(find.text('토요일 8시 최종 점검: 변경점 없음'), findsOneWidget);
+    expect(find.byKey(const ValueKey('weekly_sat_done')), findsOneWidget); // 점검 완료 표시
   });
   testWidgets('토요일 변경점 있음 + 목록', (t) async {
     await show(t, {'round': 1246, 'next': 1247, 'wed': snap(),
@@ -54,7 +55,7 @@ void main() {
     await t.pump(const Duration(seconds: 1));
     await t.pump();
     expect(find.textContaining('토요일 8시 최종본이 반영됐습니다 — 변경점 있음'), findsOneWidget);
-    expect(find.text('토요일 최종본 변경점 — 번호 0세트 · 명당 0곳 · 가설 1 (자세히)'), findsOneWidget);
+    expect(find.text('✓ 토 8시 점검 완료 · 변경점 — 번호 0세트 · 명당 0곳 · 가설 1 (자세히)'), findsOneWidget);
     expect(find.byType(FilledButton), findsOneWidget);
     await t.tap(find.byKey(const ValueKey('sat_final_alert')));
     await t.pumpAndSettle();
@@ -71,7 +72,7 @@ void main() {
         'sat': {...snap(), 'changes': [], 'verdict': '변경점 없음 — 그대로'}}),
     ))));
     await t.pump();
-    expect(find.text('토요일 최종본 변경점 없음'), findsOneWidget);
+    expect(find.text('✓ 토 8시 점검 완료 · 변경점 없음'), findsOneWidget);
     expect(t.widget<Opacity>(find.ancestor(of: find.byKey(const ValueKey('sat_final_alert')), matching: find.byType(Opacity))).opacity, 0.5);
     await t.pumpWidget(const SizedBox());
   });

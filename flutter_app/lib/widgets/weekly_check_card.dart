@@ -82,6 +82,18 @@ class WeeklyCheckCard extends StatelessWidget {
               Icon(icon, color: c, size: 20),
               const SizedBox(width: 6),
               Expanded(child: Text(title, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: c))),
+              // 토요일 8시 최종 점검이 끝났으면 완료 표시
+              if (w?.sat != null)
+                Container(
+                  key: const ValueKey('weekly_sat_done'),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(color: const Color(0xFF2E7D32), borderRadius: BorderRadius.circular(20)),
+                  child: const Row(mainAxisSize: MainAxisSize.min, children: [
+                    Icon(Icons.check_circle_rounded, size: 13, color: Colors.white),
+                    SizedBox(width: 3),
+                    Text('점검 완료', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: Colors.white)),
+                  ]),
+                ),
             ]),
             const SizedBox(height: 4),
             Text(sub, style: TextStyle(fontSize: 11.5, color: Colors.grey.shade800, height: 1.4)),
@@ -188,8 +200,8 @@ class _SaturdayFinalAlertButtonState extends State<SaturdayFinalAlertButton> {
     final label = !done
         ? '토요일 반영 알림 · 토 8시 최종 점검 대기 중'
         : c.any
-            ? '토요일 최종본 변경점 — 번호 ${c.setsChanged}세트 · 명당 ${c.storesChanged}곳 · 가설 ${c.added.length + c.dropped.length} (자세히)'
-            : '토요일 최종본 변경점 없음';
+            ? '✓ 토 8시 점검 완료 · 변경점 — 번호 ${c.setsChanged}세트 · 명당 ${c.storesChanged}곳 · 가설 ${c.added.length + c.dropped.length} (자세히)'
+            : '✓ 토 8시 점검 완료 · 변경점 없음';
     final btn = SizedBox(
       width: double.infinity,
       child: done && c.any
