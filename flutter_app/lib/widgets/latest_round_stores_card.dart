@@ -1,9 +1,11 @@
-// 일반 모드 복권연구 로또 탭 — 당첨번호 아래 최신 회차 당첨 판매점 (1등 전부 · 2등은 5곳 + 더 보기 · ★ 저장)
+// 일반 모드 복권연구 로또 탭 — 당첨번호 아래 최신 회차 당첨 판매점 (연금 판매점과 같은 모양 · 1등 전부 · 2등은 5곳 + 더 보기 · ★ 저장)
 import 'package:flutter/material.dart';
 
 import '../models/lottery_store.dart';
 import '../services/supabase_service.dart';
 import 'briefing_store_widgets.dart' show FavoriteStoreStar;
+
+const kLottoColor = Color(0xFF1565C0);
 
 class LatestRoundStoresCard extends StatefulWidget {
   final int round;
@@ -18,21 +20,32 @@ class _LatestRoundStoresCardState extends State<LatestRoundStoresCard> {
       (widget.loader ?? (r) => SupabaseService.getStoresByRound(round: r, lotteryType: 'lotto'))(widget.round);
   bool _all = false;
 
-  Widget _row(LotteryStore s, Color c) => Padding(
+  // 연금 판매점과 같은 모양 — 번호 · 이름 · 지역/회차 · 역대 1·2등 · ★
+  Widget _row(int i, LotteryStore s, bool first) => Container(
         key: ValueKey('latest_store_${s.dhlotteryCode}'),
-        padding: const EdgeInsets.only(bottom: 6),
+        margin: const EdgeInsets.only(bottom: 6),
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(color: kLottoColor.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(10)),
         child: Row(children: [
-          Icon(Icons.storefront_rounded, size: 16, color: c),
-          const SizedBox(width: 6),
+          SizedBox(width: 24, child: Text('$i', style: const TextStyle(fontWeight: FontWeight.w900, color: kLottoColor))),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text(s.storeName, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700)),
-              Text('${s.address}${(s.purchaseMethod ?? '').isEmpty ? '' : ' · ${s.purchaseMethod}'}',
-                  maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+              Text(s.storeName, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
+              Text('${s.region.isEmpty ? s.address : s.region} · ${widget.round}회 ${first ? '1등' : '2등'}'
+                  '${(s.purchaseMethod ?? '').isEmpty ? '' : ' · ${s.purchaseMethod}'}',
+                  maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600)),
             ]),
           ),
+          if (s.firstCount != null || s.secondCount != null)
+            Text('역대 1등 ${s.firstCount ?? 0}회 · 2등 ${s.secondCount ?? 0}회',
+                style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800)),
           if (s.dhlotteryCode.isNotEmpty) FavoriteStoreStar(code: s.dhlotteryCode, name: s.storeName),
         ]),
+      );
+
+  Widget _sub(String t, Color c) => Padding(
+        padding: const EdgeInsets.only(top: 4, bottom: 4),
+        child: Text(t, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900, color: c)),
       );
 
   @override
@@ -45,6 +58,7 @@ class _LatestRoundStoresCardState extends State<LatestRoundStoresCard> {
           final firsts = all.where(first).toList();
           final seconds = all.where((s) => !first(s)).toList();
           final shownSeconds = _all ? seconds : seconds.take(5).toList();
+          var i = 0;
           return Container(
             key: const ValueKey('latest_round_stores'),
             width: double.infinity,
@@ -53,25 +67,31 @@ class _LatestRoundStoresCardState extends State<LatestRoundStoresCard> {
             decoration: BoxDecoration(
               color: Colors.white,
               borderRadius: BorderRadius.circular(16),
-              border: Border.all(color: const Color(0xFFE8EDF5)),
+              border: Border.all(color: kLottoColor.withValues(alpha: 0.25)),
             ),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('${widget.round}회 당첨 판매점',
-                  style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w800, color: Color(0xFF1A1A2E))),
-              Text('★를 누르면 즐겨찾기에 저장됩니다', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+              Row(children: [
+                Container(
+                  width: 26, height: 26, alignment: Alignment.center,
+                  decoration: BoxDecoration(color: kLottoColor, borderRadius: BorderRadius.circular(8)),
+                  child: const Icon(Icons.storefront_rounded, color: Colors.white, size: 16),
+                ),
+                const SizedBox(width: 8),
+                Expanded(child: Text('${widget.round}회 로또 당첨 판매점', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900))),
+              ]),
               const SizedBox(height: 8),
+              Text('${widget.round}회 1·2등이 나온 판매점 · ★를 누르면 즐겨찾기에 저장됩니다',
+                  style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700, height: 1.4)),
+              const SizedBox(height: 4),
               if (all.isEmpty)
-                Text('${widget.round}회 당첨 판매점은 아직 수집 전입니다.', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                Text('${widget.round}회 당첨 판매점은 아직 수집 전입니다.', style: TextStyle(fontSize: 12, color: Colors.orange.shade900)),
               if (firsts.isNotEmpty) ...[
-                Text('1등 ${firsts.length}곳', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Color(0xFFB8860B))),
-                const SizedBox(height: 4),
-                for (final s in firsts) _row(s, const Color(0xFFB8860B)),
+                _sub('1등 ${firsts.length}곳', const Color(0xFFB8860B)),
+                for (final s in firsts) _row(++i, s, true),
               ],
               if (seconds.isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text('2등 ${seconds.length}곳', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: Colors.blueGrey.shade600)),
-                const SizedBox(height: 4),
-                for (final s in shownSeconds) _row(s, Colors.blueGrey.shade600),
+                _sub('2등 ${seconds.length}곳', Colors.blueGrey.shade700),
+                for (final s in shownSeconds) _row(++i, s, false),
                 if (seconds.length > 5)
                   TextButton(
                     key: const ValueKey('latest_stores_more'),

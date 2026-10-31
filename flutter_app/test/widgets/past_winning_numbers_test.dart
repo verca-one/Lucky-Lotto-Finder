@@ -44,7 +44,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(child: LatestRoundStoresCard(round: 1248,
         loader: (_) async => [st('A', 'first'), st('B', 'first'), for (var i = 0; i < 8; i++) st('S$i', 'second')])))));
     await tester.pumpAndSettle();
-    expect(find.text('1248회 당첨 판매점'), findsOneWidget);
+    expect(find.text('1248회 로또 당첨 판매점'), findsOneWidget);
     expect(find.text('1등 2곳'), findsOneWidget);
     expect(find.text('2등 8곳'), findsOneWidget);
     expect(find.byKey(const ValueKey('latest_store_S6')), findsNothing);
