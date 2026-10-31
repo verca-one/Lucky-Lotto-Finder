@@ -48,6 +48,8 @@ void main() {
     expect(find.text('1등 2곳'), findsOneWidget);
     expect(find.text('2등 8곳'), findsOneWidget);
     expect(find.byKey(const ValueKey('latest_store_S6')), findsNothing);
+    await tester.ensureVisible(find.byKey(const ValueKey('latest_stores_more')));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const ValueKey('latest_stores_more')));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('latest_store_S6')), findsOneWidget);
