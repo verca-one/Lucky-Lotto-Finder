@@ -6,6 +6,7 @@ import 'package:flutter_app/services/round_status_service.dart';
 import 'package:flutter_app/widgets/agent_hidden_stores_card.dart';
 import 'package:flutter_app/widgets/briefing_top_reports.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 DateTime kst(int d, int h, int m) => DateTime.utc(2026, 10, d, h, m).subtract(const Duration(hours: 9));
 
@@ -89,6 +90,7 @@ void main() {
   });
 
   testWidgets('지방장 적중 아래 — 다음 회차 지방장 추천점(접힘 → 누르면 펼침) · 맞힌 지방장 TOP3만', (tester) async {
+    SharedPreferences.setMockInitialValues({});
     final d = AgentDebrief.fromPayload({
       'round': 1247, 'next': 1248, 'summary': {},
       'agents': [
@@ -113,5 +115,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('서울 노원구 · 새가게'), findsOneWidget);
     expect(find.text('부산 동구 · 안보임'), findsNothing);
+    expect(find.byKey(const ValueKey('fav_star_E')), findsOneWidget); // ★ 즐겨찾기
   });
 }

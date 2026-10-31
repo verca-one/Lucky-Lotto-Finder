@@ -13,6 +13,7 @@ import '../services/research/round_debrief.dart';
 import '../services/round_status_service.dart';
 import '../services/supabase_service.dart';
 import 'agent_store_widgets.dart' show kAgentColor;
+import 'briefing_store_widgets.dart' show FavoriteStoreStar;
 
 String _ago(Duration d) {
   if (d.inMinutes < 60) return '${d.inMinutes}분';
@@ -378,6 +379,8 @@ class _AgentHitsReportState extends State<AgentHitsReport> {
                       Text(_dist![code] == null ? '위치 없음' : distText(_dist![code]!),
                           style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: kAgentColor)),
                     ],
+                    // ★ 즐겨찾기 저장
+                    if (code.isNotEmpty) FavoriteStoreStar(code: code, name: store),
                   ]),
                 ),
             ]),
