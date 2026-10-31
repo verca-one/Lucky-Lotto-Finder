@@ -87,4 +87,24 @@ void main() {
     expect(r.map((h) => h.d.storeCode), ['s1', 'j1', 'k1']);
     expect(r[1].value, closeTo(0.0135, 1e-9));
   });
+
+  testWidgets('지방장 적중 아래 — 다음 회차 지방장 추천점(접힘 → 누르면 펼침) · 맞힌 지방장 TOP3만', (tester) async {
+    final d = AgentDebrief.fromPayload({
+      'round': 1247, 'next': 1248, 'summary': {},
+      'agents': [
+        {'id': '서울|노원구', 'label': '서울 노원구', 'prev': [['C', '스파', 1, 0.03, 1]],
+          'next': [['C', '스파', 1, 0.03, 'kept', 1], ['E', '새가게', 2, 0.02, 'new', null], ['F', '넷째', 4, 0.01, 'new', null]]},
+        {'id': '부산|동구', 'label': '부산 동구', 'prev': [['X', '빗나감', 1, 0.03, 0]], 'next': [['Y', '안보임', 1, 0.03, 'kept', 1]]},
+      ],
+    });
+    expect(agentNextPicks(d), [('서울 노원구', '스파', 1, false), ('서울 노원구', '새가게', 2, true)]);
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(child: AgentHitsReport(loader: () async => d)))));
+    await tester.pumpAndSettle();
+    expect(find.text('다음 회차(1248회) 지방장 추천점 · 2곳'), findsOneWidget);
+    expect(find.text('서울 노원구 · 새가게'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('agent_next_toggle')));
+    await tester.pumpAndSettle();
+    expect(find.text('서울 노원구 · 새가게'), findsOneWidget);
+    expect(find.text('부산 동구 · 안보임'), findsNothing);
+  });
 }

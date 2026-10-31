@@ -230,6 +230,23 @@ List<(String, String, int, int)> agentHits(AgentDebrief d) {
   return out;
 }
 
+/// 이번에 맞힌 지방장들의 다음 회차 TOP3 (지역, 판매점, 순위, 새로 들어옴) — 순수 함수
+List<(String, String, int, bool)> agentNextPicks(AgentDebrief d) {
+  final hitIds = {
+    for (final a in d.agents)
+      if (a.prev.any((p) => p.length > 4 && ((p[4] as num?)?.toInt() ?? 0) > 0)) a.id,
+  };
+  final out = <(String, String, int, bool)>[];
+  for (final a in d.agents.where((a) => hitIds.contains(a.id))) {
+    for (final n in a.next) {
+      final rank = (n[2] as num?)?.toInt() ?? 0;
+      if (rank >= 1 && rank <= 3) out.add((a.label, '${n[1] ?? n[0]}', rank, n.length > 4 && n[4] == 'new'));
+    }
+  }
+  out.sort((x, y) => x.$3 != y.$3 ? x.$3.compareTo(y.$3) : x.$1.compareTo(y.$1));
+  return out;
+}
+
 class AgentHitsReport extends StatefulWidget {
   final Future<AgentDebrief?> Function()? loader;
   const AgentHitsReport({super.key, this.loader});
@@ -239,7 +256,63 @@ class AgentHitsReport extends StatefulWidget {
 
 class _AgentHitsReportState extends State<AgentHitsReport> {
   late final Future<AgentDebrief?> _f = (widget.loader ?? RoundDebriefRepository.loadAgents)();
-  bool _all = false;
+  bool _all = false, _nextOpen = false;
+
+  /// 다음 회차 지방장 추천점 — 접혀 있다가 누르면 펼침
+  Widget _next(AgentDebrief d) {
+    final picks = agentNextPicks(d);
+    return Container(
+      key: const ValueKey('agent_next_picks'),
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 8),
+      decoration: BoxDecoration(
+        color: kAgentColor.withValues(alpha: 0.05),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: kAgentColor.withValues(alpha: 0.25)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        InkWell(
+          key: const ValueKey('agent_next_toggle'),
+          onTap: () => setState(() => _nextOpen = !_nextOpen),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            child: Row(children: [
+              const Icon(Icons.trending_up_rounded, size: 17, color: kAgentColor),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text('다음 회차(${d.next}회) 지방장 추천점${picks.isEmpty ? '' : ' · ${picks.length}곳'}',
+                    style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900, color: kAgentColor)),
+              ),
+              Icon(_nextOpen ? Icons.expand_less_rounded : Icons.expand_more_rounded, color: kAgentColor),
+            ]),
+          ),
+        ),
+        if (_nextOpen)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('이번에 맞힌 지방장들이 ${d.next}회에 고른 TOP3', style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700)),
+              const SizedBox(height: 4),
+              if (picks.isEmpty)
+                Text('${d.next}회 지방장 추천이 아직 없습니다 (서버 지방장 연구가 다음 회차 납품을 만들면 표시).',
+                    style: TextStyle(fontSize: 11.5, color: Colors.grey.shade700)),
+              for (final (region, store, rank, isNew) in picks)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(children: [
+                    SizedBox(width: 30, child: Text('$rank위', style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: kAgentColor))),
+                    Expanded(
+                      child: Text('$region · $store', maxLines: 1, overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                    ),
+                    if (isNew) Text('새로', style: TextStyle(fontSize: 10.5, color: Colors.orange.shade800, fontWeight: FontWeight.w800)),
+                  ]),
+                ),
+            ]),
+          ),
+      ]),
+    );
+  }
 
   @override
   Widget build(BuildContext context) => FutureBuilder<AgentDebrief?>(
@@ -302,6 +375,7 @@ class _AgentHitsReportState extends State<AgentHitsReport> {
                   onPressed: () => setState(() => _all = !_all),
                   child: Text(_all ? '접기' : '${hits.length - 10}곳 더 보기'),
                 ),
+              if (hits.isNotEmpty) _next(d),
             ]),
           );
         },
