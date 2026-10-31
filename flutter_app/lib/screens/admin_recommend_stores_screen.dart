@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:math' show max, sqrt;
 
 import 'package:flutter/material.dart';
+import 'combined_store_picks_screen.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
@@ -829,6 +830,40 @@ class _AdminRecommendStoresScreenState extends State<AdminRecommendStoresScreen>
     );
   }
 
+  /// 종합 추천 판매점 — 지방장 · 연구소 · 엔진 · 제미나이 합산 (로또)
+  Widget _buildCombinedPicksCard() {
+    return GestureDetector(
+      key: const ValueKey('combined_picks_card'),
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CombinedStorePicksScreen())),
+      child: Container(
+        margin: const EdgeInsets.fromLTRB(12, 10, 12, 4),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          gradient: const LinearGradient(colors: [Color(0xFF4527A0), Color(0xFF7E57C2)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+          borderRadius: BorderRadius.circular(16),
+          boxShadow: [BoxShadow(color: const Color(0xFF4527A0).withValues(alpha: 0.35), blurRadius: 10, offset: const Offset(0, 4))],
+        ),
+        child: Row(children: [
+          Container(
+            width: 48, height: 48,
+            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.22), shape: BoxShape.circle),
+            child: const Icon(Icons.hub_rounded, color: Colors.white, size: 26),
+          ),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              const Text('종합 추천 판매점 (로또)', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.white)),
+              const SizedBox(height: 4),
+              Text('지방장 확률 × 연구소 검증 가설 × 제미나이 가설 · 엔진 순위 함께',
+                  style: TextStyle(fontSize: 12, color: Colors.white.withValues(alpha: 0.88))),
+            ]),
+          ),
+          const Icon(Icons.chevron_right_rounded, color: Colors.white, size: 28),
+        ]),
+      ),
+    );
+  }
+
   /// 지방장 238명이 추첨 전에 동결한 다음 회차 추천 판매점 — 시·도 → 시·군·구로 골라 보기
   Widget _buildAgentPicksCard() {
     return GestureDetector(
@@ -1098,6 +1133,7 @@ class _AdminRecommendStoresScreenState extends State<AdminRecommendStoresScreen>
       ),
       body: _wrapWithTopTabs(Column(
         children: [
+          _buildCombinedPicksCard(),
           _buildAgentPicksCard(),
           _buildNearbyCard(),
           _buildRegionCard(),
