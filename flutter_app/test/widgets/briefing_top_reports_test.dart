@@ -97,7 +97,14 @@ void main() {
         {'id': '부산|동구', 'label': '부산 동구', 'prev': [['X', '빗나감', 1, 0.03, 0]], 'next': [['Y', '안보임', 1, 0.03, 'kept', 1]]},
       ],
     });
-    expect(agentNextPicks(d), [('서울 노원구', '스파', 1, false), ('서울 노원구', '새가게', 2, true)]);
+    final picks = agentNextPicks(d);
+    expect(picks, [('서울 노원구', '스파', 1, false, 'C'), ('서울 노원구', '새가게', 2, true, 'E')]);
+    // 가까운 순 — 거리 모르는 곳은 뒤
+    expect(sortByDistance(picks, {'E': 300}).map((p) => p.$5), ['E', 'C']);
+    expect(sortByDistance(picks, {'C': 900, 'E': 300}).map((p) => p.$5), ['E', 'C']);
+    expect(distText(850), '850m');
+    expect(distText(1234), '1.2km');
+    expect(distText(23456), '23km');
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(child: AgentHitsReport(loader: () async => d)))));
     await tester.pumpAndSettle();
     expect(find.text('다음 회차(1248회) 지방장 추천점 · 2곳'), findsOneWidget);

@@ -5,6 +5,7 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 
 import '../screens/admin_agent_research_screen.dart';
 import '../services/research/agent_research_repository.dart';
@@ -230,22 +231,36 @@ List<(String, String, int, int)> agentHits(AgentDebrief d) {
   return out;
 }
 
-/// 이번에 맞힌 지방장들의 다음 회차 TOP3 (지역, 판매점, 순위, 새로 들어옴) — 순수 함수
-List<(String, String, int, bool)> agentNextPicks(AgentDebrief d) {
+/// 이번에 맞힌 지방장들의 다음 회차 TOP3 (지역, 판매점, 순위, 새로 들어옴, 판매점 코드) — 순수 함수
+List<(String, String, int, bool, String)> agentNextPicks(AgentDebrief d) {
   final hitIds = {
     for (final a in d.agents)
       if (a.prev.any((p) => p.length > 4 && ((p[4] as num?)?.toInt() ?? 0) > 0)) a.id,
   };
-  final out = <(String, String, int, bool)>[];
+  final out = <(String, String, int, bool, String)>[];
   for (final a in d.agents.where((a) => hitIds.contains(a.id))) {
     for (final n in a.next) {
       final rank = (n[2] as num?)?.toInt() ?? 0;
-      if (rank >= 1 && rank <= 3) out.add((a.label, '${n[1] ?? n[0]}', rank, n.length > 4 && n[4] == 'new'));
+      if (rank >= 1 && rank <= 3) out.add((a.label, '${n[1] ?? n[0]}', rank, n.length > 4 && n[4] == 'new', '${n[0]}'));
     }
   }
   out.sort((x, y) => x.$3 != y.$3 ? x.$3.compareTo(y.$3) : x.$1.compareTo(y.$1));
   return out;
 }
+
+/// 가까운 순 (거리 모르는 곳은 맨 뒤 · 순위 순) — 순수 함수
+List<(String, String, int, bool, String)> sortByDistance(
+    List<(String, String, int, bool, String)> picks, Map<String, double> dist) {
+  final out = [...picks];
+  out.sort((x, y) {
+    final a = dist[x.$5], b = dist[y.$5];
+    if (a == null || b == null) return a == null && b == null ? x.$3.compareTo(y.$3) : (a == null ? 1 : -1);
+    return a.compareTo(b);
+  });
+  return out;
+}
+
+String distText(double m) => m < 1000 ? '${m.round()}m' : '${(m / 1000).toStringAsFixed(m < 10000 ? 1 : 0)}km';
 
 class AgentHitsReport extends StatefulWidget {
   final Future<AgentDebrief?> Function()? loader;
@@ -257,10 +272,45 @@ class AgentHitsReport extends StatefulWidget {
 class _AgentHitsReportState extends State<AgentHitsReport> {
   late final Future<AgentDebrief?> _f = (widget.loader ?? RoundDebriefRepository.loadAgents)();
   bool _all = false, _nextOpen = false;
+  Map<String, double>? _dist; // 판매점 코드 → 내 위치에서 거리(m). null = 순위 순
+  bool _locating = false;
+
+  /// 내 위치에서 가까운 순 (다시 누르면 순위 순)
+  Future<void> _nearFirst(List<String> codes) async {
+    if (_dist != null) {
+      setState(() => _dist = null);
+      return;
+    }
+    setState(() => _locating = true);
+    try {
+      if (!await Geolocator.isLocationServiceEnabled()) throw '위치 서비스가 꺼져 있습니다.';
+      var perm = await Geolocator.checkPermission();
+      if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
+      if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) throw '위치 권한이 없습니다.';
+      final me = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high, timeLimit: const Duration(seconds: 20));
+      final stores = await SupabaseService.getStoresByCodes(codes);
+      final d = <String, double>{
+        for (final st in stores)
+          if (st.latitude != null && st.longitude != null)
+            st.dhlotteryCode: Geolocator.distanceBetween(me.latitude, me.longitude, st.latitude!, st.longitude!),
+      };
+      if (!mounted) return;
+      setState(() {
+        _dist = d;
+        _nextOpen = true;
+      });
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.maybeOf(context)?.showSnackBar(SnackBar(content: Text('내 위치를 확인하지 못했습니다: $e')));
+    } finally {
+      if (mounted) setState(() => _locating = false);
+    }
+  }
 
   /// 다음 회차 지방장 추천점 — 접혀 있다가 누르면 펼침
   Widget _next(AgentDebrief d) {
-    final picks = agentNextPicks(d);
+    final base = agentNextPicks(d);
+    final picks = _dist == null ? base : sortByDistance(base, _dist!);
     return Container(
       key: const ValueKey('agent_next_picks'),
       width: double.infinity,
@@ -283,6 +333,22 @@ class _AgentHitsReportState extends State<AgentHitsReport> {
                 child: Text('다음 회차(${d.next}회) 지방장 추천점${picks.isEmpty ? '' : ' · ${picks.length}곳'}',
                     style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900, color: kAgentColor)),
               ),
+              if (base.isNotEmpty)
+                TextButton.icon(
+                  key: const ValueKey('agent_next_near'),
+                  style: TextButton.styleFrom(
+                    foregroundColor: _dist == null ? kAgentColor : Colors.white,
+                    backgroundColor: _dist == null ? Colors.white : kAgentColor,
+                    visualDensity: VisualDensity.compact,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    side: BorderSide(color: kAgentColor.withValues(alpha: 0.5)),
+                  ),
+                  onPressed: _locating ? null : () => _nearFirst([for (final p in base) p.$5]),
+                  icon: _locating
+                      ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.my_location_rounded, size: 15),
+                  label: Text(_dist == null ? '가까운 순' : '순위 순', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800)),
+                ),
               Icon(_nextOpen ? Icons.expand_less_rounded : Icons.expand_more_rounded, color: kAgentColor),
             ]),
           ),
@@ -291,12 +357,13 @@ class _AgentHitsReportState extends State<AgentHitsReport> {
           Padding(
             padding: const EdgeInsets.fromLTRB(10, 0, 10, 10),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Text('이번에 맞힌 지방장들이 ${d.next}회에 고른 TOP3', style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700)),
+              Text('이번에 맞힌 지방장들이 ${d.next}회에 고른 TOP3${_dist == null ? '' : ' · 내 위치에서 가까운 순'}',
+                  style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700)),
               const SizedBox(height: 4),
               if (picks.isEmpty)
                 Text('${d.next}회 지방장 추천이 아직 없습니다 (서버 지방장 연구가 다음 회차 납품을 만들면 표시).',
                     style: TextStyle(fontSize: 11.5, color: Colors.grey.shade700)),
-              for (final (region, store, rank, isNew) in picks)
+              for (final (region, store, rank, isNew, code) in picks)
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: 2),
                   child: Row(children: [
@@ -306,6 +373,11 @@ class _AgentHitsReportState extends State<AgentHitsReport> {
                           style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
                     ),
                     if (isNew) Text('새로', style: TextStyle(fontSize: 10.5, color: Colors.orange.shade800, fontWeight: FontWeight.w800)),
+                    if (_dist != null) ...[
+                      const SizedBox(width: 6),
+                      Text(_dist![code] == null ? '위치 없음' : distText(_dist![code]!),
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: kAgentColor)),
+                    ],
                   ]),
                 ),
             ]),
