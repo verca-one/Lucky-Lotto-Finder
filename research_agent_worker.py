@@ -135,16 +135,28 @@ def load(db):
         "select": "dhlottery_code,round,prize_tier", "lottery_type": "eq.lotto", "prize_tier": "in.(first,second)"})
     log(f"  {len(hist)}")
     nums = db.select_all("lotto_winning_numbers", {"select": "round", "order": "round"})
-    prize = {}
+    prize, first_need = {}, {}
     if db.exists("research_prize_stats"):
-        for r in db.select_all("research_prize_stats", {"select": "round,rank1_winners", "order": "round"}):
+        for r in db.select_all("research_prize_stats", {"select": "round,rank1_winners,auto_winners,semi_auto_winners,manual_winners",
+                                                        "order": "round"}):
             prize[r["round"]] = r["rank1_winners"]
+            first_need[r["round"]] = need_first(r)
     crawl = None
     if db.exists("round_crawl_status"):     # 크롤러가 남기는 회차별 판매점 수집 완료 표시 (읽기 전용)
         crawl = {r["round"]: r.get("stores_status") for r in db.select_all(
             "round_crawl_status", {"select": "round,stores_status", "lottery_type": "eq.lotto", "order": "lottery_type,round"})}
-    return {"stores": stores, "hist": hist, "latest": max(r["round"] for r in nums), "prize": prize,
+    return {"stores": stores, "hist": hist, "latest": max(r["round"] for r in nums), "prize": prize, "first_need": first_need,
             "number_rounds": sorted({r["round"] for r in nums}), "crawl": crawl}
+
+
+def need_first(p):
+    """1등 판매점 기록 최소 수 — 수동은 한 사람이 같은 판매점에서 같은 번호를 여러 장 사는 경우가 많아 기록 1건으로 남는다
+    (1247회: 1등 8명 = 자동 5 + 수동 3, 판매점 기록 6). 자동·반자동 수 + 수동 있으면 1. 내역이 없으면 1등 수의 80%.
+    research_pipeline_gate.need_first 와 같은 규칙."""
+    a, s, m = p.get("auto_winners"), p.get("semi_auto_winners"), p.get("manual_winners")
+    if a is None or s is None or m is None:
+        return 0.8 * (p.get("rank1_winners") or 0)
+    return a + s + (1 if m > 0 else 0)
 
 
 def ready_latest(raw, floor=LEARN_START):
@@ -167,7 +179,7 @@ def ready_latest(raw, floor=LEARN_START):
             why.append("2등 판매점 기록 없음")
         if f == 0 and p1 != 0:
             why.append("1등 판매점 기록 없음")
-        elif p1 and f < 0.8 * p1:
+        elif p1 and f < (raw.get("first_need") or {}).get(r, 0.8 * p1):
             why.append(f"1등 판매점 기록 부족 {f}/{p1}")
         if not why:
             return r, pending

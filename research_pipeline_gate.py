@@ -4,7 +4,7 @@
 실행 조건 (모두 충족해야 run=true)
   1. 최신 회차 당첨번호 있음 (lotto_winning_numbers)
   2. 최신 회차 판매점 크롤링 완료 표시 (round_crawl_status.stores_status = success)
-  3. 최신 회차 2등 판매점 기록 있음, 1등 판매점 기록 ≥ 1등 당첨자 수의 80% (research_agent_worker.ready_latest 와 같은 규칙)
+  3. 최신 회차 2등 판매점 기록 있음, 1등 판매점 기록 ≥ 자동+반자동+(수동 있으면 1), 내역 없으면 1등 수의 80% (research_agent_worker.ready_latest 와 같은 규칙)
   4. 같은 (파이프라인 버전, 목표 회차) 성공 기록 없음 (FORCE=true 면 무시하지 않음 — 성공 기록은 다시 만들지 않는다)
   5. 예측 실행 시점: 월요일 0시(KST) 이후, 또는 앱 [수동 추천] 요청이 있음 (research_release.py)
      — 추첨 후 바로 예측하지 않고 지난 회차 검증을 먼저 한다
