@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_app/widgets/weekly_check_card.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 Future<void> show(WidgetTester t, Map<String, dynamic>? payload) async {
   t.view.physicalSize = const Size(1080, 2340);
@@ -38,5 +39,28 @@ void main() {
         'verdict': '변경점 있음 — 이번 주에 적용 후보 가설이 바뀌었습니다'}});
     expect(find.text('토요일 8시 최종 점검: 변경점 있음'), findsOneWidget);
     expect(find.textContaining('새로 적용 후보가 된 가설'), findsOneWidget);
+  });
+
+  testWidgets('토요일 반영 알림 — 대기 중 → 반영되면 켜짐 + 알림 → 누르면 변경점 · 확인함', (t) async {
+    SharedPreferences.setMockInitialValues({});
+    Map<String, dynamic>? sat;
+    await t.pumpWidget(MaterialApp(home: Scaffold(body: SaturdayFinalAlertButton(
+      target: 1248, pollEvery: const Duration(seconds: 1),
+      loader: (_) async => WeeklyCheck.fromPayload({'round': 1247, 'next': 1248, 'wed': snap(), if (sat != null) 'sat': sat}),
+    ))));
+    await t.pump();
+    expect(find.text('토요일 반영 알림 · 토 8시 최종 점검 대기 중'), findsOneWidget);
+    sat = {...snap(), 'changes': [{'type': 'sets', 'note': '① 세트가 월요일과 다릅니다'}], 'verdict': '변경점 있음 — 확인하세요'};
+    await t.pump(const Duration(seconds: 1));
+    await t.pump();
+    expect(find.text('토요일 최종본 반영됨 · 변경점 있음 — 눌러서 보기'), findsOneWidget);
+    expect(find.textContaining('토요일 8시 최종본이 반영됐습니다'), findsOneWidget);
+    await t.tap(find.byKey(const ValueKey('sat_final_alert')));
+    await t.pumpAndSettle();
+    expect(find.text('· ① 세트가 월요일과 다릅니다'), findsOneWidget);
+    await t.tap(find.text('확인'));
+    await t.pumpAndSettle();
+    expect(find.text('토요일 최종본 반영 확인함 · 변경점 1'), findsOneWidget);
+    await t.pumpWidget(const SizedBox());
   });
 }
