@@ -1308,9 +1308,10 @@ class BriefingDetailScreen extends StatelessWidget {
         ),
       ),
       body: TabBarView(children: [
-        ListView(
+        // ListView 는 화면 밖 카드를 지웠다 다시 만들어 매번 새로 불러옴 → 한 번 만든 카드를 그대로 유지
+        SingleChildScrollView(
         padding: const EdgeInsets.all(16),
-        children: [
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           const SpeettoAlertCard(),
           // 맨 위 보고 — 수집 현황(실시간) · 지방장 적중(지역별 맞춘 판매점) · 지방장 연구 요약(문장만)
           const CollectStatusReport(),
@@ -1328,7 +1329,7 @@ class BriefingDetailScreen extends StatelessWidget {
           const SizedBox(height: 16),
           const EngineReviewBriefingCard(),
           const SizedBox(height: 32),
-        ],
+        ]),
       ),
         const RoundDebriefHistoryView(),
         const PensionBriefingView(),
