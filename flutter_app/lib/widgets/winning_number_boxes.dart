@@ -2,6 +2,8 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../screens/past_winning_numbers_screen.dart' show PastRoundsButton;
+
 /// 흰 네모칸 하나 (숫자 · 글자)
 Widget numberBox(String text, {double size = 36, Color? accent, double fontSize = 16}) => Container(
       width: size,
@@ -144,6 +146,7 @@ class _PensionWinningHeaderState extends State<PensionWinningHeader> {
               for (final ch in w.bonus.split(''))
                 Padding(padding: const EdgeInsets.only(right: 4), child: numberBall(ch, const Color(0xFF8D6E63), size: 32, fontSize: 15)),
             ]),
+            const PastRoundsButton(type: 'pension'),
           ]);
         },
       ),

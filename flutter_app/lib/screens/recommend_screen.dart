@@ -12,6 +12,8 @@ import '../models/lotto_winning_number.dart';
 import '../widgets/pension_briefing_view.dart';
 import '../widgets/speetto_briefing_view.dart';
 import '../widgets/winning_number_boxes.dart';
+import 'past_winning_numbers_screen.dart';
+import '../widgets/latest_round_stores_card.dart';
 import '../services/supabase_service.dart';
 
 /// 추천 탭 '번호 추천' 메뉴 항목
@@ -217,6 +219,9 @@ class RecommendScreenState extends State<RecommendScreen> {
                   ? _buildHeaderSkeleton()
                   : _buildLatestWinningHeader(_latestRound!),
             ),
+            // 당첨번호 아래 — 최신 회차 당첨 판매점
+            if (_latestRound != null)
+              LatestRoundStoresCard(key: ValueKey('latest_stores_${_latestRound!.round}'), round: _latestRound!.round),
             // 메뉴 목록
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
@@ -309,6 +314,7 @@ class RecommendScreenState extends State<RecommendScreen> {
             style: const TextStyle(fontSize: 11, color: Colors.white60)),
         const SizedBox(height: 12),
         LottoWinningBoxes(numbers: nums, bonus: r.bonusNumber),
+        const PastRoundsButton(type: 'lotto'),
       ],
     );
   }
