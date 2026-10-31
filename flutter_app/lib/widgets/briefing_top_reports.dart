@@ -2,7 +2,6 @@
 //   · 수집 현황 — 로또 · 연금 최신 회차 당첨번호 / 당첨 판매점 수집 여부 (2분마다 다시 확인)
 //   · 지방장 적중 — 지난 회차 지방장 TOP5 중 실제 1·2등이 나온 판매점만 지역별로 (지방장보고 agent_debrief)
 //   · 지방장 연구 요약 — 유명 명당 반복 · 지역 간 동시 당첨 · 선행·후행 공간전이 · 새로 공유된 가설을 짧은 문장으로 (근거 수치 생략)
-import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -48,19 +47,11 @@ class CollectStatusReport extends StatefulWidget {
 class _CollectStatusReportState extends State<CollectStatusReport> {
   List<(String, RoundCardInfo)>? _cards;
   DateTime? _at;
-  Timer? _t;
 
   @override
   void initState() {
     super.initState();
-    _load();
-    _t = Timer.periodic(const Duration(minutes: 2), (_) => _load()); // 실시간 — DB 만 다시 읽음
-  }
-
-  @override
-  void dispose() {
-    _t?.cancel();
-    super.dispose();
+    _load(); // 자동 갱신 없음 — 브리핑 상단 새로고침 버튼으로만 다시 읽음
   }
 
   DateTime _now() => (widget.clock ?? DateTime.now)().toUtc();

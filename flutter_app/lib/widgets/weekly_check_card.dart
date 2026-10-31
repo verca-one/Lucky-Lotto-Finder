@@ -1,5 +1,4 @@
 // 비서 주간 점검 — 월요일 취합(엔진 실행 시점) · 토요일 아침 최종 점검 '변경점 있음/없음' (서버 저장본만 표시)
-import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -119,15 +118,13 @@ class WeeklyCheckCard extends StatelessWidget {
 }
 
 /// 주요 브리핑 머리 — 토요일 반영 알림 버튼
-///   반영 전: 회색 '대기 중' (브리핑을 열어 둔 동안 2분마다 확인) → 반영되면 알림(스낵바)
+///   반영 전: 회색 '대기 중' (누르면 다시 확인) → 반영되면 알림(스낵바)
 ///   반영 후: 변경점이 있으면 색 · 없으면 흐리게. 누르면 변경점 표·그래프 화면
 class SaturdayFinalAlertButton extends StatefulWidget {
   final int target;
   final Future<WeeklyCheck?> Function(int)? loader;
   final Future<HypothesisTrack?> Function(int)? trackLoader;
-  final Duration pollEvery;
-  const SaturdayFinalAlertButton(
-      {super.key, required this.target, this.loader, this.trackLoader, this.pollEvery = const Duration(minutes: 2)});
+  const SaturdayFinalAlertButton({super.key, required this.target, this.loader, this.trackLoader});
   @override
   State<SaturdayFinalAlertButton> createState() => _SaturdayFinalAlertButtonState();
 }
@@ -136,21 +133,11 @@ class _SaturdayFinalAlertButtonState extends State<SaturdayFinalAlertButton> {
   WeeklyCheck? _w;
   HypothesisTrack? _t;
   bool _loaded = false;
-  Timer? _timer;
 
   @override
   void initState() {
     super.initState();
-    _check(first: true);
-    _timer = Timer.periodic(widget.pollEvery, (_) {
-      if (_w?.sat == null) _check();
-    });
-  }
-
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
+    _check(first: true); // 자동 갱신 없음 — 버튼을 누르거나 브리핑 새로고침 때만 다시 확인
   }
 
   Future<void> _check({bool first = false}) async {

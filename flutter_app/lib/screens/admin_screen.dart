@@ -24,6 +24,7 @@ import '../widgets/extra_lottery_briefing_card.dart';
 import '../widgets/agent_briefing_section.dart';
 import '../widgets/db_usage_card.dart';
 import '../widgets/briefing_top_reports.dart';
+import '../services/research/master_briefing_service.dart';
 import '../services/research/research_scheduler.dart';
 import '../services/rpa_monte_carlo_engine.dart';
 import 'admin_engine_review_screen.dart';
@@ -1280,9 +1281,38 @@ class _BriefingCardState extends State<_BriefingCard> {
 // 상세 브리핑 화면
 // ══════════════════════════════════════════════════════════
 
-class BriefingDetailScreen extends StatelessWidget {
+class BriefingDetailScreen extends StatefulWidget {
   final _BriefingData data;
   const BriefingDetailScreen({super.key, required this.data});
+  @override
+  State<BriefingDetailScreen> createState() => _BriefingDetailScreenState();
+}
+
+/// 탭을 오가도 화면을 지우지 않음 (다시 들어올 때 새로 불러오지 않게)
+class _KeepAlive extends StatefulWidget {
+  final Widget child;
+  const _KeepAlive(this.child);
+  @override
+  State<_KeepAlive> createState() => _KeepAliveState();
+}
+
+class _KeepAliveState extends State<_KeepAlive> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return widget.child;
+  }
+}
+
+class _BriefingDetailScreenState extends State<BriefingDetailScreen> {
+  int _gen = 0; // 새로고침 버튼 → 카드를 전부 새로 만들어 다시 불러옴 (자동 갱신 없음)
+
+  void _refresh() {
+    MasterBriefingService.instance.clearCache();
+    setState(() => _gen++);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -1297,6 +1327,7 @@ class BriefingDetailScreen extends StatelessWidget {
         foregroundColor: Colors.white,
         title: const Text('엔진 브리핑', style: TextStyle(fontWeight: FontWeight.w700)),
         elevation: 0,
+        actions: [IconButton(key: const ValueKey('briefing_refresh'), tooltip: '새로고침', icon: const Icon(Icons.refresh), onPressed: _refresh)],
         bottom: const TabBar(
           labelColor: Colors.white,
           unselectedLabelColor: Colors.white70,
@@ -1309,7 +1340,8 @@ class BriefingDetailScreen extends StatelessWidget {
       ),
       body: TabBarView(children: [
         // ListView 는 화면 밖 카드를 지웠다 다시 만들어 매번 새로 불러옴 → 한 번 만든 카드를 그대로 유지
-        SingleChildScrollView(
+        _KeepAlive(SingleChildScrollView(
+        key: ValueKey('briefing_$_gen'),
         padding: const EdgeInsets.all(16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           const SpeettoAlertCard(),
@@ -1330,10 +1362,10 @@ class BriefingDetailScreen extends StatelessWidget {
           const EngineReviewBriefingCard(),
           const SizedBox(height: 32),
         ]),
-      ),
-        const RoundDebriefHistoryView(),
-        const PensionBriefingView(),
-        const SpeettoBriefingView(),
+      )),
+        _KeepAlive(RoundDebriefHistoryView(key: ValueKey('hist_$_gen'))),
+        _KeepAlive(PensionBriefingView(key: ValueKey('pension_$_gen'))),
+        _KeepAlive(SpeettoBriefingView(key: ValueKey('speetto_$_gen'))),
       ]),
       ),
     );
@@ -1363,7 +1395,7 @@ class BriefingDetailScreen extends StatelessWidget {
             style: TextStyle(color: Colors.white, fontSize: 14,
                 fontWeight: FontWeight.w700)),
         const SizedBox(height: 4),
-        Text('${data.latestRound}회차까지 분석한 연구 현황입니다.',
+        Text('${widget.data.latestRound}회차까지 분석한 연구 현황입니다.',
             style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12)),
         const SizedBox(height: 10),
         // 지방장보고 — 지방장별 지난 회차 추천 채점 · 다음 회차 변경점

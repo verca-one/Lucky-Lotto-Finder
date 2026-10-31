@@ -203,6 +203,8 @@ class MasterBriefingService {
   MasterBriefing? _cache;
   DateTime? _cachedAt;
 
+  void clearCache() => _cache = null;
+
   Future<MasterBriefing> load({bool force = false}) async {
     // 관리자 전용 (캐시보다 먼저 확인)
     if (!await AdminGate.isAdmin()) {

@@ -555,10 +555,12 @@ class _ManualRecommendCardState extends State<ManualRecommendCard> {
   void initState() {
     super.initState();
     _load();
-    // 실행 대기 중이면 1분마다 다시 확인 → 만들어지면 '가동 완료'로 바뀜
-    _watch = Timer.periodic(const Duration(minutes: 1), (_) {
-      if (_s != null && _s!.released && !_made) _load();
-    });
+    // 엔진 대시보드 버튼만: 실행 대기 중이면 1분마다 다시 확인 → 만들어지면 '가동 완료'로 바뀜 (브리핑은 수동 새로고침만)
+    if (widget.engineStart) {
+      _watch = Timer.periodic(const Duration(minutes: 1), (_) {
+        if (_s != null && _s!.released && !_made) _load();
+      });
+    }
   }
 
   @override

@@ -43,16 +43,20 @@ void main() {
     expect(find.textContaining('새로 적용 후보가 된 가설'), findsOneWidget);
   });
 
-  testWidgets('토요일 반영 — 대기 중 → 반영 알림 · 변경점 있으면 색 → 누르면 표·그래프 / 없으면 흐리게', (t) async {
+  testWidgets('토요일 반영 — 대기 중 → 누르면 다시 확인 · 반영 알림 · 변경점 있으면 색 → 누르면 표·그래프 / 없으면 흐리게', (t) async {
     Map<String, dynamic>? sat;
     await t.pumpWidget(MaterialApp(home: Scaffold(body: SaturdayFinalAlertButton(
-      target: 1248, pollEvery: const Duration(seconds: 1), trackLoader: (_) async => null,
+      target: 1248, trackLoader: (_) async => null,
       loader: (_) async => WeeklyCheck.fromPayload({'round': 1247, 'next': 1248, 'wed': snap(), if (sat != null) 'sat': sat}),
     ))));
     await t.pump();
     expect(find.text('토요일 반영 알림 · 토 8시 최종 점검 대기 중'), findsOneWidget);
     sat = {...snap(), 'changes': [{'type': 'new_hypothesis', 'note': '새로 적용 후보가 된 가설: 홀수 적은 쪽'}], 'verdict': '변경점 있음 — 확인하세요'};
-    await t.pump(const Duration(seconds: 1));
+    // 자동 확인 없음 — 눌러야 다시 확인
+    await t.pump(const Duration(minutes: 5));
+    expect(find.text('토요일 반영 알림 · 토 8시 최종 점검 대기 중'), findsOneWidget);
+    await t.tap(find.byKey(const ValueKey('sat_final_alert')));
+    await t.pump();
     await t.pump();
     expect(find.textContaining('토요일 8시 최종본이 반영됐습니다 — 변경점 있음'), findsOneWidget);
     expect(find.text('✓ 토 8시 점검 완료 · 변경점 — 번호 0세트 · 명당 0곳 · 가설 1 (자세히)'), findsOneWidget);
