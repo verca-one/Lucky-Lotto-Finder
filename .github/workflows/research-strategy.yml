@@ -41,6 +41,14 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install requests numpy scipy anthropic google-genai
+      - name: AI 브리핑전담부서 — 지난 회차 추천 20세트 vs 당첨번호 → 영역별 유지/보완 · 보완 지시 (제미나이 상주 · 회차당 1번)
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python research_set_review.py
       - name: AI 전략기획부 — 방향 제시 (Claude · Gemini, 키 있는 것만)
         continue-on-error: true
         env:
@@ -61,14 +69,6 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: python research_store_hypothesis_apply.py
-      - name: 추천번호 복기 — 지난 회차 추천 20세트 vs 당첨번호 → 제미나이 보완 규칙 (회차당 1번)
-        if: ${{ !cancelled() }}
-        continue-on-error: true
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: python research_set_review.py
       - name: 가설 트랙 — 제미나이 가설 바로 실전 (번호 5세트 · 명당 5곳, 공개 후 · 마감 전 사전 등록)
         if: ${{ !cancelled() }}
         continue-on-error: true

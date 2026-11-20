@@ -17,7 +17,9 @@ import 'briefing_store_widgets.dart';
 import 'hypothesis_track_card.dart';
 import 'purchase_recommend_card.dart' show lottoBall, statusChip, popularityValidationLine;
 import 'store_map_buttons.dart';
+import 'set_review_card.dart';
 import 'weekly_check_card.dart';
+import '../services/research/set_review.dart';
 
 const _purple = Color(0xFF4527A0);
 
@@ -45,6 +47,7 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
   }
 
   void _reload() {
+    SetReview.clearCache();
     if (mounted) setState(() { _future = MasterBriefingService.instance.load(force: true); });
   }
 
@@ -97,6 +100,7 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
           const SizedBox(height: 6),
           // ⑤ 가설 트랙(제미나이) — 구매할 번호 세트보다 위
           HypothesisTrackCard(key: ValueKey('track_${b.targetRound}'), target: b.targetRound, released: open),
+          BriefingDeskMemo(area: 'hypothesis', target: b.targetRound),
           const SizedBox(height: 12),
           BriefingSection(
             key: const ValueKey('buy_section'),
@@ -107,6 +111,7 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
             children: [
               WeeklyCheckCard(key: ValueKey('weekly_${b.targetRound}'), target: b.targetRound),
               _engineCard(b),
+              BriefingDeskMemo(area: 'official', target: b.targetRound),
               const SizedBox(height: 10),
               if (!open)
                 _areaPlaceholder('2', '${b.targetRound}회 비인기 추천조합', kPopularityColor, wait)
@@ -114,11 +119,13 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
                 _areaPlaceholder('2', '${b.targetRound}회 비인기 추천조합', kPopularityColor, '저장본 없음 (당첨자 수 수집 후 서버가 만듭니다)')
               else
                 PopularityPicksCard(no: '2', target: b.targetRound, pop: b.popularity!),
+              BriefingDeskMemo(area: 'popularity', target: b.targetRound),
               const SizedBox(height: 10),
               if (!open)
                 _areaPlaceholder('3', '${b.targetRound}회 구매예측 번호', const Color(0xFF00897B), wait)
               else
                 _purchaseCard(b, '3'),
+              BriefingDeskMemo(area: 'purchase', target: b.targetRound),
               const SizedBox(height: 8),
               Text('모든 조합의 1등 확률은 같습니다(1/8,145,060). 15세트 중 하나라도 5등 이상일 확률 약 30%.',
                   style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700)),

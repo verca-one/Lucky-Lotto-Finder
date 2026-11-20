@@ -33,7 +33,7 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: python research_store_hypothesis_apply.py
-      - name: 추천번호 복기 — 지난 회차 추천 20세트 vs 당첨번호 → 제미나이 보완 규칙 (회차당 1번)
+      - name: AI 브리핑전담부서(추천번호 복기) — 지난 회차 추천 20세트 vs 당첨번호 → 제미나이 보완 규칙 (회차당 1번)
         if: ${{ !cancelled() }}
         continue-on-error: true
         env:

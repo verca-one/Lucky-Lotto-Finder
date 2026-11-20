@@ -170,6 +170,19 @@ def context(db, latest):
               + (f" — 모의: {(h.get('simulation') or {}).get('note')}" if (h.get('simulation') or {}).get('note') else "")
               for h in live] or ["- (없음)"]
     lines += ["", f"[기각·폐기된 조합 {len(dead)}개 — 다시 제안하지 말 것]", ", ".join(dead) or "(없음)"]
+    # AI 브리핑전담부서(sr-1.0) 보완 지시 — 보완할 곳을 시험할 수 있는 가설을 우선 제안
+    try:
+        sr = db.get("research_results", {"select": "payload->round,payload->summary,payload->rules,payload->desk",
+                                         "research_type": "eq.set_review", "model_version": "eq.sr-1.0",
+                                         "order": "target_round.desc", "limit": "1"})
+    except RuntimeError:
+        sr = []
+    if sr:
+        s = sr[0]
+        lines += ["", f"[AI 브리핑전담부서 보완 지시 — {s.get('round')}회 추천번호 복기 · 보완할 곳을 시험하는 가설을 우선 제안]",
+                  f"- 요약: {s.get('summary') or ''}"]
+        lines += [f"- 보완 규칙: {r.get('statement')} ({r.get('feature')}:{r.get('expect')})" for r in s.get("rules") or []]
+        lines += [f"- {k}: {m.get('improve')}" for k, m in (s.get("desk") or {}).items() if "특별히 없음" not in (m.get("improve") or "")]
     return "\n".join(lines)
 
 

@@ -1,5 +1,11 @@
 """
-추천번호 복기 · 보완 규칙 (sr-1.0) — AI 전략기획부 주간 업무
+AI 브리핑전담부서 (sr-1.0) — 추천번호 복기 · 영역별 유지/보완 판정 · 보완 지시 전달 (제미나이 상주)
+
+  부서 역할: 당첨번호와 지난 회차 브리핑 추천번호를 보고, 흐름을 유지할 곳은 두고 보완할 곳을 찾아 각 메뉴에 전달한다.
+    · 영역(①엔진 ②비인기 ③구매예측 ④제미나이)마다 특징 5가지를 당첨번호와 비교 → 같은 쪽 60% 이상 '유지' · 40% 미만 '보완'
+    · 제미나이가 영역별 유지/보완 한 줄 지시(desk)와 다음 회차 보완 규칙(rules)을 쓴다 (실패하면 기본 규칙, 다음 실행 때 다시)
+    · 전달: 브리핑 메뉴 카드(①~④) 표시 · 제미나이 가설 트랙(rules) · AI 전략기획부 다음 가설 생성 자료(research_strategy_ai.context)
+    · 엔진·비인기·구매예측 엔진 자체는 바꾸지 않는다 (기존 엔진 보호)
 
   매주 추첨 뒤, 브리핑이 지난 회차(D)에 추천한 번호 4영역 × 5세트 = 20세트를
     ① 엔진 추천(official_final fr-1.0) · ② 비인기(popularity_pick pop-1.0) · ③ 구매예측(purchase_prediction 최신)
@@ -36,7 +42,8 @@ VERSION = "sr-1.0"
 RESULT_TYPE = "set_review"
 WINDOW = 200
 LOOKBACK = 8
-MISS_SHARE = 0.4          # 당첨번호와 같은 쪽 세트가 40% 미만이면 '어긋남'
+MISS_SHARE = 0.4          # 당첨번호와 같은 쪽 세트가 40% 미만이면 '어긋남' (영역별: 보완)
+KEEP_SHARE = 0.6          # 영역별: 같은 쪽 세트가 60% 이상이면 '유지'
 MAX_RULES = 3
 W_RANGE = (0.3, 1.2)      # 보완 규칙 힘 (가설 트랙 가설 힘 W_CAP 3.0 보다 작게)
 AREAS = [  # (key, algorithm, 고정 버전, 먼저 고를 버전, 이름)
@@ -54,9 +61,12 @@ FEATURES = {
 }
 EXPECT_KO = {"higher": "높은", "lower": "낮은"}
 
-SYSTEM = """당신은 로또 연구팀의 'AI 전략기획부'입니다. 이번 업무는 '추천번호 복기'입니다.
+SYSTEM = """당신은 로또 연구팀의 'AI 브리핑전담부서'에 상주하는 제미나이입니다. 업무는 '추천번호 복기'입니다.
 지난 회차에 우리 브리핑이 추천한 번호 20세트(4영역 × 5세트)와 실제 당첨번호를 비교한 보고서를 읽고,
-다음 회차 '제미나이 추천번호'(가설 트랙)에 넣을 보완 규칙을 최대 3개 냅니다.
+흐름을 유지할 곳은 두고 보완할 곳을 찾아 각 메뉴에 전달합니다.
+- desk: 보고서에 나온 영역마다 keep(유지할 점)과 improve(보완할 점)를 한국어 한 문장씩 씁니다.
+  보고서의 영역별 '유지' · '보완' 특징과 일치 개수를 근거로 쓰고, 없으면 "특별히 없음"이라고 씁니다.
+- rules: 다음 회차 '제미나이 추천번호'(가설 트랙)와 AI 전략기획부 가설 생성에 넘길 보완 규칙을 최대 3개 냅니다.
 - 규칙은 반드시 주어진 특징(feature) 중 하나와 방향(higher = 최근 200회 중앙값보다 높은 쪽 조합을 고름, lower = 낮은 쪽)으로 표현합니다.
 - 한 번 어긋난 것보다 최근 여러 회차에서 반복해서 어긋난 아쉬움을 우선합니다.
 - 모든 조합의 1등 확률은 같습니다(1/8,145,060). 규칙은 확률을 올린다고 주장하지 말고 '가설 기반 보완'으로 씁니다.
@@ -69,6 +79,20 @@ def schema():
         "type": "object",
         "properties": {
             "summary": {"type": "string"},
+            "desk": {
+                "type": "array",
+                "maxItems": len(AREAS),
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "area": {"type": "string", "enum": [a[0] for a in AREAS]},
+                        "keep": {"type": "string"},
+                        "improve": {"type": "string"},
+                    },
+                    "required": ["area", "keep", "improve"],
+                    "additionalProperties": False,
+                },
+            },
             "rules": {
                 "type": "array",
                 "maxItems": MAX_RULES,
@@ -85,7 +109,7 @@ def schema():
                 },
             },
         },
-        "required": ["summary", "rules"],
+        "required": ["summary", "desk", "rules"],
         "additionalProperties": False,
     }
 
@@ -164,8 +188,20 @@ def review_round(D, wins, regs):
     for key, *_, label in AREAS:
         ss = [s for s in sets if s["area"] == key]
         if ss:
+            keep, improve = [], []
+            for f, x in feats.items():
+                if x["actual_side"] == "median":
+                    continue
+                side = 1 if x["actual_side"] == "higher" else -1
+                same = sum(1 for s in ss if np.sign(FEATURES[f][1](s["nums"]) - x["median"]) == side)
+                item = {"feature": f, "name": x["name"], "expect": x["actual_side"], "same": same, "of": len(ss)}
+                if same / len(ss) >= KEEP_SHARE:
+                    keep.append(item)
+                elif same / len(ss) < MISS_SHARE:
+                    improve.append(item)
             areas[key] = {"label": label, "sets": len(ss), "best_hits": max(len(s["hits"]) for s in ss),
-                          "won": sum(1 for s in ss if s["rank"]), "best_rank": min((s["rank"] for s in ss if s["rank"]), default=None)}
+                          "won": sum(1 for s in ss if s["rank"]), "best_rank": min((s["rank"] for s in ss if s["rank"]), default=None),
+                          "keep": keep, "improve": improve}
     return {
         "round": D, "actual": actual, "bonus": bonus, "sets": sets, "areas": areas, "features": feats,
         "missed_numbers": [n for n in actual if cnt[n] == 0],
@@ -224,6 +260,9 @@ def report_text(rv, pers):
          f"추천 {len(rv['sets'])}세트 · 최고 {rv['best_hits']}개 일치 · 당첨 {rv['won_sets']}세트"]
     for a in rv["areas"].values():
         L.append(f"  {a['label']}: {a['sets']}세트 · 최고 {a['best_hits']}개 일치 · 당첨 {a['won']}세트")
+        for k, title in (("keep", "유지"), ("improve", "보완")):
+            if a.get(k):
+                L.append(f"    {title}: " + " · ".join(f"{i['name']} {EXPECT_KO[i['expect']]} 쪽 {i['same']}/{i['of']}세트" for i in a[k]))
     L.append("[특징별 비교] (중앙값 = 최근 200회)")
     for f, x in rv["features"].items():
         L.append(f"  {f} {x['name']}: 당첨 {x['actual']} (중앙값 {x['median']} → {x['actual_side']}) · "
@@ -235,6 +274,19 @@ def report_text(rv, pers):
         if d["higher"] or d["lower"]:
             L.append(f"  {f} {FEATURES[f][0]}: 당첨이 높은 쪽인데 어긋남 {d['higher']}회 · 낮은 쪽인데 어긋남 {d['lower']}회")
     return "\n".join(L)
+
+
+def desk_fallback(rv):
+    """제미나이 없이: 영역별 유지/보완 판정을 문장으로"""
+    out = {}
+    for key, a in rv["areas"].items():
+        def names(items):
+            return ", ".join(f"{i['name']}({EXPECT_KO[i['expect']]} 쪽 {i['same']}/{i['of']})" for i in items)
+        out[key] = {"keep": f"유지 — {names(a['keep'])} 흐름이 당첨번호와 같았음 (최고 {a['best_hits']}개 일치)" if a.get("keep")
+                    else f"유지 — 특별히 없음 (최고 {a['best_hits']}개 일치)",
+                    "improve": f"보완 — {names(a['improve'])}: 당첨번호와 반대쪽 세트가 많았음" if a.get("improve")
+                    else "보완 — 특별히 없음"}
+    return out
 
 
 def ask_ai(prompt):
@@ -290,6 +342,11 @@ def run(db, D=None, dry=False, force=False):
                       "repeat": pers["per"][f][e], "weeks": pers["n"]})
         if len(rules) == MAX_RULES:
             break
+    desk = desk_fallback(rv)
+    for x in (data or {}).get("desk") or []:
+        if x.get("area") in desk:
+            desk[x["area"]] = {"keep": (x.get("keep") or "").strip() or desk[x["area"]]["keep"],
+                               "improve": (x.get("improve") or "").strip() or desk[x["area"]]["improve"]}
     summary = (data or {}).get("summary") or (
         f"{D}회 추천 {len(rv['sets'])}세트 중 최고 {rv['best_hits']}개 일치. "
         + (f"어긋난 특징: {', '.join(x['name'] for x in rv['features'].values() if x['missed'])}. " if any(
@@ -297,13 +354,15 @@ def run(db, D=None, dry=False, force=False):
         + (f"놓친 당첨번호 {rv['missed_numbers']}." if rv["missed_numbers"] else ""))
     payload = py({
         "version": VERSION, "round": D, "target_round": N, "review": rv, "persistence": pers, "summary": summary,
-        "rules": rules, "source": source, "model": model, "ai_error": err, "report": text,
+        "rules": rules, "desk": desk, "source": source, "model": model, "ai_error": err, "report": text,
         "rule": "추천 20세트 vs 당첨번호 — 특징 방향 어긋남(같은 쪽 40% 미만) · 최근 8회 반복 → 제미나이 보완 규칙 → 가설 트랙 반영",
         "generated_at": datetime.now(timezone.utc).isoformat(),
     })
     print(f"→ 보완 규칙 ({source}{' · ' + model if model else ''}{' · AI 실패: ' + err if err and source == 'rule' else ''})")
     for r in rules:
         print(f"  [{r['code']}] {r['statement']} (힘 {r['w']} · 최근 {r['weeks']}회 중 {r['repeat']}회 어긋남) — {r['why']}")
+    for k, m in desk.items():
+        print(f"  [{k}] {m['keep']} / {m['improve']}")
     if dry:
         print("드라이런 — 저장 안 함")
         return payload

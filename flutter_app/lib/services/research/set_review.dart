@@ -1,5 +1,6 @@
-// 추천번호 복기 (sr-1.0) — 서버 저장본(research_results · set_review)만 읽는다.
-//   지난 회차 추천 20세트(4영역) vs 당첨번호 → 아쉬운 부분 → 제미나이 보완 규칙 → 다음 회차 가설 트랙에 반영
+// AI 브리핑전담부서 · 추천번호 복기 (sr-1.0) — 서버 저장본(research_results · set_review)만 읽는다.
+//   지난 회차 추천 20세트(4영역) vs 당첨번호 → 영역별 유지/보완(desk) · 보완 규칙(rules)
+//   → 브리핑 메뉴 카드 · 다음 회차 가설 트랙 · AI 전략기획부 가설 생성에 전달 (제미나이 상주)
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 int _i(dynamic v) => (v as num?)?.toInt() ?? 0;
@@ -19,7 +20,10 @@ class SetReviewFeature {
 class SetReviewArea {
   final String label;
   final int sets, bestHits, won;
-  const SetReviewArea(this.label, this.sets, this.bestHits, this.won);
+
+  /// 영역 키(official · popularity · purchase · hypothesis) · 브리핑전담부서 유지/보완 한 줄 (없으면 빈 문자열)
+  final String key, keep, improve;
+  const SetReviewArea(this.label, this.sets, this.bestHits, this.won, {this.key = '', this.keep = '', this.improve = ''});
 }
 
 class SetReviewRule {
@@ -50,10 +54,32 @@ class SetReview {
 
   bool get fromGemini => source == 'gemini';
 
+  /// 영역 하나 (없으면 null)
+  SetReviewArea? area(String key) => areas.where((a) => a.key == key).firstOrNull;
+
+  static final _byTarget = <int, Future<SetReview?>>{};
+
+  /// 이 회차(목표)용 복기 — 브리핑 메뉴 카드들이 함께 쓰도록 한 번만 읽음
+  static Future<SetReview?> loadFor(int target) => _byTarget[target] ??= () async {
+        final rows = await Supabase.instance.client
+            .from('research_results')
+            .select('payload')
+            .eq('research_type', 'set_review')
+            .eq('model_version', 'sr-1.0')
+            .eq('target_round', target)
+            .limit(1);
+        if ((rows as List).isEmpty) return null;
+        return SetReview.fromPayload(Map<String, dynamic>.from(rows.first['payload'] as Map));
+      }();
+
+  /// 새로고침 때 다시 읽게
+  static void clearCache() => _byTarget.clear();
+
   factory SetReview.fromPayload(Map<String, dynamic> p) {
     final rv = Map<String, dynamic>.from(p['review'] as Map? ?? const {});
     final feats = Map<String, dynamic>.from(rv['features'] as Map? ?? const {});
     final areas = Map<String, dynamic>.from(rv['areas'] as Map? ?? const {});
+    final desk = Map<String, dynamic>.from(p['desk'] as Map? ?? const {});
     return SetReview(
       round: _i(p['round']),
       targetRound: _i(p['target_round']),
@@ -69,7 +95,8 @@ class SetReview {
       areas: [
         for (final k in const ['official', 'popularity', 'purchase', 'hypothesis'])
           if (areas[k] is Map)
-            SetReviewArea('${areas[k]['label']}', _i(areas[k]['sets']), _i(areas[k]['best_hits']), _i(areas[k]['won'])),
+            SetReviewArea('${areas[k]['label']}', _i(areas[k]['sets']), _i(areas[k]['best_hits']), _i(areas[k]['won']),
+                key: k, keep: '${(desk[k] as Map?)?['keep'] ?? ''}', improve: '${(desk[k] as Map?)?['improve'] ?? ''}'),
       ],
       features: [
         for (final e in feats.entries)

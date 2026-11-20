@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 
 import 'admin_agent_replay_screen.dart';
+import 'admin_briefing_desk_screen.dart';
 import 'admin_agent_research_screen.dart';
 import 'admin_engine_review_screen.dart';
 import 'admin_lottery_extra_screens.dart';
@@ -21,6 +22,9 @@ class ResearchLabEntry {
 
 /// 연구소 메뉴 항목 (순서 고정)
 final List<ResearchLabEntry> kResearchLabEntries = [
+  ResearchLabEntry(Icons.support_agent_rounded, 'AI 브리핑전담부서',
+      '당첨번호 vs 지난 브리핑 추천번호 → 영역별 유지/보완 → 브리핑 메뉴 · AI 전략기획부에 전달 (제미나이 상주)',
+      const Color(0xFF4A148C), (_) => const AdminBriefingDeskScreen()),
   ResearchLabEntry(Icons.psychology_alt_rounded, 'AI 전략기획부', 'AI 연구 방향 제시 → 가설 생성 → 비서 검증·유지·폐기 (AI는 제안만)',
       const Color(0xFF5B2C9F), (_) => const AdminStrategyScreen()),
   ResearchLabEntry(Icons.travel_explore_rounded, '명당 가설 연구소 · 전국 지역 연구',

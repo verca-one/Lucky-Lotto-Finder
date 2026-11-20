@@ -1,4 +1,5 @@
-// AI 전략기획부 로또 탭 — 추천번호 복기 (지난 회차 추천 20세트 vs 당첨번호 → 아쉬운 부분 → 보완 규칙 → 제미나이 추천번호 반영)
+// AI 브리핑전담부서 — 추천번호 복기 카드 (지난 회차 추천 20세트 vs 당첨번호 → 아쉬운 부분 → 보완 규칙 → 제미나이 추천번호 반영)
+//   · BriefingDeskMemo: 브리핑 ①~④ 메뉴 카드 아래 '유지 / 보완' 한 줄
 import 'package:flutter/material.dart';
 
 import '../services/research/set_review.dart';
@@ -135,4 +136,64 @@ class _SetReviewCardState extends State<SetReviewCard> {
       _small('모든 조합의 1등 확률은 같습니다(1/8,145,060). 보완 규칙은 가설 기반입니다.'),
     ]);
   }
+}
+
+String _strip(String t, String head) => t.replaceFirst(RegExp('^$head\\s*[—-]\\s*'), '').trim();
+
+/// 브리핑 메뉴 카드 아래 — AI 브리핑전담부서가 이 영역에 전달한 유지 / 보완 (없으면 안 보임)
+class BriefingDeskMemo extends StatefulWidget {
+  final String area; // official · popularity · purchase · hypothesis
+  final int target;
+  final Future<SetReview?> Function(int target)? loader;
+  const BriefingDeskMemo({super.key, required this.area, required this.target, this.loader});
+  @override
+  State<BriefingDeskMemo> createState() => _BriefingDeskMemoState();
+}
+
+class _BriefingDeskMemoState extends State<BriefingDeskMemo> {
+  late final Future<SetReview?> _f = (widget.loader ?? SetReview.loadFor)(widget.target);
+
+  Widget _line(String tag, String text, Color c) => Padding(
+        padding: const EdgeInsets.only(top: 3),
+        child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Container(
+            margin: const EdgeInsets.only(top: 1, right: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+            decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(5)),
+            child: Text(tag, style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.white)),
+          ),
+          Expanded(child: Text(text, style: const TextStyle(fontSize: 11.5, height: 1.4))),
+        ]),
+      );
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<SetReview?>(
+        future: _f,
+        builder: (context, snap) {
+          final r = snap.data;
+          final a = r?.area(widget.area);
+          if (r == null || a == null || (a.keep.isEmpty && a.improve.isEmpty)) return const SizedBox.shrink();
+          return Container(
+            key: ValueKey('desk_memo_${widget.area}'),
+            width: double.infinity,
+            margin: const EdgeInsets.only(top: 6),
+            padding: const EdgeInsets.fromLTRB(10, 8, 10, 9),
+            decoration: BoxDecoration(
+              color: const Color(0xFF4A148C).withValues(alpha: 0.05),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFF4A148C).withValues(alpha: 0.18)),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                const Icon(Icons.support_agent_rounded, size: 15, color: Color(0xFF4A148C)),
+                const SizedBox(width: 4),
+                Expanded(child: Text('AI 브리핑전담부서 · ${r.round}회 복기${r.fromGemini ? ' (제미나이)' : ' (기본 규칙)'}',
+                    style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: Color(0xFF4A148C)))),
+              ]),
+              if (a.keep.isNotEmpty) _line('유지', _strip(a.keep, '유지'), const Color(0xFF2E7D32)),
+              if (a.improve.isNotEmpty) _line('보완', _strip(a.improve, '보완'), const Color(0xFFE65100)),
+            ]),
+          );
+        },
+      );
 }
