@@ -29,10 +29,11 @@ import 'number_popularity.dart';
 import 'recommend_release.dart';
 import 'purchase_prediction_engine.dart';
 import 'research_scheduler.dart';
+import 'round_debrief.dart';
 import 'store_hit_ranking.dart';
 
 /// 명당 선정 경로
-enum MasterPickSource { agentFocus, agentStoreTop, legacy }
+enum MasterPickSource { agentHit, agentFocus, agentStoreTop, legacy }
 
 class MasterStorePick {
   final RankedRegionStore ranked;
@@ -71,7 +72,44 @@ class AgentPickCandidate {
     this.focus,
     this.delivery,
     this.central,
+    this.pFirst,
   });
+
+  /// 적중 지방장 납품 1위의 1등 추정 확률 (지방장 보고 next 기록 — delivery · central 이 없을 때)
+  final double? pFirst;
+}
+
+/// 이 회차부터 브리핑 추천 명당 맨 앞에 '지난 회차 적중 지방장'의 납품 1위 (서버 research_debrief_worker.HIT_RULE_FROM 과 같음)
+const kHitRuleFrom = 1251;
+const kHitSlots = 3;
+
+/// 지난 회차 TOP5 에서 1·2등을 맞힌 지방장의 다음 회차 납품 1위 — 1등 맞힌 지방장 먼저 · 추정 확률 높은 순 (최대 [slots]곳, 순수 함수)
+/// 서버 research_debrief_worker.hit_picks 와 같은 규칙 (회차 검증이 같은 명당을 채점)
+List<AgentPickCandidate> hitAgentPicks(AgentDebrief? d, {int slots = kHitSlots}) {
+  if (d == null) return const [];
+  final rows = <(int, double, String, List<dynamic>, String)>[];
+  for (final a in d.agents) {
+    if (a.id == 'internet') continue;
+    final tiers = [
+      for (final p in a.prev)
+        if (p.length > 4 && ((p[4] as num?)?.toInt() == 1 || (p[4] as num?)?.toInt() == 2)) (p[4] as num).toInt(),
+    ];
+    final top = a.next.where((x) => x.length > 3 && (x[2] as num?)?.toInt() == 1 && '${x[0] ?? ''}'.isNotEmpty).firstOrNull;
+    if (tiers.isEmpty || top == null) continue;
+    rows.add((tiers.reduce((x, y) => x < y ? x : y), ((top[3] as num?) ?? 0).toDouble(), a.id, top, a.label));
+  }
+  rows.sort((x, y) => x.$1 != y.$1 ? x.$1.compareTo(y.$1) : x.$2 != y.$2 ? y.$2.compareTo(x.$2) : x.$3.compareTo(y.$3));
+  final out = <AgentPickCandidate>[];
+  final used = <String>{};
+  for (final (tier, p, id, top, label) in rows) {
+    if (out.length >= slots) break;
+    if (!used.add('${top[0]}')) continue;
+    out.add(AgentPickCandidate(
+      code: '${top[0]}', regionId: id, source: MasterPickSource.agentHit, pFirst: p,
+      why: '지난 회차(${d.round}회) 적중 지방장 $label — TOP5에서 $tier등 적중 · ${d.next}회 납품 1위',
+    ));
+  }
+  return out;
 }
 
 String _f(double? v, [int d = 2]) => v == null ? '-' : v.toStringAsFixed(d);
@@ -102,6 +140,7 @@ List<AgentPickCandidate> selectAgentPicks({
   required List<AgentFocusRegion> focus,
   required Map<String, AgentDelivery> rank1ByAgent,
   required List<AgentCentralStore> storeTop,
+  List<AgentPickCandidate> hits = const [], // 적중 지방장 납품 1위 — 맨 앞 (hitAgentPicks)
   int topRegions = 5,
   int max = 5,
 }) {
@@ -109,6 +148,9 @@ List<AgentPickCandidate> selectAgentPicks({
     ..sort((a, b) => (a.rank ?? 1 << 30).compareTo(b.rank ?? 1 << 30));
   final out = <AgentPickCandidate>[];
   final used = <String>{};
+  for (final h in hits) {
+    if (out.length < max && used.add(h.code)) out.add(h);
+  }
   for (final f in sorted.take(topRegions)) {
     if (out.length >= max) break;
     final d = rank1ByAgent[f.regionId];
@@ -324,7 +366,17 @@ class MasterBriefingService {
     final d = await repo.loadDeliveriesForAgents(topIds, target: ref.target, model: ref.model);
     final hitOk = hit != null && hit.targetRound == ref.target;
     final rank1 = pickByHit(d.data, hitOk ? hit.factorOf : (_) => 1.0);
-    final cands = selectAgentPicks(focus: central.focusRegions, rank1ByAgent: rank1, storeTop: central.storeTop);
+    // 지난 회차 적중 지방장 (지방장 보고 agent_debrief — 이 회차 납품과 같은 회차일 때만)
+    var hits = const <AgentPickCandidate>[];
+    if (ref.target >= kHitRuleFrom) {
+      try {
+        final db = await RoundDebriefRepository.loadAgents();
+        if (db != null && db.next == ref.target) hits = hitAgentPicks(db);
+      } catch (e) {
+        debugPrint('[Master] agent debrief: $e');
+      }
+    }
+    final cands = selectAgentPicks(focus: central.focusRegions, rank1ByAgent: rank1, storeTop: central.storeTop, hits: hits);
     if (cands.isEmpty) return (ref, <MasterStorePick>[], '주목 지역 납품·전국 상위 후보 없음');
 
     // 판매점 기본 정보 (lottery_stores, 읽기 전용) → 엔진 연구 점수 (선정 명당 목록 내 상대)
@@ -361,10 +413,14 @@ class MasterBriefingService {
         if (ranked[c.code] != null)
           MasterStorePick(ranked[c.code]!, _withHit(c, hitOk ? hit : null), c.regionId ?? ranked[c.code]!.store.regionId,
               source: c.source, focus: c.focus, delivery: c.delivery, central: c.central,
-              pFirst: c.delivery?.pFirst ?? c.central?.pFirst,
+              pFirst: c.delivery?.pFirst ?? c.central?.pFirst ?? c.pFirst,
               factor: hitOk ? hit.factorOf(c.code) : 1.0,
               hypotheses: hitOk ? hit.hypothesesOf(c.code) : const []),
-    ]..sort((a, b) => (b.pAdj ?? -1).compareTo(a.pAdj ?? -1)); // 적중 예측 높은 순
+    ]..sort((a, b) {
+        // 적중 지방장 추천 먼저, 그 안과 나머지는 적중 예측 높은 순
+        final h = (a.source == MasterPickSource.agentHit ? 0 : 1).compareTo(b.source == MasterPickSource.agentHit ? 0 : 1);
+        return h != 0 ? h : (b.pAdj ?? -1).compareTo(a.pAdj ?? -1);
+      });
     return (ref, picks, picks.isEmpty ? '선정 판매점 정보 없음' : null);
   }
 

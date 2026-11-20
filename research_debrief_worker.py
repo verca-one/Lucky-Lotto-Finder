@@ -113,7 +113,10 @@ def load(db, D):
         for r in db.get("lottery_stores", {"select": "dhlottery_code,store_name,address", "lottery_type": "eq.lotto",
                                            "dhlottery_code": f"in.({','.join(cl[i:i + 150])})"}):
             names.setdefault(r["dhlottery_code"], (r["store_name"], r.get("address")))
-    return dict(D=D, N=N, wins=wins, regs=regs, wh=wh, central=central, deliv=deliv,
+    # D 회차 브리핑 명당 재현용 — D-1 회차 지방장 보고 (적중 지방장)
+    dp = db.get("research_results", {"select": "payload->agents", "research_type": "eq.agent_debrief", "model_version": f"eq.{VERSION}",
+                                     "training_end_round": f"eq.{D - 1}", "target_round": f"eq.{D}", "limit": "1"})
+    return dict(D=D, N=N, wins=wins, regs=regs, wh=wh, central=central, deliv=deliv, debrief_prev=dp[0]["agents"] if dp else None,
                 agent_round=ar[0] if ar else None, review=rr[0] if rr else None, cards=cards,
                 fr_next=fr_next[0] if fr_next else None, pop=pop, prize=prize[0] if prize else None, names=names)
 
@@ -232,8 +235,35 @@ def popularity_check(d):
 
 
 # ── 판매점 (브리핑 선정 재현) ──────────────────────────────────────
-def briefing_picks(central, deliv):
-    """master_briefing_service.selectAgentPicks 와 같은 규칙"""
+HIT_RULE_FROM = 1251  # 이 회차부터 브리핑 추천 명당 맨 앞에 '지난 회차 적중 지방장' 납품 1위 (앱 kHitRuleFrom 과 같음)
+HIT_SLOTS = 3
+
+
+def hit_picks(agents, slots=HIT_SLOTS):
+    """master_briefing_service.hitAgentPicks 와 같은 규칙 — 지방장 보고(agent_debrief) agents 에서
+    지난 회차 TOP5 로 1·2등을 맞힌 지방장의 다음 회차 납품 1위 (1등 맞힌 지방장 먼저 · 추정 확률 높은 순)"""
+    rows = []
+    for a in agents or []:
+        if a.get("id") == "internet":
+            continue
+        tiers = [p[4] for p in a.get("prev") or [] if len(p) > 4 and p[4] in (1, 2)]
+        top = next((x for x in a.get("next") or [] if len(x) > 3 and x[2] == 1 and x[0]), None)
+        if tiers and top:
+            rows.append((min(tiers), -(top[3] or 0), a["id"], top))
+    rows.sort(key=lambda r: r[:3])
+    out, used = [], set()
+    for tier, _, aid, top in rows:
+        if len(out) >= slots:
+            break
+        if top[0] in used:
+            continue
+        used.add(top[0])
+        out.append({"code": top[0], "name": top[1], "agent_id": aid, "source": "agent_hit", "hit_tier": tier, "p_first": top[3]})
+    return out
+
+
+def briefing_picks(central, deliv, hits=()):
+    """master_briefing_service.selectAgentPicks 와 같은 규칙 (hits = hit_picks 결과, 맨 앞)"""
     if not central:
         return []
     rank1 = {}
@@ -243,7 +273,13 @@ def briefing_picks(central, deliv):
     focus = sorted([f for f in central.get("focus_regions") or [] if f.get("region_id")],
                    key=lambda f: f.get("rank") or 1 << 30)
     out, used = [], set()
+    for h in hits:
+        if len(out) < 5 and h["code"] not in used:
+            used.add(h["code"])
+            out.append(h)
     for f in focus[:5]:
+        if len(out) >= 5:
+            break
         x = rank1.get(f["region_id"])
         if not x or not x["store_code"] or x["store_code"] in used:
             continue
@@ -261,17 +297,18 @@ def briefing_picks(central, deliv):
     return out
 
 
-def stores_block(d):
+def stores_block(d, agents=None):
+    """agents = 이번 회차(D) 지방장 보고 — 다음 회차(N) 선정의 적중 지방장. D 회차 선정은 D-1 회차 지방장 보고(d['debrief_prev'])"""
     D, N = d["D"], d["N"]
     tier = {}
     for r in d["wh"]:
         t = TIER.get(r["prize_tier"])
         if t:
             tier[r["dhlottery_code"]] = min(t, tier.get(r["dhlottery_code"], 9))
-    prev = briefing_picks(d["central"][D], d["deliv"][D])
+    prev = briefing_picks(d["central"][D], d["deliv"][D], hit_picks(d.get("debrief_prev")) if D >= HIT_RULE_FROM else ())
     for p in prev:
         p["tier"] = tier.get(p["code"], 0)
-    nxt = briefing_picks(d["central"][N], d["deliv"][N])
+    nxt = briefing_picks(d["central"][N], d["deliv"][N], hit_picks(agents) if N >= HIT_RULE_FROM else ())
     prev_codes = {p["code"]: p for p in prev}
     for p in nxt:
         o = prev_codes.get(p["code"])
@@ -484,8 +521,8 @@ def run(db, D=None):
                                       "target_round": f"eq.{d['D']}", "limit": "1"})
     d["track"] = tr[0]["payload"] if tr else None
     nums = numbers_block(d)
-    stores = stores_block(d)
     agents = agents_block(d)
+    stores = stores_block(d, agents)
     popc = popularity_check(d)
     nxt = next_block(d, nums)
     missing = []

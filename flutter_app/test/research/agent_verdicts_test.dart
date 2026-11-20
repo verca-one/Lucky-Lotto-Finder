@@ -3,6 +3,7 @@ import 'package:flutter_app/services/research/agent_replay_repository.dart';
 import 'package:flutter_app/services/research/agent_research_repository.dart';
 import 'package:flutter_app/services/research/agent_verdicts.dart';
 import 'package:flutter_app/services/research/master_briefing_service.dart';
+import 'package:flutter_app/services/research/round_debrief.dart';
 
 AgentHypothesis _h(String kind, String status, {String? verdict, String id = 'H'}) => AgentHypothesis.fromMap({
       'hypothesis_id': id,
@@ -282,6 +283,33 @@ void main() {
 
     test('자료 없음 → 빈 목록 (이전 규칙으로 대체)', () {
       expect(selectAgentPicks(focus: const [], rank1ByAgent: const {}, storeTop: const []), isEmpty);
+    });
+
+    test('적중 지방장 먼저 — 1등 맞힌 지방장 → 추정 확률 높은 순 · 인터넷 · 못 맞힌 곳 · 중복 제외 · 최대 3 → 나머지는 주목 지역 · 전국 상위 (서버 hit_picks 와 같은 결과)', () {
+      final db = AgentDebrief.fromPayload({
+        'round': 1250, 'next': 1251, 'summary': {},
+        'agents': [
+          {'id': '서울|노원구', 'label': '서울 노원구', 'prev': [['X', 'x', 1, 0.02, 2]], 'next': [['s7', '칠', 1, 0.03, 'new', null]]},
+          {'id': '부산|동구', 'label': '부산 동구', 'prev': [['Y', 'y', 3, 0.01, 1]], 'next': [['s9', '구', 1, 0.01, 'kept', 1]]},
+          {'id': '경기|수원시', 'label': '경기 수원시', 'prev': [['Z', 'z', 1, 0.01, 2]], 'next': [['s8', '팔', 1, 0.05, 'new', null]]},
+          {'id': 'internet', 'label': '인터넷', 'prev': [['I', 'i', 1, 0.09, 1]], 'next': [['s0', '넷', 1, 0.09, 'kept', 1]]},
+          {'id': '대구|중구', 'label': '대구 중구', 'prev': [['Q', 'q', 1, 0.09, 0]], 'next': [['s6', '육', 1, 0.09, 'kept', 1]]},
+          {'id': '광주|북구', 'label': '광주 북구', 'prev': [['W', 'w', 2, 0.01, 2]], 'next': [['s8', '팔', 1, 0.02, 'new', null]]},
+        ],
+      });
+      final hits = hitAgentPicks(db);
+      expect(hits.map((h) => h.code), ['s9', 's8', 's7']);
+      expect(hits.first.source, MasterPickSource.agentHit);
+      expect(hits.first.why, '지난 회차(1250회) 적중 지방장 부산 동구 — TOP5에서 1등 적중 · 1251회 납품 1위');
+      expect(hits[1].pFirst, 0.05);
+      final picks = selectAgentPicks(
+        focus: const [AgentFocusRegion(regionId: 'A', rank: 1)],
+        rank1ByAgent: {'A': d('A', 's1')},
+        storeTop: const [AgentCentralStore(storeCode: 's9'), AgentCentralStore(storeCode: 's2'), AgentCentralStore(storeCode: 's3')],
+        hits: hits,
+      );
+      expect(picks.map((p) => p.code), ['s9', 's8', 's7', 's1', 's2']);
+      expect(hitAgentPicks(null), isEmpty);
     });
   });
 

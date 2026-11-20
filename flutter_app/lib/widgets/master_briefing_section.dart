@@ -302,7 +302,8 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
         Text(
             b.agentPipeline
                 ? '선정: 지방장 연구 — ${agentModelLabel(b.agentRef?.model)} · 목표 ${b.agentRef?.target ?? '-'}회 '
-                    '(중앙 엔진 주목 지역 상위 5곳의 지방장 납품 1위 → 전국 상위 후보로 채움)'
+                    '(${b.targetRound >= kHitRuleFrom ? '지난 회차 적중 지방장 납품 1위 최대 $kHitSlots곳 먼저 → ' : ''}'
+                    '중앙 엔진 주목 지역 상위 5곳의 지방장 납품 1위 → 전국 상위 후보로 채움)'
                 : '선정: 이전 규칙 (Store 엔진 지역 후보·신흥·유명 명당)${b.fallbackReason == null ? '' : ' — 지방장 자료 대체 사유: ${b.fallbackReason}'}',
             style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700)),
         if (kinds.isNotEmpty)
@@ -341,7 +342,7 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
               rank: e.key + 1,
               code: r.store.code,
               name: r.store.name,
-              subtitle: r.store.address,
+              subtitle: e.value.source == MasterPickSource.agentHit ? '🎯 적중 지방장 추천 · ${r.store.address}' : r.store.address,
               trailing: e.value.pAdj == null ? '1등 $first · 2등 $second' : pct(e.value.pAdj!),
               color: color,
               child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
