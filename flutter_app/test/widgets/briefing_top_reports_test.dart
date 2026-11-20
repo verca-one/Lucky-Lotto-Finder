@@ -117,4 +117,31 @@ void main() {
     expect(find.text('부산 동구 · 안보임'), findsNothing);
     expect(find.byKey(const ValueKey('fav_star_E')), findsOneWidget); // ★ 즐겨찾기
   });
+
+  test('연구 흐름 경고 — 당첨자 수 하루 넘게 미수집 · 월 0시+6시간 뒤 가설/비인기 미등록 · 복기 제미나이 실패', () {
+    DateTime nov(int d, int h) => DateTime.utc(2026, 11, d, h).subtract(const Duration(hours: 9)); // KST
+    const stuck = PipelineSnapshot(latestWin: 1250, prizeLatest: 1248, hasHypothesis: false, hasPopularity: false);
+    expect(pipelineWarnings(stuck, nov(15, 10)), isEmpty); // 추첨(11/14 20:35) 뒤 하루 안 됨
+    final day = pipelineWarnings(stuck, nov(15, 22));
+    expect(day, ['당첨자 수 1250회 미수집 (저장된 최신 1248회) — 제미나이 가설 · 비인기 번호가 대기 중입니다.']);
+    final mon = pipelineWarnings(stuck, nov(16, 8));
+    expect(mon.sublist(1), ['④ 제미나이 가설 1251회 번호 미등록 (당첨자 수 대기)', '② 비인기 1251회 번호 미등록 (당첨자 수 대기)']);
+    final rv = pipelineWarnings(const PipelineSnapshot(latestWin: 1250, prizeLatest: 1250, reviewSource: 'rule',
+        reviewError: "Gemini API 오류: InternalServerError — Error code: 503 - high demand"), nov(17, 9));
+    expect(rv.single, startsWith('추천번호 복기(1250회) — 제미나이 서버 붐빔(503)로'));
+    expect(pipelineWarnings(const PipelineSnapshot(latestWin: 1250, prizeLatest: 1250, reviewSource: 'gemini'), nov(17, 9)), isEmpty);
+  });
+
+  testWidgets('연구 흐름 경고 상자 — 문제 있을 때만 보임', (tester) async {
+    final now = DateTime.utc(2026, 11, 16, 0);
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: PipelineAlertReport(clock: () => now,
+        loader: () async => const PipelineSnapshot(latestWin: 1250, prizeLatest: 1250)))));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('pipeline_alert_report')), findsNothing);
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: PipelineAlertReport(key: const ValueKey('b'), clock: () => now,
+        loader: () async => const PipelineSnapshot(latestWin: 1250, prizeLatest: 1248, hasHypothesis: false)))));
+    await tester.pump();
+    expect(find.byKey(const ValueKey('pipeline_alert_report')), findsOneWidget);
+    expect(find.textContaining('④ 제미나이 가설 1251회 번호 미등록'), findsOneWidget);
+  });
 }

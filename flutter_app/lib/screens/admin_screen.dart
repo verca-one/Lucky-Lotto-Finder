@@ -1347,6 +1347,7 @@ class _BriefingDetailScreenState extends State<BriefingDetailScreen> {
           const SpeettoAlertCard(),
           // 맨 위 보고 — 수집 현황(실시간) · 지방장 적중(지역별 맞춘 판매점) · 지방장 연구 요약(문장만)
           const CollectStatusReport(),
+          const PipelineAlertReport(),
           const AgentHitsReport(),
           const AgentResearchDigest(),
           const ManualRecommendCard(),

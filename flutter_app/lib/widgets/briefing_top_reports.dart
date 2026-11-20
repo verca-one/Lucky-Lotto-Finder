@@ -1,10 +1,12 @@
 // 엔진 브리핑 맨 위 보고 3종 (저장본·DB 읽기만, 동행복권 접속 없음)
-//   · 수집 현황 — 로또 · 연금 최신 회차 당첨번호 / 당첨 판매점 수집 여부 (2분마다 다시 확인)
+//   · 수집 현황 — 로또 · 연금 최신 회차 당첨번호 / 당첨 판매점 수집 여부 (새로고침 버튼으로만 다시 확인)
+//   · 연구 흐름 경고 — 당첨자 수 미수집 · 제미나이 가설/비인기 미등록 · 복기 제미나이 실패 (문제 있을 때만)
 //   · 지방장 적중 — 지난 회차 지방장 TOP5 중 실제 1·2등이 나온 판매점만 지역별로 (지방장보고 agent_debrief)
 //   · 지방장 연구 요약 — 유명 명당 반복 · 지역 간 동시 당첨 · 선행·후행 공간전이 · 새로 공유된 가설을 짧은 문장으로 (근거 수치 생략)
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../screens/admin_agent_research_screen.dart';
 import '../services/research/agent_research_repository.dart';
@@ -116,6 +118,123 @@ class _CollectStatusReportState extends State<CollectStatusReport> {
         if (late)
           Text('서버 예약 실행이 밀리는 중입니다. 판매점 크롤러는 그대로 두므로, 오래 늦어지면 수동 실행을 요청하세요.',
               style: TextStyle(fontSize: 10.5, color: Colors.grey.shade800)),
+      ]),
+    );
+  }
+}
+
+/// 연구 흐름 상태 — 제미나이 가설 · 비인기 번호가 막혔는지 보는 데 필요한 것만
+class PipelineSnapshot {
+  final int latestWin; // 당첨번호가 들어온 최신 회차
+  final int? prizeLatest; // 당첨자 수(research_prize_stats) 최신 회차
+  final bool hasHypothesis, hasPopularity; // 다음 회차(latestWin+1) 등록 여부
+  final String? reviewSource, reviewError; // 다음 회차용 추천번호 복기(sr-1.0) — null 이면 아직 없음
+  const PipelineSnapshot({required this.latestWin, this.prizeLatest, this.hasHypothesis = true, this.hasPopularity = true,
+      this.reviewSource, this.reviewError});
+}
+
+String _aiErrorText(String? e) {
+  final s = e ?? '';
+  if (RegExp(r'503|high demand|unavailable', caseSensitive: false).hasMatch(s)) return '제미나이 서버 붐빔(503)';
+  if (RegExp(r'disconnect|Connection|timed? ?out', caseSensitive: false).hasMatch(s)) return '제미나이 연결 끊김';
+  if (s.contains('GEMINI_API_KEY')) return '제미나이 키 없음';
+  return s.isEmpty ? '원인 미상' : (s.length > 60 ? '${s.substring(0, 60)}…' : s);
+}
+
+/// 연구 흐름 경고 (순수 함수 — 테스트 대상). 워크플로가 '성공'으로 찍혀도 실제로 막힌 곳을 문장으로.
+///   당첨자 수: 추첨 하루 뒤에도 미수집 · 가설/비인기: 번호 공개(월 0시) 6시간 뒤에도 미등록 · 복기: 제미나이 실패로 기본 규칙 대체
+List<String> pipelineWarnings(PipelineSnapshot s, DateTime nowUtc) {
+  final draw = drawTimeUtc('lotto', s.latestWin);
+  final next = s.latestWin + 1;
+  final since = nowUtc.difference(draw);
+  final out = <String>[];
+  final prizeLate = (s.prizeLatest ?? 0) < s.latestWin && since > const Duration(hours: 24);
+  if (prizeLate) {
+    out.add('당첨자 수 ${s.latestWin}회 미수집 (저장된 최신 ${s.prizeLatest ?? '-'}회) — 제미나이 가설 · 비인기 번호가 대기 중입니다.');
+  }
+  final released = since > const Duration(days: 1, hours: 9, minutes: 25); // 월 0시 KST + 6시간 ≈ 토 20:35 + 33시간 25분
+  if (released && !s.hasHypothesis) out.add('④ 제미나이 가설 $next회 번호 미등록${prizeLate ? ' (당첨자 수 대기)' : ''}');
+  if (released && !s.hasPopularity) out.add('② 비인기 $next회 번호 미등록${prizeLate ? ' (당첨자 수 대기)' : ''}');
+  if (s.reviewSource == 'rule') {
+    out.add('추천번호 복기(${s.latestWin}회) — ${_aiErrorText(s.reviewError)}로 제미나이 대신 기본 규칙이 보완 규칙을 냈습니다. 다음 실행 때 제미나이로 다시 시도합니다.');
+  }
+  return out;
+}
+
+/// 수집 현황 아래 — 연구 흐름 경고 (문제 있을 때만 보임)
+class PipelineAlertReport extends StatefulWidget {
+  final Future<PipelineSnapshot?> Function()? loader;
+  final DateTime Function()? clock;
+  const PipelineAlertReport({super.key, this.loader, this.clock});
+  @override
+  State<PipelineAlertReport> createState() => _PipelineAlertReportState();
+}
+
+class _PipelineAlertReportState extends State<PipelineAlertReport> {
+  PipelineSnapshot? _s;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  static Future<PipelineSnapshot?> _fetch() async {
+    final db = Supabase.instance.client;
+    final w = await db.from('lotto_winning_numbers').select('round').order('round', ascending: false).limit(1);
+    if ((w as List).isEmpty) return null;
+    final latest = (w.first['round'] as num).toInt();
+    final p = await db.from('research_prize_stats').select('round').order('round', ascending: false).limit(1);
+    final regs = await db.from('research_predictions').select('algorithm')
+        .eq('target_round', latest + 1).inFilter('algorithm', ['hypothesis_track', 'popularity_pick']);
+    final algos = {for (final r in regs as List) r['algorithm']};
+    final rv = await db.from('research_results').select('payload->>source,payload->>ai_error')
+        .eq('research_type', 'set_review').eq('model_version', 'sr-1.0').eq('target_round', latest + 1).limit(1);
+    final r = (rv as List).isEmpty ? null : rv.first;
+    return PipelineSnapshot(
+      latestWin: latest,
+      prizeLatest: (p as List).isEmpty ? null : (p.first['round'] as num).toInt(),
+      hasHypothesis: algos.contains('hypothesis_track'),
+      hasPopularity: algos.contains('popularity_pick'),
+      reviewSource: r?['source'] as String?,
+      reviewError: r?['ai_error'] as String?,
+    );
+  }
+
+  Future<void> _load() async {
+    try {
+      final s = await (widget.loader ?? _fetch)();
+      if (mounted) setState(() => _s = s);
+    } catch (_) {
+      // 읽기 실패 — 경고 없음으로 둠
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final s = _s;
+    if (s == null) return const SizedBox.shrink();
+    final w = pipelineWarnings(s, (widget.clock ?? DateTime.now)().toUtc());
+    if (w.isEmpty) return const SizedBox.shrink();
+    const c = Color(0xFFBF360C);
+    return Container(
+      key: const ValueKey('pipeline_alert_report'),
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: const Color(0xFFFFF3E0),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: c.withValues(alpha: 0.35)),
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        const Row(children: [
+          Icon(Icons.report_problem_rounded, size: 18, color: c),
+          SizedBox(width: 6),
+          Expanded(child: Text('제미나이 · 연구 흐름 경고', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: c))),
+        ]),
+        for (final x in w)
+          Text('• $x', style: const TextStyle(fontSize: 12, height: 1.45, fontWeight: FontWeight.w700, color: Colors.black87)),
       ]),
     );
   }
