@@ -19,6 +19,7 @@ from datetime import datetime, timedelta, timezone
 import os
 import re
 import sys
+import time
 
 import research_hypothesis_factory as F
 import research_pension as PN
@@ -216,16 +217,23 @@ def ask_gemini(prompt, system=None, sch=None):
     raw = os.environ["GEMINI_API_KEY"]
     m = re.search(r"AIza[0-9A-Za-z_\-]{35}", raw)   # 붙여넣기 때 섞인 보이지 않는 문자·중복 제거
     client = genai.Client(api_key=m.group(0) if m else raw.strip())
-    try:
-        it = client.interactions.create(
-            model=GEMINI_MODEL,
-            system_instruction=system or SYSTEM,
-            input=prompt,
-            response_format={"type": "text", "mime_type": "application/json", "schema": _strip_additional(sch or schema())},
-        )
-    except Exception as e:  # SDK 예외 종류가 버전마다 달라 구글 오류 문장을 남김 (키처럼 보이는 문자열은 가림)
-        msg = re.sub(r"AIza[0-9A-Za-z_\-]{20,}", "AIza***", str(e))[:400]
-        raise AiFailed(f"Gemini API 오류: {type(e).__name__} — {msg}") from e
+    for attempt in range(3):
+        try:
+            it = client.interactions.create(
+                model=GEMINI_MODEL,
+                system_instruction=system or SYSTEM,
+                input=prompt,
+                response_format={"type": "text", "mime_type": "application/json", "schema": _strip_additional(sch or schema())},
+            )
+            break
+        except Exception as e:  # SDK 예외 종류가 버전마다 달라 구글 오류 문장을 남김 (키처럼 보이는 문자열은 가림)
+            msg = re.sub(r"AIza[0-9A-Za-z_\-]{20,}", "AIza***", str(e))[:400]
+            # 일시 오류(붐빔 503 · 429 · 연결 끊김)는 기다렸다 다시 — 2026-11 503 으로 3주 연속 복기가 규칙 대체됨
+            if attempt < 2 and re.search(r"503|429|500|high demand|unavailable|disconnect|timed? ?out|Connection", msg, re.I):
+                print(f"[gemini] 일시 오류 — {30 * (attempt + 1)}초 뒤 다시 ({attempt + 1}/3): {type(e).__name__}", file=sys.stderr)
+                time.sleep(30 * (attempt + 1))
+                continue
+            raise AiFailed(f"Gemini API 오류: {type(e).__name__} — {msg}") from e
     status = getattr(it, "status", "completed")
     if status not in ("completed", None):
         raise AiFailed(f"Gemini 응답 상태 {status}")

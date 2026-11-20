@@ -257,11 +257,14 @@ def run(db, D=None, dry=False, force=False):
         D = max(wins)
     N = D + 1
     if not force:
-        have = db.get("research_results", {"select": "id", "research_type": f"eq.{RESULT_TYPE}", "model_version": f"eq.{VERSION}",
+        have = db.get("research_results", {"select": "id,payload->>source", "research_type": f"eq.{RESULT_TYPE}", "model_version": f"eq.{VERSION}",
                                            "target_round": f"eq.{N}", "limit": "1"})
-        if have:
+        # 제미나이 실패로 기본 규칙만 저장됐으면 다음 실행 때 제미나이로 다시 (제미나이가 보완하는 게 이 단계의 역할)
+        if have and have[0].get("source") != "rule":
             print(f"{D}회 추천번호 복기 이미 있음 — 건너뜀 (--force 로 다시)")
             return None
+        if have:
+            print(f"{D}회 복기는 기본 규칙(제미나이 실패)으로 저장돼 있음 — 제미나이로 다시 시도")
     regs = db.all("research_predictions", {"select": "algorithm,version,target_round,sets,generated_at",
                                            "algorithm": f"in.({','.join(a[1] for a in AREAS)})",
                                            "target_round": f"gte.{D - LOOKBACK - 1}", "order": "target_round,algorithm,version"})
