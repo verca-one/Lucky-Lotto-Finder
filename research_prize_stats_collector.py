@@ -81,7 +81,14 @@ def normalize(item):
     return row
 
 
-def collect(from_round, to_round):
+# 2026-10-11 사용자 지시: PC(로컬)에서 동행복권 접속 금지. GitHub Actions(서버)에서만 수집 허용.
+# 로컬에서는 --upload-only(기존 JSON → DB)만 가능.
+DHLOTTERY_ACCESS_FORBIDDEN = os.getenv("GITHUB_ACTIONS") != "true"
+
+
+def collect(from_round, to_round, keep_newer=False):
+    if DHLOTTERY_ACCESS_FORBIDDEN:
+        raise SystemExit("PC에서 동행복권 접속이 금지되어 있습니다 (2026-10-11). 수집은 GitHub Actions 에서만 실행됩니다. 로컬은 --upload-only 만 가능합니다.")
     s = session_with_warmup()
     rows = {}
     cursor = to_round
@@ -93,7 +100,8 @@ def collect(from_round, to_round):
             break
         for it in page:
             r = normalize(it)
-            if r["round"] and from_round <= r["round"] <= to_round:
+            # keep_newer: '최신 회차' 조회가 옛 회차(예: 1248)를 돌려줘도 같은 페이지에 실린 더 새 회차(1249·1250)를 버리지 않음
+            if r["round"] and from_round <= r["round"] and (keep_newer or r["round"] <= to_round):
                 rows[r["round"]] = r
         min_round = min(to_int(it.get("ltEpsd")) or 10**9 for it in page)
         print(f"[fetch] {min_round}~{max(to_int(it.get('ltEpsd')) or 0 for it in page)} ({len(rows)} collected)", file=sys.stderr)
@@ -141,6 +149,8 @@ def main():
         print(json.dumps({"uploaded": n, "rows": len(rows)}))
         return
 
+    if DHLOTTERY_ACCESS_FORBIDDEN:
+        raise SystemExit("PC에서 동행복권 접속이 금지되어 있습니다 (2026-10-11). 수집은 GitHub Actions 에서만 실행됩니다. 로컬은 --upload-only 만 가능합니다.")
     to_round = a.to_round
     if to_round is None:
         s = session_with_warmup()
@@ -148,7 +158,8 @@ def main():
         to_round = max(to_int(it.get("ltEpsd")) or 0 for it in latest) if latest else 1244
     from_round = a.from_round if a.latest is None else max(1, to_round - a.latest + 1)
 
-    rows = collect(from_round, to_round)
+    rows = collect(from_round, to_round, keep_newer=a.to_round is None)
+    to_round = max([to_round] + [x["round"] for x in rows])
     json.dump({"source": API, "collected_at": datetime.now(timezone.utc).isoformat(),
                "from": from_round, "to": to_round, "count": len(rows), "rows": rows},
               open(a.out, "w", encoding="utf-8"), ensure_ascii=False, indent=1)
