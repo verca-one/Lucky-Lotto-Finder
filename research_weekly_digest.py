@@ -6,10 +6,12 @@
         이번 주 AI·비서 활동(가설 수·판정·아깝게 탈락한 가설)
   · 토요일 아침 (--stage sat): 같은 항목을 다시 계산해 월요일과 비교 → '변경점 없음' / '변경점 있음(무엇이)'
       - 구매할 번호는 사전 등록 장부에 잠겨 있어 자동으로 바뀌지 않는다. 새로 적용 후보가 생기면 '반영 여부 결정 필요'로 알린다.
+  · 미리보기 (--stage preview, 매일 전략 실행 뒤): 토요일 점검과 같은 비교를 미리 해 payload['preview'] 에만 남긴다
+      - 앱은 변경점이 있으면 ❗ 를 띄우고, 관리자가 확인 후 [지금 반영] → research_weekly_requests → 토요일 점검 즉시 실행
 저장: research_results (research_type weekly_digest, model_version wd-1.0, training_end_round=D, target_round=N) — 서버 전용
 읽기: research_predictions · strategy_hypotheses · strategy_directions · lotto_winning_numbers (크롤링 테이블은 읽기만)
 
-사용: python research_weekly_digest.py --stage wed|sat [--dry-run]
+사용: python research_weekly_digest.py --stage wed|sat|preview [--dry-run]
 """
 
 import argparse
@@ -127,14 +129,17 @@ def run(db, stage, dry=False):
             return None
         payload["wed"] = snap
     else:
+        if stage == "preview" and (payload.get("sat") or not payload.get("wed")):
+            print(f"{N}회 미리보기 건너뜀 — {'토요일 점검 이미 반영' if payload.get('sat') else '월요일 취합 전'}")
+            return payload
         snap = snapshot(db, D, N, w["draw_date"])
         if not payload.get("wed"):
-            payload["sat"] = dict(snap, changes=[], verdict="월요일 취합 기록이 없어 비교할 수 없습니다 (엔진 실행 여부 확인 필요)")
+            payload[stage] = dict(snap, changes=[], verdict="월요일 취합 기록이 없어 비교할 수 없습니다 (엔진 실행 여부 확인 필요)")
         else:
             changes, verdict = compare(payload["wed"], snap)
-            payload["sat"] = dict(snap, changes=changes, verdict=verdict)
-        print(payload["sat"]["verdict"])
-        for c in payload["sat"]["changes"]:
+            payload[stage] = dict(snap, changes=changes, verdict=verdict)
+        print(payload[stage]["verdict"])
+        for c in payload[stage]["changes"]:
             print("  ·", c["note"])
     a = payload[stage]["activity"]
     print(f"{N}회 {stage}: 이번 주 가설 {a['hypotheses']}개 {a['by_status']} · 적용 후보 {len(payload[stage]['qualifying'])}개")
@@ -149,7 +154,7 @@ def run(db, stage, dry=False):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--stage", choices=["wed", "sat"], required=True)
+    ap.add_argument("--stage", choices=["wed", "sat", "preview"], required=True)
     ap.add_argument("--dry-run", action="store_true")
     a = ap.parse_args()
     url, key = os.environ.get("SUPABASE_URL", ""), os.environ.get("SUPABASE_KEY", "")

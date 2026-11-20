@@ -46,15 +46,15 @@ void main() {
   testWidgets('토요일 반영 — 대기 중 → 누르면 다시 확인 · 반영 알림 · 변경점 있으면 색 → 누르면 표·그래프 / 없으면 흐리게', (t) async {
     Map<String, dynamic>? sat;
     await t.pumpWidget(MaterialApp(home: Scaffold(body: SaturdayFinalAlertButton(
-      target: 1248, trackLoader: (_) async => null,
+      target: 1248, trackLoader: (_) async => null, requestStatus: (_) async => null,
       loader: (_) async => WeeklyCheck.fromPayload({'round': 1247, 'next': 1248, 'wed': snap(), if (sat != null) 'sat': sat}),
     ))));
     await t.pump();
-    expect(find.text('토요일 반영 알림 · 토 8시 최종 점검 대기 중'), findsOneWidget);
+    expect(find.text('토요일 최종본 지금 반영 · 변경점 없음 (토 8시 자동)'), findsOneWidget);
     sat = {...snap(), 'changes': [{'type': 'new_hypothesis', 'note': '새로 적용 후보가 된 가설: 홀수 적은 쪽'}], 'verdict': '변경점 있음 — 확인하세요'};
     // 자동 확인 없음 — 눌러야 다시 확인
     await t.pump(const Duration(minutes: 5));
-    expect(find.text('토요일 반영 알림 · 토 8시 최종 점검 대기 중'), findsOneWidget);
+    expect(find.text('토요일 최종본 지금 반영 · 변경점 없음 (토 8시 자동)'), findsOneWidget);
     await t.tap(find.byKey(const ValueKey('sat_final_alert')));
     await t.pump();
     await t.pump();
@@ -113,5 +113,33 @@ void main() {
     expect(find.text('유지 2'), findsOneWidget);
     expect(find.text('② 비인기 — 월요일 vs 토요일'), findsOneWidget);
     expect(find.text('① 공식 — 월요일 vs 토요일'), findsOneWidget);
+  });
+
+  testWidgets('토요일 반영 전 — 미리보기 변경점 있으면 ❗ → 누르면 변경점 확인 → [지금 반영] → 확인 → 요청됨', (t) async {
+    t.view.physicalSize = const Size(1080, 2340);
+    t.view.devicePixelRatio = 3;
+    addTearDown(t.view.reset);
+    final asked = <int>[];
+    await t.pumpWidget(MaterialApp(home: Scaffold(body: SaturdayFinalAlertButton(
+      target: 1251, trackLoader: (_) async => null, requestStatus: (_) async => null,
+      requester: (r) async => asked.add(r),
+      loader: (_) async => WeeklyCheck.fromPayload({'round': 1250, 'next': 1251, 'wed': snap(),
+        'preview': {...snap(), 'changes': [{'type': 'new_hypothesis', 'note': '새로 적용 후보가 된 가설: 홀수 적은 쪽'}], 'verdict': '변경점 있음'}}),
+    ))));
+    await t.pumpAndSettle();
+    expect(find.byKey(const ValueKey('sat_pending_mark')), findsOneWidget);
+    expect(find.text('변경점 1건 — 확인하고 지금 반영'), findsOneWidget);
+    await t.tap(find.byKey(const ValueKey('sat_final_alert')));
+    await t.pumpAndSettle();
+    expect(find.text('1251회 토요일 최종본 변경점 (미리보기)'), findsOneWidget);
+    expect(find.text('＋ 홀수 적은 쪽'), findsOneWidget);
+    await t.tap(find.byKey(const ValueKey('sat_apply_now')));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const ValueKey('sat_apply_confirm')));
+    await t.pumpAndSettle();
+    expect(asked, [1251]);
+    expect(find.text('토요일 최종본 반영 요청됨 · 서버 처리 중'), findsOneWidget);
+    expect(find.byKey(const ValueKey('sat_pending_mark')), findsNothing);
+    await t.pumpWidget(const SizedBox());
   });
 }

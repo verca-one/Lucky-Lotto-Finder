@@ -74,7 +74,12 @@ class SaturdayFinalChangesScreen extends StatelessWidget {
   final int target;
   final WeeklyCheck? weekly;
   final HypothesisTrack? track;
-  const SaturdayFinalChangesScreen({super.key, required this.target, this.weekly, this.track});
+
+  /// 반영 전 미리보기 — 아래에 [지금 반영] 버튼 (누르면 확인 뒤 서버 요청, true 면 화면 닫음)
+  final bool preview, previewReady;
+  final Future<bool> Function(BuildContext)? onApply;
+  const SaturdayFinalChangesScreen(
+      {super.key, required this.target, this.weekly, this.track, this.preview = false, this.previewReady = true, this.onApply});
 
   @override
   Widget build(BuildContext context) {
@@ -82,11 +87,37 @@ class SaturdayFinalChangesScreen extends StatelessWidget {
     final color = c.any ? const Color(0xFFE65100) : Colors.blueGrey;
     return Scaffold(
       appBar: AppBar(
-        title: Text('$target회 토요일 최종본 변경점', style: const TextStyle(fontWeight: FontWeight.w800)),
+        title: Text('$target회 토요일 최종본 변경점${preview ? ' (미리보기)' : ''}', style: const TextStyle(fontWeight: FontWeight.w800)),
         backgroundColor: color,
         foregroundColor: Colors.white,
       ),
+      bottomNavigationBar: onApply == null
+          ? null
+          : SafeArea(
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                child: FilledButton.icon(
+                  key: const ValueKey('sat_apply_now'),
+                  style: FilledButton.styleFrom(backgroundColor: const Color(0xFF4527A0), padding: const EdgeInsets.symmetric(vertical: 14)),
+                  onPressed: () async {
+                    if (await onApply!(context) && context.mounted) Navigator.pop(context);
+                  },
+                  icon: const Icon(Icons.bolt_rounded),
+                  label: Text(c.any ? '이 변경점으로 지금 반영' : '토요일 최종본 지금 반영',
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900)),
+                ),
+              ),
+            ),
       body: ListView(padding: const EdgeInsets.all(16), children: [
+        if (preview)
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Text(
+                previewReady
+                    ? '토요일 8시 점검 전 미리보기입니다 (매일 17시 서버 계산). 아래 [지금 반영]을 누르면 서버가 바로 최종 점검을 돌려 반영합니다.'
+                    : '아직 미리보기가 없습니다 — 매일 17시 서버 계산 뒤 생깁니다. [지금 반영]을 누르면 서버가 바로 최종 점검을 돌립니다.',
+                style: TextStyle(fontSize: 11.5, color: Colors.grey.shade700, height: 1.4)),
+          ),
         Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(color: color.withValues(alpha: 0.08), borderRadius: BorderRadius.circular(12)),

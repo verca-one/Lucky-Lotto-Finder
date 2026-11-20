@@ -9,13 +9,20 @@ import '../services/research/hypothesis_track.dart';
 class WeeklyCheck {
   final int round, next;
   final Map<String, dynamic>? wed, sat;
-  const WeeklyCheck(this.round, this.next, this.wed, this.sat);
+
+  /// 토요일 점검 전 미리보기 (매일 전략 실행 뒤 서버가 계산 — 같은 비교, 반영은 안 됨)
+  final Map<String, dynamic>? preview;
+  const WeeklyCheck(this.round, this.next, this.wed, this.sat, {this.preview});
 
   factory WeeklyCheck.fromPayload(Map<String, dynamic> p) => WeeklyCheck(
         (p['round'] as num?)?.toInt() ?? 0, (p['next'] as num?)?.toInt() ?? 0,
         p['wed'] is Map ? Map<String, dynamic>.from(p['wed'] as Map) : null,
         p['sat'] is Map ? Map<String, dynamic>.from(p['sat'] as Map) : null,
+        preview: p['preview'] is Map ? Map<String, dynamic>.from(p['preview'] as Map) : null,
       );
+
+  /// 미리보기를 토요일 자리에 넣은 사본 — 변경점 화면을 그대로 쓰기 위해
+  WeeklyCheck get asPreview => WeeklyCheck(round, next, wed, preview);
 
   List<Map<String, dynamic>> get changes =>
       ((sat?['changes'] as List?) ?? const []).map((e) => Map<String, dynamic>.from(e as Map)).toList();
@@ -117,14 +124,34 @@ class WeeklyCheckCard extends StatelessWidget {
   }
 }
 
-/// 주요 브리핑 머리 — 토요일 반영 알림 버튼
-///   반영 전: 회색 '대기 중' (누르면 다시 확인) → 반영되면 알림(스낵바)
+/// 토요일 최종본 [지금 반영] 요청 — 서버(research_request_poll.py, 10분마다)가 토요일 점검을 바로 실행 (회차당 1번)
+class SaturdayApply {
+  /// 요청 상태 (null = 요청 없음 · pending · dispatched · done)
+  static Future<String?> status(int target) async {
+    final rows = await Supabase.instance.client
+        .from('research_weekly_requests').select('status').eq('target_round', target).limit(1);
+    final l = rows as List;
+    return l.isEmpty ? null : '${l.first['status']}';
+  }
+
+  static Future<void> request(int target) =>
+      Supabase.instance.client.from('research_weekly_requests').insert({'target_round': target});
+}
+
+/// 주요 브리핑 머리 — 토요일 반영 버튼
+///   반영 전: 미리보기 변경점이 있으면 ❗(주황) · 없으면 회색 '지금 반영'. 누르면 변경점 확인 → [지금 반영] → 서버 요청
+///   요청 뒤: '반영 요청됨 · 서버 처리 중' → 반영되면 알림(스낵바)
 ///   반영 후: 변경점이 있으면 색 · 없으면 흐리게. 누르면 변경점 표·그래프 화면
 class SaturdayFinalAlertButton extends StatefulWidget {
   final int target;
   final Future<WeeklyCheck?> Function(int)? loader;
   final Future<HypothesisTrack?> Function(int)? trackLoader;
-  const SaturdayFinalAlertButton({super.key, required this.target, this.loader, this.trackLoader});
+
+  /// 테스트용: 반영 요청 상태 읽기 · 요청 넣기
+  final Future<String?> Function(int)? requestStatus;
+  final Future<void> Function(int)? requester;
+  const SaturdayFinalAlertButton(
+      {super.key, required this.target, this.loader, this.trackLoader, this.requestStatus, this.requester});
   @override
   State<SaturdayFinalAlertButton> createState() => _SaturdayFinalAlertButtonState();
 }
@@ -132,6 +159,7 @@ class SaturdayFinalAlertButton extends StatefulWidget {
 class _SaturdayFinalAlertButtonState extends State<SaturdayFinalAlertButton> {
   WeeklyCheck? _w;
   HypothesisTrack? _t;
+  String? _req; // 반영 요청 상태
   bool _loaded = false;
 
   @override
@@ -151,11 +179,16 @@ class _SaturdayFinalAlertButtonState extends State<SaturdayFinalAlertButton> {
     try {
       t = await (widget.trackLoader ?? HypothesisTrack.load)(widget.target);
     } catch (_) {}
+    String? req;
+    try {
+      req = await (widget.requestStatus ?? SaturdayApply.status)(widget.target);
+    } catch (_) {} // 요청 테이블 없음(research_v14 미적용) — 요청 없음으로
     if (!mounted) return;
     final newly = !first && _w?.sat == null && w?.sat != null;
     setState(() {
       _w = w;
       _t = t;
+      _req = req;
       _loaded = true;
     });
     if (newly) {
@@ -167,16 +200,57 @@ class _SaturdayFinalAlertButtonState extends State<SaturdayFinalAlertButton> {
     }
   }
 
+  bool get _requested => _req == 'pending' || _req == 'dispatched';
+
   Future<void> _open() async {
     if (_w?.sat == null) {
       await _check();
       if (!mounted || _w?.sat != null) return;
-      ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(
-          content: Text('아직 반영 전입니다 — 토요일 아침 8시 최종 점검이 반영되면 이 버튼이 바뀝니다.')));
+      if (_requested) {
+        ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(
+            content: Text('반영 요청됨 — 서버가 10분 안에 토요일 점검을 시작합니다 (실행 5~10분). 끝나면 이 버튼이 바뀝니다.')));
+        return;
+      }
+      // 변경점 미리보기 → 확인 후 [지금 반영]
+      await Navigator.push(context, MaterialPageRoute(
+          builder: (_) => SaturdayFinalChangesScreen(target: widget.target, weekly: _w?.asPreview, track: _t,
+              preview: true, previewReady: _w?.preview != null, onApply: _apply)));
       return;
     }
     await Navigator.push(context, MaterialPageRoute(
         builder: (_) => SaturdayFinalChangesScreen(target: widget.target, weekly: _w, track: _t)));
+  }
+
+  /// 변경점 화면의 [지금 반영] — 서버에 토요일 점검 즉시 실행 요청 (회차당 1번)
+  Future<bool> _apply(BuildContext ctx) async {
+    final ok = await showDialog<bool>(
+      context: ctx,
+      builder: (c) => AlertDialog(
+        title: Text('${widget.target}회 토요일 최종본 지금 반영'),
+        content: const Text('토요일 아침 8시 자동 점검을 앞당겨 지금 실행합니다.\n'
+            '가설 공장 → 판매점 다시 뽑기 → 추천번호 복기 → 제미나이 가설 최종본 등록 → 최종 점검 순서로 돌고, '
+            '최종본은 등록 후 고정됩니다. 회차당 한 번만 요청할 수 있습니다.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('취소')),
+          FilledButton(key: const ValueKey('sat_apply_confirm'), onPressed: () => Navigator.pop(c, true), child: const Text('지금 반영')),
+        ],
+      ),
+    );
+    if (ok != true) return false;
+    try {
+      await (widget.requester ?? SaturdayApply.request)(widget.target);
+    } catch (e) {
+      if (ctx.mounted) {
+        ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(content: Text('반영 요청 실패: $e')));
+      }
+      return false;
+    }
+    if (mounted) setState(() => _req = 'pending');
+    if (ctx.mounted) {
+      ScaffoldMessenger.of(ctx).showSnackBar(SnackBar(
+          content: Text('${widget.target}회 토요일 최종본 반영 요청 — 서버가 10분 안에 시작합니다 (실행 5~10분)')));
+    }
+    return true;
   }
 
   @override
@@ -184,19 +258,26 @@ class _SaturdayFinalAlertButtonState extends State<SaturdayFinalAlertButton> {
     if (!_loaded) return const SizedBox.shrink();
     final done = _w?.sat != null;
     final c = SaturdayChanges.of(_w, _t);
-    final label = !done
-        ? '토요일 반영 알림 · 토 8시 최종 점검 대기 중'
-        : c.any
+    final pc = done ? null : SaturdayChanges.of(_w?.asPreview, null); // 반영 전 미리보기 변경점
+    final pending = !done && (pc?.any ?? false) && !_requested; // ❗ — 확인하고 반영할 변경점이 있음
+    final label = done
+        ? c.any
             ? '✓ 토 8시 점검 완료 · 변경점 — 번호 ${c.setsChanged}세트 · 명당 ${c.storesChanged}곳 · 가설 ${c.added.length + c.dropped.length} (자세히)'
-            : '✓ 토 8시 점검 완료 · 변경점 없음';
+            : '✓ 토 8시 점검 완료 · 변경점 없음'
+        : _requested
+            ? '토요일 최종본 반영 요청됨 · 서버 처리 중'
+            : pending
+                ? '변경점 ${_w!.asPreview.changes.length}건 — 확인하고 지금 반영'
+                : '토요일 최종본 지금 반영 · 변경점 없음 (토 8시 자동)';
     final btn = SizedBox(
       width: double.infinity,
-      child: done && c.any
+      child: (done && c.any) || pending
           ? FilledButton.icon(
               key: const ValueKey('sat_final_alert'),
               style: FilledButton.styleFrom(backgroundColor: const Color(0xFFE65100), padding: const EdgeInsets.symmetric(vertical: 10)),
               onPressed: _open,
-              icon: const Icon(Icons.notifications_active_rounded, size: 18),
+              icon: Icon(pending ? Icons.priority_high_rounded : Icons.notifications_active_rounded, size: 18,
+                  key: pending ? const ValueKey('sat_pending_mark') : null),
               label: Text(label, style: const TextStyle(fontWeight: FontWeight.w900)),
             )
           : OutlinedButton.icon(
@@ -204,7 +285,7 @@ class _SaturdayFinalAlertButtonState extends State<SaturdayFinalAlertButton> {
               style: OutlinedButton.styleFrom(foregroundColor: Colors.blueGrey, side: BorderSide(color: Colors.blueGrey.withValues(alpha: 0.5)),
                   padding: const EdgeInsets.symmetric(vertical: 10)),
               onPressed: _open,
-              icon: Icon(done ? Icons.notifications_rounded : Icons.notifications_none_rounded, size: 18),
+              icon: Icon(done ? Icons.notifications_rounded : _requested ? Icons.hourglass_top_rounded : Icons.bolt_rounded, size: 18),
               label: Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
             ),
     );
