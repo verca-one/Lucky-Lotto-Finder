@@ -78,9 +78,11 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
         final wait = '${b.targetRound}회 번호는 ${b.release?.releaseLabel ?? '월요일 0시'}에 공개됩니다 (수동 추천으로 먼저 받을 수 있음).';
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
-            const Text('주요 브리핑', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800, color: _purple)),
-            const SizedBox(width: 6),
-            statusChip('${b.targetRound}회 대상 · ${b.latestRound}회까지 반영', _purple),
+            Container(width: 4, height: 20, decoration: BoxDecoration(color: _purple, borderRadius: BorderRadius.circular(2))),
+            const SizedBox(width: 8),
+            const Text('주요 브리핑', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: _purple)),
+            const SizedBox(width: 8),
+            Flexible(child: statusChip('${b.targetRound}회 대상 · ${b.latestRound}회까지 반영', _purple)),
             const Spacer(),
             IconButton(
               visualDensity: VisualDensity.compact, iconSize: 18, tooltip: '새로고침',

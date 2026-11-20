@@ -1344,22 +1344,23 @@ class _BriefingDetailScreenState extends State<BriefingDetailScreen> {
         key: ValueKey('briefing_$_gen'),
         padding: const EdgeInsets.all(16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          const SpeettoAlertCard(),
-          // 맨 위 보고 — 수집 현황(실시간) · 지방장 적중(지역별 맞춘 판매점) · 지방장 연구 요약(문장만)
-          const CollectStatusReport(),
-          const PipelineAlertReport(),
-          const AgentHitsReport(),
-          const AgentResearchDigest(),
-          const ManualRecommendCard(),
-          const RoundDebriefTop(),
-          _buildHeader(context),
-          const SizedBox(height: 10),
-          const ExtraLotteryBriefingCard(),
-          const SizedBox(height: 16),
+          // ── 회차 상황판 — 본 브리핑 전에 훑어보는 보고 (한 덩어리로 묶어 작게)
+          _statusBoard(context, [
+            const SpeettoAlertCard(),
+            const CollectStatusReport(),
+            const PipelineAlertReport(),
+            const AgentHitsReport(),
+            const AgentResearchDigest(),
+            const ManualRecommendCard(),
+            const RoundDebriefTop(),
+            const ExtraLotteryBriefingCard(),
+          ]),
+          // ── 본 브리핑 — 주요 브리핑부터 (힘을 줘서)
+          _mainBriefingHero(),
           const MasterBriefingSection(),
-          const SizedBox(height: 16),
+          _mainSectionTitle('지방장 연구', const Color(0xFF00695C)),
           const AgentBriefingSection(),
-          const SizedBox(height: 16),
+          _mainSectionTitle('엔진 복기', const Color(0xFF283593)),
           const EngineReviewBriefingCard(),
           const SizedBox(height: 32),
         ]),
@@ -1372,52 +1373,88 @@ class _BriefingDetailScreenState extends State<BriefingDetailScreen> {
     );
   }
 
-  Widget _buildHeader(BuildContext context) => Container(
-    padding: const EdgeInsets.all(16),
+  /// 회차 상황판 — 본 브리핑 전에 훑어보는 보고를 연한 판 하나에 묶음 (머리에 지방장보고 버튼)
+  Widget _statusBoard(BuildContext context, List<Widget> children) => Container(
+    key: const ValueKey('briefing_status_board'),
+    padding: const EdgeInsets.fromLTRB(12, 10, 12, 4),
     decoration: BoxDecoration(
-      gradient: const LinearGradient(
-        colors: [Color(0xFF7B2FF7), Color(0xFF4A00E0)],
-        begin: Alignment.topLeft, end: Alignment.bottomRight,
-      ),
-      borderRadius: BorderRadius.circular(12),
+      color: const Color(0xFFEFEBF7),
+      borderRadius: BorderRadius.circular(16),
     ),
-    child: Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
-      Container(
-        width: 52, height: 52,
-        decoration: BoxDecoration(
-          color: Colors.white.withOpacity(0.2),
-          borderRadius: BorderRadius.circular(26),
-        ),
-        child: const Icon(Icons.person_rounded, color: Colors.white, size: 30),
-      ),
-      const SizedBox(width: 12),
-      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('마스터, 연구 결과를 보고드리겠습니다.',
-            style: TextStyle(color: Colors.white, fontSize: 14,
-                fontWeight: FontWeight.w700)),
-        const SizedBox(height: 4),
-        Text('${widget.data.latestRound}회차까지 분석한 연구 현황입니다.',
-            style: TextStyle(color: Colors.white.withOpacity(0.8), fontSize: 12)),
-        const SizedBox(height: 10),
+    child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+      Row(children: [
+        Icon(Icons.dashboard_rounded, size: 17, color: Colors.grey.shade700),
+        const SizedBox(width: 6),
+        Expanded(child: Text('회차 상황판 · ${widget.data.latestRound}회까지 반영',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: Colors.grey.shade800))),
         // 지방장보고 — 지방장별 지난 회차 추천 채점 · 다음 회차 변경점
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            key: const ValueKey('agent_report_button'),
-            style: FilledButton.styleFrom(
-              backgroundColor: Colors.white,
-              foregroundColor: const Color(0xFF4527A0),
-              visualDensity: VisualDensity.compact,
-            ),
-            onPressed: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => const AgentReportScreen())),
-            icon: const Icon(Icons.groups_2_rounded, size: 18),
-            label: const Text('지방장보고', style: TextStyle(fontWeight: FontWeight.w800)),
-          ),
+        TextButton.icon(
+          key: const ValueKey('agent_report_button'),
+          style: TextButton.styleFrom(foregroundColor: const Color(0xFF4527A0), visualDensity: VisualDensity.compact),
+          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AgentReportScreen())),
+          icon: const Icon(Icons.groups_2_rounded, size: 17),
+          label: const Text('지방장보고', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800)),
         ),
-      ])),
+      ]),
+      const SizedBox(height: 6),
+      ...children,
     ]),
   );
+
+  /// 본 브리핑 안 섹션 제목 — 주요 브리핑 머리와 같은 모양 (세로 막대 + 큰 글씨)
+  Widget _mainSectionTitle(String t, Color c) => Padding(
+    padding: const EdgeInsets.fromLTRB(0, 28, 0, 10),
+    child: Row(children: [
+      Container(width: 4, height: 20, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(2))),
+      const SizedBox(width: 8),
+      Text(t, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: c)),
+    ]),
+  );
+
+  /// 본 브리핑 머리 — 주요 브리핑부터 아래가 이번 회차 본 브리핑
+  Widget _mainBriefingHero() {
+    Widget pill(String t) => Container(
+      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+      decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.16), borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.28))),
+      child: Text(t, style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white)),
+    );
+    return Container(
+      key: const ValueKey('main_briefing_hero'),
+      margin: const EdgeInsets.fromLTRB(0, 28, 0, 16),
+      padding: const EdgeInsets.fromLTRB(20, 20, 20, 18),
+      decoration: BoxDecoration(
+        gradient: const LinearGradient(
+          colors: [Color(0xFF1A0B4F), Color(0xFF4527A0), Color(0xFF7B1FA2)],
+          begin: Alignment.topLeft, end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [BoxShadow(color: const Color(0xFF4527A0).withValues(alpha: 0.35), blurRadius: 18, offset: const Offset(0, 8))],
+      ),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+            decoration: BoxDecoration(color: const Color(0xFFFFC107), borderRadius: BorderRadius.circular(6)),
+            child: const Text('본 브리핑', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: Color(0xFF1A0B4F))),
+          ),
+          const SizedBox(width: 8),
+          Text('${widget.data.latestRound + 1}회', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800,
+              color: Colors.white.withValues(alpha: 0.85))),
+        ]),
+        const SizedBox(height: 10),
+        const Text('마스터, 이번 회차 본 브리핑입니다', style: TextStyle(fontSize: 21, height: 1.25,
+            fontWeight: FontWeight.w900, color: Colors.white)),
+        const SizedBox(height: 4),
+        Text('구매할 번호부터 확인하시고, 아래로 제미나이 가설 · 추천 명당 · 지방장 연구 순서로 보고드립니다.',
+            style: TextStyle(fontSize: 12, height: 1.45, color: Colors.white.withValues(alpha: 0.82))),
+        const SizedBox(height: 12),
+        Wrap(spacing: 6, runSpacing: 6, children: [
+          pill('구매할 번호 15세트'), pill('제미나이 가설'), pill('추천 명당'), pill('지방장 연구'), pill('엔진 복기'),
+        ]),
+      ]),
+    );
+  }
 
 }
 
