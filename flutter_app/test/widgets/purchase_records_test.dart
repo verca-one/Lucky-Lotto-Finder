@@ -53,4 +53,25 @@ void main() {
     expect(find.text('0개'), findsOneWidget);
     expect(find.text('추첨 전 · 당첨번호 나오면 자동 확인'), findsOneWidget);
   });
+
+  testWidgets('번호 직접 입력 — 판매점 칸 · QR 없음 · 6개 고르면 한 게임 추가 · 7번째는 안 눌림', (t) async {
+    SharedPreferences.setMockInitialValues({});
+    t.view.physicalSize = const Size(1080, 2340);
+    t.view.devicePixelRatio = 3;
+    addTearDown(t.view.reset);
+    await t.pumpWidget(const MaterialApp(home: PurchaseRecordScreen(manual: true)));
+    await t.pumpAndSettle();
+    expect(find.text('번호 직접 입력'), findsOneWidget);
+    expect(find.byKey(const ValueKey('purchase_store')), findsNothing);
+    expect(find.byKey(const ValueKey('purchase_qr')), findsNothing);
+    for (final n in [3, 11, 25, 30, 41, 44, 7]) {
+      await t.tap(find.byKey(ValueKey('manual_ball_$n')));
+      await t.pump();
+    }
+    expect(find.text('번호 고르기 — 6개씩 (6/6)'), findsOneWidget);
+    await t.tap(find.byKey(const ValueKey('manual_add_game')));
+    await t.pumpAndSettle();
+    expect(find.text('A'), findsOneWidget);
+    expect(find.text('번호 고르기 — 6개씩 (0/6)'), findsOneWidget);
+  });
 }
