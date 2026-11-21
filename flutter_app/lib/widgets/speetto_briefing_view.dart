@@ -200,7 +200,9 @@ class SpeettoBriefing {
   /// 출고율 95% 이상 차수 (브리핑 맨 위)
   List<SpeettoEdition> get alerts => editions.where((e) => e.alert).toList();
   final String? statusDate, statusNote;
-  const SpeettoBriefing(this.games, {this.disclaimer = '', this.editions = const [], this.statusDate, this.statusNote});
+  /// 당첨점 추리 (서버 infer — 관리자 저장본에만 있음)
+  final Map<String, dynamic>? infer;
+  const SpeettoBriefing(this.games, {this.disclaimer = '', this.editions = const [], this.statusDate, this.statusNote, this.infer});
   factory SpeettoBriefing.fromPayload(Map<String, dynamic> p) {
     final st = p['status'] is Map ? Map<String, dynamic>.from(p['status']) : const <String, dynamic>{};
     return SpeettoBriefing(
@@ -208,6 +210,7 @@ class SpeettoBriefing {
       disclaimer: '${p['disclaimer'] ?? ''}',
       editions: [for (final e in (st['editions'] as List? ?? const [])) SpeettoEdition.fromJson(Map<String, dynamic>.from(e as Map))],
       statusDate: st['snap_date'] as String?, statusNote: st['note'] as String?,
+      infer: p['infer'] is Map ? Map<String, dynamic>.from(p['infer'] as Map) : null,
     );
   }
 
@@ -605,4 +608,93 @@ class _SpeettoNearbyCardState extends State<SpeettoNearbyCard> {
             ),
         ]),
       );
+}
+
+/// 브리핑 상황판 — 스피또 당첨점 추리 (게임별 살 차수 · 이번 차수 1등 시·도 분포 · 제미나이 추리, 매일 17시 · 새 당첨 반영)
+class SpeettoInferCard extends StatefulWidget {
+  final Future<SpeettoBriefing?> Function()? loader;
+  const SpeettoInferCard({super.key, this.loader});
+  @override
+  State<SpeettoInferCard> createState() => _SpeettoInferCardState();
+}
+
+class _SpeettoInferCardState extends State<SpeettoInferCard> {
+  late final Future<SpeettoBriefing?> _f = (widget.loader ?? SpeettoBriefing.loadAdmin)().catchError((_) => null);
+
+  @override
+  Widget build(BuildContext context) => FutureBuilder<SpeettoBriefing?>(
+        future: _f,
+        builder: (context, snap) {
+          final inf = snap.data?.infer;
+          if (inf == null) return const SizedBox.shrink();
+          final gemini = inf['source'] == 'gemini';
+          final games = [for (final g in (inf['games'] as List? ?? const [])) Map<String, dynamic>.from(g as Map)];
+          return Container(
+            key: const ValueKey('speetto_infer'),
+            width: double.infinity,
+            margin: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: kSpeettoColor.withValues(alpha: 0.35)),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                const Icon(Icons.travel_explore_rounded, color: kSpeettoColor, size: 18),
+                const SizedBox(width: 6),
+                const Expanded(child: Text('스피또 당첨점 추리', style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: kSpeettoColor))),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                  decoration: BoxDecoration(color: (gemini ? kSpeettoColor : Colors.grey).withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
+                  child: Text(gemini ? '제미나이 추리' : '계산 · 과거 순위 (제미나이 실패)',
+                      style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: gemini ? kSpeettoColor : Colors.grey.shade700)),
+                ),
+              ]),
+              if ('${inf['summary'] ?? ''}'.isNotEmpty) ...[
+                const SizedBox(height: 4),
+                Text('${inf['summary']}', style: const TextStyle(fontSize: 11.5, height: 1.4)),
+              ],
+              for (final g in games) _game(g),
+              const SizedBox(height: 4),
+              Text('살 차수는 계산(남은 1등 ÷ 안 팔린 장수)입니다. 판매점 · 지역은 가설 기반이며 한 장의 확률을 바꾸지 않습니다. 매일 17시 새 당첨을 반영해 고칩니다.',
+                  style: TextStyle(fontSize: 10, color: Colors.grey.shade600, height: 1.4)),
+            ]),
+          );
+        },
+      );
+
+  Widget _game(Map<String, dynamic> g) {
+    final k = '${g['game']}'.replaceFirst('SP', '');
+    final t = kSpeettoGameLooks[k] ?? kSpeettoGameLooks['500']!;
+    final b = g['best'] is Map ? Map<String, dynamic>.from(g['best'] as Map) : null;
+    final dist = Map<String, dynamic>.from(g['dist'] as Map? ?? const {});
+    final d = g['pick_edition'] == null ? null : dist['${g['pick_edition']}'];
+    final sido = d is Map ? Map<String, dynamic>.from(d['sido'] as Map? ?? const {}) : const <String, dynamic>{};
+    final picks = [for (final x in (g['picks'] as List? ?? const [])) Map<String, dynamic>.from(x as Map)];
+    return Container(
+      key: ValueKey('speetto_infer_$k'),
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 8),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(color: t.bg, borderRadius: BorderRadius.circular(10), border: Border.all(color: t.border)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text('${g['label']} · ${g['pick_edition'] == null ? '살 차수 없음' : '${g['pick_edition']}회 추천'}',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: t.fg)),
+        if (b != null)
+          Text('한 장당 1등 1/${manWon((b['p1_now'] as num?)?.toInt() ?? 0)} (처음 1/${manWon((b['p1_start'] as num?)?.toInt() ?? 0)}) · '
+              '1등 남음 ${b['rnk1_left'] ?? '-'}/${b['rnk1_total'] ?? '-'} · 출고 ${b['ship_rate'] ?? '-'}%',
+              style: TextStyle(fontSize: 11, color: t.sub)),
+        if ('${g['why'] ?? ''}'.isNotEmpty) Text('${g['why']}', style: TextStyle(fontSize: 11.5, color: t.fg, height: 1.4)),
+        if (d is Map)
+          Text('이번 회차 1등 ${d['won'] ?? 0}곳${sido.isEmpty ? '' : ' — ${sido.entries.map((e) => '${e.key} ${e.value}').join(' · ')}'}',
+              style: TextStyle(fontSize: 11, color: t.sub)),
+        for (final x in picks)
+          Padding(
+            padding: const EdgeInsets.only(top: 3),
+            child: Text('🎯 ${x['name']} — ${x['why']}', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: t.fg, height: 1.35)),
+          ),
+      ]),
+    );
+  }
 }

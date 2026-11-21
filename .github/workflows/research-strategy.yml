@@ -90,12 +90,13 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: python research_pension.py
-      - name: 스피또 — 게임별 1등 판매점 (예전 잘못된 기록이면 공개 안 함)
+      - name: 스피또 — 게임별 1등 판매점 · 당첨점 추리(제미나이) (예전 잘못된 기록이면 공개 안 함)
         if: ${{ !cancelled() }}
         continue-on-error: true
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python research_speetto.py
       - name: 연금 · 스피또 지방장 — 시·군·구별 TOP5 · 최근 성적
         if: ${{ !cancelled() }}

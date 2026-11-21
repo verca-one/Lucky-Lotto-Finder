@@ -171,4 +171,23 @@ void main() {
     expect(find.byKey(const ValueKey('speetto_near_speedlotto_2000_B')), findsOneWidget);
     expect(find.text('20km 안에 스피또1000 1등 판매점이 없습니다.'), findsOneWidget);
   });
+
+  testWidgets('스피또 당첨점 추리 — 게임별 살 회차 · 한 장당 1등 · 이번 회차 1등 시·도 · 제미나이 추리 (자료 없으면 숨김)', (tester) async {
+    final b = SpeettoBriefing.fromPayload({'games': [], 'infer': {'source': 'gemini', 'summary': '1000은 112회가 가장 좋습니다.', 'games': [
+      {'game': 'SP1000', 'label': '스피또1000', 'pick_edition': 112, 'why': '1등이 하나도 안 나갔습니다',
+        'best': {'edition': 112, 'p1_now': 4957518, 'p1_start': 4957518, 'rnk1_left': 12, 'rnk1_total': 12, 'ship_rate': 0},
+        'dist': {'112': {'won': 0, 'sido': {}}, '111': {'won': 4, 'sido': {'서울': 2, '경기': 2}}},
+        'picks': [{'name': '스파', 'why': '과거 1등 6회'}]},
+    ]}});
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(child: SpeettoInferCard(loader: () async => b)))));
+    await tester.pumpAndSettle();
+    expect(find.text('스피또 당첨점 추리'), findsOneWidget);
+    expect(find.text('제미나이 추리'), findsOneWidget);
+    expect(find.text('스피또1000 · 112회 추천'), findsOneWidget);
+    expect(find.textContaining('한 장당 1등 1/496만'), findsOneWidget);
+    expect(find.text('🎯 스파 — 과거 1등 6회'), findsOneWidget);
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SpeettoInferCard(key: const ValueKey('n'), loader: () async => null))));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey('speetto_infer')), findsNothing);
+  });
 }

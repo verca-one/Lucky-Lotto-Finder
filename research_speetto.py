@@ -9,7 +9,11 @@
     (출고율은 판매점으로 나간 비율이라 실제 판매와 다를 수 있다)
   · 데이터 검사: 차수마다 1등 판매점 목록이 거의 같으면(예전 크롤러 문제 — 회차 구분 없이 전체 목록 저장)
     결과를 만들지 않고 '데이터 정리 필요'로 둔다. 고친 크롤러가 다시 모으면 자동으로 공개된다.
-  결과는 과거 기록 정리이며 한 장의 당첨 확률을 바꾸지 않는다.
+  · 당첨점 추리 (infer, 브리핑 상황판 '스피또 당첨점 추리') — 매일 17시, 새 당첨점이 수집되면 다음 실행에 반영
+      ① 살 만한 회차: 판매 중 · 1등 남은 차수 중 한 장당 1등 확률(추정)이 가장 좋은 차수 (계산)
+      ② 이번 차수 1등 분포: 판매 중 차수별로 지금까지 1등이 나온 판매점의 시·도
+      ③ 제미나이 추리: ①② + 과거 1등 판매점 순위로 게임마다 살 차수 · 노려볼 지역/판매점 최대 3곳 (가설 기반, 실패하면 계산 + 과거 순위)
+  결과는 과거 기록 정리이며 한 장의 당첨 확률을 바꾸지 않는다 (차수 선택만 한 장당 확률을 바꾼다).
 읽기: winning_history · lottery_stores (크롤링 테이블은 읽기만)
 쓰기: research_results (speetto_briefing) · research_public_extra (lottery = speetto) — 서버(service_role)만
 외부 사이트 접속 없음.
@@ -21,7 +25,7 @@ import argparse
 import json
 import os
 import sys
-from collections import defaultdict
+from collections import Counter, defaultdict
 from datetime import datetime, timezone
 
 import research_review_worker as R
@@ -193,6 +197,89 @@ def status_block(db):
             "rule": "남은 1등 지수 = (남은 1등 ÷ 전체 1등) ÷ (1 − 출고율) · 1보다 크면 출고된 만큼보다 1등이 많이 남음"}
 
 
+GAME_CODE = {"speedlotto_2000": "SP2000", "speedlotto_1000": "SP1000", "speedlotto_500": "SP500"}
+INFER_PICKS = 3
+INFER_SYSTEM = """당신은 로또 연구팀 'AI 브리핑전담부서'에 상주하는 제미나이입니다. 업무는 '스피또 당첨점 추리'입니다.
+게임(스피또2000 · 1000 · 500)마다 판매 중 차수의 남은 1등 · 출고율 · 한 장당 1등 확률(추정), 이번 차수에 이미 1등이 나온 시·도 분포,
+과거 1등이 많이 나온 판매점 목록을 읽고, 게임마다 살 차수 하나와 노려볼 지역 또는 판매점을 최대 3곳 고릅니다.
+- 한 장의 1등 확률은 차수 선택으로만 달라집니다(남은 1등 ÷ 안 팔린 장수). 판매점 선택은 확률을 바꾸지 않으니 '가설'로 씁니다.
+- 판매점은 반드시 주어진 목록의 이름 그대로, 지역은 시·도 이름으로 씁니다.
+- why 는 주어진 수치를 근거로 한 한국어 한 문장. summary 는 2~3문장."""
+
+
+def infer_schema():
+    return {"type": "object", "properties": {
+        "summary": {"type": "string"},
+        "games": {"type": "array", "items": {"type": "object", "properties": {
+            "game": {"type": "string", "enum": list(GAME_CODE.values())},
+            "edition": {"type": "integer"},
+            "why": {"type": "string"},
+            "picks": {"type": "array", "maxItems": INFER_PICKS, "items": {"type": "object", "properties": {
+                "name": {"type": "string"}, "why": {"type": "string"}}, "required": ["name", "why"], "additionalProperties": False}},
+        }, "required": ["game", "edition", "why", "picks"], "additionalProperties": False}},
+    }, "required": ["summary", "games"], "additionalProperties": False}
+
+
+def infer_block(db, games, status):
+    """게임별 살 만한 차수(계산) · 판매 중 차수 1등 시·도 분포 → 제미나이 추리 (실패하면 계산 + 과거 순위)"""
+    eds = status.get("editions") or []
+    by_game = {g["game"]: g for g in games}
+    rows, lines = [], []
+    for lt, label in GAMES:
+        code = GAME_CODE[lt]
+        on = [e for e in eds if e["game"] == code and (e.get("rnk1_left") or 0) > 0]
+        # 출고 거의 끝(95%↑) 차수는 남은 1등이 이미 팔린 표일 수 있어 빼고 고름 (그것밖에 없을 때만 씀)
+        pool = [e for e in on if not e.get("near_end")] or on
+        best = min(pool, key=lambda e: e.get("p1_now") or float("inf")) if pool else None
+        dist = {}
+        for e in on:
+            won = [r["dhlottery_code"] for r in db.get("winning_history", {
+                "select": "dhlottery_code", "lottery_type": f"eq.{lt}", "round": f"eq.{e['edition']}", "prize_tier": "eq.first"})
+                   if r.get("dhlottery_code")]
+            sido = Counter()
+            if won:
+                for st in db.get("lottery_stores", {"select": "dhlottery_code,address", "lottery_type": f"eq.{lt}",
+                                                    "dhlottery_code": f"in.({','.join(sorted(set(won)))})"}):
+                    sido[(st.get("address") or "미상").split()[0]] += 1
+            dist[str(e["edition"])] = {"won": len(won), "sido": dict(sido.most_common())}
+        top = [s["name"] for s in (by_game.get(lt) or {}).get("stores", [])][:10]
+        rows.append({"game": code, "label": label, "best": None if best is None else {
+            k: best.get(k) for k in ("edition", "p1_now", "p1_start", "rnk1_left", "rnk1_total", "ship_rate", "index")},
+            "on_sale": [e["edition"] for e in on], "dist": dist, "top_stores": top})
+        lines.append(f"[{label} {code}]")
+        for e in on:
+            d = dist[str(e["edition"])]
+            lines.append(f"  {e['edition']}차: 출고 {e.get('ship_rate')}% · 1등 남음 {e.get('rnk1_left')}/{e.get('rnk1_total')} · "
+                         f"한 장당 1등 1/{e.get('p1_now') or '?'} (처음 1/{e.get('p1_start') or '?'}) · 이번 차수 1등 {d['won']}곳 {d['sido'] or '-'}")
+        lines.append(f"  과거 1등 판매점: {', '.join(top) or '-'}")
+    data, model, err = None, None, None
+    if os.environ.get("GEMINI_API_KEY") and any(r["best"] for r in rows):
+        import research_strategy_ai as S
+        try:
+            data, model, _ = S.ask_gemini("\n".join(lines), system=INFER_SYSTEM, sch=infer_schema())
+        except Exception as e:  # 실패하면 계산 + 과거 순위
+            err = str(e)[:300]
+    else:
+        err = "GEMINI_API_KEY 없음" if not os.environ.get("GEMINI_API_KEY") else "판매 중 1등 남은 차수 없음"
+    ai = {g.get("game"): g for g in (data or {}).get("games") or []}
+    for r in rows:
+        g = ai.get(r["game"])
+        if g and r["best"]:
+            r["pick_edition"] = g.get("edition") if g.get("edition") in r["on_sale"] else r["best"]["edition"]
+            r["why"] = (g.get("why") or "").strip()
+            r["picks"] = [{"name": (x.get("name") or "").strip(), "why": (x.get("why") or "").strip()} for x in g.get("picks") or []][:INFER_PICKS]
+        elif r["best"]:
+            b = r["best"]
+            r["pick_edition"] = b["edition"]
+            r["why"] = f"판매 중 차수 중 한 장당 1등 1/{b.get('p1_now') or '?'} 로 가장 좋음 (1등 {b.get('rnk1_left')}/{b.get('rnk1_total')} 남음)"
+            r["picks"] = [{"name": n, "why": "과거 1등 기록이 많은 판매점"} for n in r["top_stores"][:INFER_PICKS]]
+        else:
+            r["pick_edition"], r["why"], r["picks"] = None, "판매 중이면서 1등이 남은 차수 없음", []
+    return {"source": "gemini" if data else "rule", "model": model, "ai_error": err, "summary": (data or {}).get("summary") or "",
+            "games": rows, "generated_at": datetime.now(timezone.utc).isoformat(),
+            "rule": "살 차수 = 한 장당 1등 확률(남은 1등 ÷ 안 팔린 장수) 계산 · 판매점은 가설 기반 (확률을 바꾸지 않음)"}
+
+
 def public_summary(p):
     return {"lottery": "speetto", "generated_at": p["generated_at"],
             "games": [{"game": g["game"], "label": g["label"], "status": g["status"], "latest_edition": g.get("latest_edition"),
@@ -207,6 +294,14 @@ def run(db, dry=False):
     p = {"version": VERSION, "generated_at": now.isoformat(), "games": [game_block(db, lt, label) for lt, label in GAMES],
          "status": status_block(db)}
     st = p["status"]
+    try:
+        p["infer"] = infer_block(db, p["games"], st)
+        inf = p["infer"]
+        print(f"당첨점 추리 ({inf['source']}{' · AI 실패: ' + inf['ai_error'] if inf['ai_error'] and inf['source'] == 'rule' else ''})")
+        for g in inf["games"]:
+            print(f"   {g['label']}: {g['pick_edition']}차 — {g['why']} · {[x['name'] for x in g['picks']]}")
+    except Exception as e:  # 추리가 실패해도 판매점 · 판매 현황은 저장
+        print(f"당첨점 추리 실패: {e}")
     print(f"판매 현황: {st['status']} {st.get('snap_date') or st.get('note') or ''}")
     for e in st.get("editions", []):
         print(f"   {e['game']} {e['edition']}차 출고 {e['ship_rate']}% · 1등 {e['rnk1_left']}/{e['rnk1_total']} · 지수 {e['index']}")
