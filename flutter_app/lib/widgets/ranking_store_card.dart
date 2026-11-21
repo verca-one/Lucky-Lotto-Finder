@@ -237,6 +237,9 @@ class RankingStoreCard extends StatelessWidget {
   /// 판매점 사진 올리기 (로그인했을 때만 넘김 → 순위 배지 아래 카메라)
   final VoidCallback? onPhotoTap;
 
+  /// 여기서 산 번호 기록 (QR) — 카드 맨 아래 줄
+  final VoidCallback? onQrTap;
+
   /// 강조 칩 반짝임 (기존 홈 애니메이션). null 이면 정적 표시.
   final Animation<double>? glow;
 
@@ -276,6 +279,7 @@ class RankingStoreCard extends StatelessWidget {
     this.onFavoriteTap,
     this.onMapTap,
     this.onPhotoTap,
+    this.onQrTap,
     this.glow,
     this.expandedChild,
     this.showResearch = true,
@@ -471,6 +475,14 @@ class RankingStoreCard extends StatelessWidget {
                   )
                 : const SizedBox.shrink(),
           ),
+          if (onQrTap != null)
+            TextButton.icon(
+              key: const Key('ranking_purchase_qr'),
+              style: TextButton.styleFrom(visualDensity: VisualDensity.compact, foregroundColor: _ink),
+              onPressed: onQrTap,
+              icon: const Icon(Icons.qr_code_scanner_rounded, size: 16),
+              label: const Text('산 번호 QR', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800)),
+            ),
           Text(
             isExpanded ? '접기' : '상세 보기',
             style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: _muted),

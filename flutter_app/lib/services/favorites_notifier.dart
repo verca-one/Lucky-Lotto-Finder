@@ -7,3 +7,7 @@ final ValueNotifier<int> favoritesNotifier = ValueNotifier<int>(0);
 void notifyFavoritesChanged() {
   favoritesNotifier.value++;
 }
+
+/// 프로필 로그인 · 로그아웃을 전역으로 알림 — 값 = userId (빈 문자열 = 로그아웃)
+///   홈 · 지역 · 주변 판매점 카드의 카메라(사진 올리기)가 앱을 다시 켜지 않아도 바로 나타나고 사라지게
+final ValueNotifier<String> loginNotifier = ValueNotifier<String>('');

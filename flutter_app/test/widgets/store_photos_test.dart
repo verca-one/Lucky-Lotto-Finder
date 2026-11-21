@@ -18,6 +18,7 @@ void main() {
   testWidgets('홈 순위 카드 — 승인된 사진 있으면 배지 아래 네모 사진 · 로그인했을 때만 카메라', (t) async {
     Widget card(String? url, {VoidCallback? onPhoto}) => MaterialApp(home: Scaffold(body: SingleChildScrollView(child: RankingStoreCard(
         onPhotoTap: onPhoto,
+        onQrTap: () {},
         data: RankingCardData.fromStore(1, {'dhlottery_code': 'A', 'store_name': '스파', 'address': '서울', 'region': '서울', 'first_count': 45},
             photoUrl: url)))));
     await t.pumpWidget(card(null));
@@ -30,5 +31,6 @@ void main() {
     expect(find.byKey(const Key('ranking_store_photo')), findsOneWidget);
     await t.tap(find.byKey(const Key('ranking_photo_upload'))); // 로그인 → 배지 아래 카메라
     expect(tapped, 1);
+    expect(find.byKey(const Key('ranking_purchase_qr')), findsOneWidget); // QR 은 펼치지 않아도 맨 아래 줄
   });
 }

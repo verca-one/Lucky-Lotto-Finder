@@ -51,6 +51,7 @@ class _RegionScreenState extends State<RegionScreen> {
     _loadFavoriteRegions();
     _loadStores();
     _loadUserId();
+    loginNotifier.addListener(_onLogin);
     SupabaseService.getLatestRound('lotto').then((r) {
       if (mounted && r != null) setState(() => _latestRound = r);
     });
@@ -101,6 +102,7 @@ class _RegionScreenState extends State<RegionScreen> {
 
   @override
   void dispose() {
+    loginNotifier.removeListener(_onLogin);
     favoritesNotifier.removeListener(_onFavoritesChanged);
     _searchController.dispose();
     super.dispose();
@@ -113,6 +115,10 @@ class _RegionScreenState extends State<RegionScreen> {
   Future<void> _loadUserId() async {
     final prefs = await SharedPreferences.getInstance();
     setState(() => _userId = prefs.getString('userId') ?? '');
+  }
+
+  void _onLogin() {
+    if (mounted) setState(() => _userId = loginNotifier.value);
   }
 
   Future<void> _loadFavorites() async {
@@ -1228,6 +1234,7 @@ class _RegionScreenState extends State<RegionScreen> {
         onFavoriteTap: () => _toggleFavorite(store.dhlotteryCode),
         // 판매점 사진 올리기 — 로그인했을 때만 순위 배지 아래 카메라 (관리자 승인 후 업로드)
         onPhotoTap: _userId.isEmpty ? null : () => pickAndUploadStorePhoto(context, code: store.dhlotteryCode, name: store.storeName),
+        onQrTap: () => openPurchaseRecord(context, store: store, startQr: true),
         expandedChild: isExpanded
             ? Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1246,14 +1253,6 @@ class _RegionScreenState extends State<RegionScreen> {
                       // 판매점 평가
                       _InlineReviewSection(dhlotteryCode: store.dhlotteryCode),
                     ],
-                  ),
-                  // 여기서 산 번호 기록 — 판매점이 정해진 채 QR 카메라 → 즐겨찾기 › 나의 번호
-                  const SizedBox(height: 8),
-                  OutlinedButton.icon(
-                    key: ValueKey('purchase_qr_${store.dhlotteryCode}'),
-                    onPressed: () => openPurchaseRecord(context, store: store, startQr: true),
-                    icon: const Icon(Icons.qr_code_scanner_rounded, size: 18),
-                    label: const Text('여기서 산 번호 기록 (QR)'),
                   ),
                 ],
               )

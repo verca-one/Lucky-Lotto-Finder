@@ -77,6 +77,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _saveUserId(String userId) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('userId', userId);
+    loginNotifier.value = userId;
     setState(() {
       _userId = userId;
     });
@@ -310,6 +311,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       onTap: () async {
                         final prefs = await SharedPreferences.getInstance();
                         await prefs.remove('userId');
+                        loginNotifier.value = '';
                         setState(() => _userId = '');
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -477,11 +479,13 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
     _loadFavorites();
     _loadRanking();
     _loadUserId();
+    loginNotifier.addListener(_onLogin);
     favoritesNotifier.addListener(_loadFavorites);
   }
 
   @override
   void dispose() {
+    loginNotifier.removeListener(_onLogin);
     _glowController.dispose();
     _shimmerController.dispose();
     favoritesNotifier.removeListener(_loadFavorites);
@@ -491,6 +495,10 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
   Future<void> _loadUserId() async {
     final prefs = await SharedPreferences.getInstance();
     if (mounted) setState(() => _userId = prefs.getString('userId') ?? '');
+  }
+
+  void _onLogin() {
+    if (mounted) setState(() => _userId = loginNotifier.value);
   }
 
   Future<void> _loadFavorites() async {
@@ -1045,17 +1053,10 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
           ? null
           : () => _openMap(mapType: 'naver', storeName: storeName, address: address),
       onPhotoTap: _userId.isEmpty ? null : () => pickAndUploadStorePhoto(context, code: dhlotteryCode, name: storeName),
+        onQrTap: () => openPurchaseRecord(context, store: LotteryStore.fromJson({...store, 'lottery_type': 'lotto'}), startQr: true),
       expandedChild: isExpanded
           ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
               _buildExpandedDetail(dhlotteryCode, storeName, address),
-              // 여기서 산 번호 기록 — 판매점이 정해진 채 QR 카메라 → 즐겨찾기 › 나의 번호
-              OutlinedButton.icon(
-                key: ValueKey('purchase_qr_$dhlotteryCode'),
-                onPressed: () => openPurchaseRecord(context,
-                    store: LotteryStore.fromJson({...store, 'lottery_type': 'lotto'}), startQr: true),
-                icon: const Icon(Icons.qr_code_scanner_rounded, size: 18),
-                label: const Text('여기서 산 번호 기록 (QR)'),
-              ),
             ])
           : null,
       // 엔진·지방장 연구 정보는 관리자 메뉴 전용 → 홈 랭킹 카드에는 표시하지 않는다

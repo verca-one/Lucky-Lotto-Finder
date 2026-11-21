@@ -60,6 +60,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
     _loadFavorites();
     _loadTop30Ranks();
     _loadUserId();
+    loginNotifier.addListener(_onLogin);
     _getCurrentLocation();
     _loadLatestRound();
     favoritesNotifier.addListener(_onFavoritesChanged);
@@ -210,6 +211,10 @@ class _NearbyScreenState extends State<NearbyScreen> {
     setState(() => _userId = prefs.getString('userId') ?? '');
   }
 
+  void _onLogin() {
+    if (mounted) setState(() => _userId = loginNotifier.value);
+  }
+
   Future<void> _searchAtMapCenterExtended() async {
     if (_mapController == null) return;
     setState(() => _isSearching = true);
@@ -267,6 +272,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
 
   @override
   void dispose() {
+    loginNotifier.removeListener(_onLogin);
     favoritesNotifier.removeListener(_onFavoritesChanged);
     _mapController?.dispose();
     _sheetController.dispose();
@@ -822,6 +828,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
         onFavoriteTap: () => _toggleFavorite(store.dhlotteryCode),
         // 판매점 사진 올리기 — 로그인했을 때만 순위 배지 아래 카메라 (관리자 승인 후 업로드)
         onPhotoTap: _userId.isEmpty ? null : () => pickAndUploadStorePhoto(context, code: store.dhlotteryCode, name: store.storeName),
+        onQrTap: () => openPurchaseRecord(context, store: store, startQr: true),
         expandedChild: isExpanded
             ? Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -854,14 +861,6 @@ class _NearbyScreenState extends State<NearbyScreen> {
                         ),
                       ),
                     ],
-                  ),
-                  // 여기서 산 번호 기록 — 판매점이 정해진 채 QR 카메라 → 즐겨찾기 › 나의 번호
-                  const SizedBox(height: 8),
-                  OutlinedButton.icon(
-                    key: ValueKey('purchase_qr_${store.dhlotteryCode}'),
-                    onPressed: () => openPurchaseRecord(context, store: store, startQr: true),
-                    icon: const Icon(Icons.qr_code_scanner_rounded, size: 18),
-                    label: const Text('여기서 산 번호 기록 (QR)'),
                   ),
                 ],
               )
