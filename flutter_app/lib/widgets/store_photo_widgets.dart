@@ -8,8 +8,11 @@ import '../services/store_photos.dart';
 
 /// 사진 고르기 → 올리기. 사용자는 '승인 대기', 관리자(adminKey 있음)는 올리고 바로 승인. 올렸으면 true
 Future<bool> pickAndUploadStorePhoto(BuildContext context, {required String code, required String name, String? adminKey}) async {
-  // 사진 올리기 권한 = 프로필 로그인 (카메라 버튼과 같은 조건) · 관리자 직접 올리기는 승인 키
-  if (adminKey == null && ((await SharedPreferences.getInstance()).getString('userId') ?? '').isEmpty) {
+  // 사진 올리기 권한 = 프로필 로그인 또는 관리자 (카메라 버튼과 같은 조건) · 관리자는 승인 키가 있으면 바로 승인
+  final prefs = await SharedPreferences.getInstance();
+  final admin = prefs.getBool('isAdmin') ?? false;
+  if (admin) adminKey ??= await StorePhotos.savedKey();
+  if (adminKey == null && !admin && (prefs.getString('userId') ?? '').isEmpty) {
     if (context.mounted) {
       ScaffoldMessenger.maybeOf(context)?.showSnackBar(const SnackBar(content: Text('프로필 로그인 후 사진을 올릴 수 있습니다')));
     }

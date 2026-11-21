@@ -36,6 +36,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
   Set<String> _favorites = {};
   Map<String, int> _top30Ranks = {}; // dhlotteryCode -> 순위
   String _userId = '';
+  bool _isAdmin = false; // 관리자도 판매점 사진 올리기
   Map<String, String> _photos = {}; // 승인된 판매점 사진 (로그인 무관)
 
   // GPS 정밀도 관련
@@ -63,6 +64,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
     _loadTop30Ranks();
     _loadUserId();
     loginNotifier.addListener(_onLogin);
+    adminNotifier.addListener(_onAdmin);
     StorePhotos.approvedAll().then((m) {
       if (mounted) setState(() => _photos = m);
     });
@@ -213,11 +215,18 @@ class _NearbyScreenState extends State<NearbyScreen> {
 
   Future<void> _loadUserId() async {
     final prefs = await SharedPreferences.getInstance();
-    setState(() => _userId = prefs.getString('userId') ?? '');
+    setState(() {
+      _userId = prefs.getString('userId') ?? '';
+      _isAdmin = prefs.getBool('isAdmin') ?? false;
+    });
   }
 
   void _onLogin() {
     if (mounted) setState(() => _userId = loginNotifier.value);
+  }
+
+  void _onAdmin() {
+    if (mounted) setState(() => _isAdmin = adminNotifier.value);
   }
 
   Future<void> _searchAtMapCenterExtended() async {
@@ -278,6 +287,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
   @override
   void dispose() {
     loginNotifier.removeListener(_onLogin);
+    adminNotifier.removeListener(_onAdmin);
     favoritesNotifier.removeListener(_onFavoritesChanged);
     _mapController?.dispose();
     _sheetController.dispose();
@@ -832,7 +842,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
         onTap: () => _onCardTap(store, index),
         onFavoriteTap: () => _toggleFavorite(store.dhlotteryCode),
         // 판매점 사진 올리기 — 로그인했을 때만 순위 배지 아래 카메라 (관리자 승인 후 업로드)
-        onPhotoTap: _userId.isEmpty ? null : () => pickAndUploadStorePhoto(context, code: store.dhlotteryCode, name: store.storeName),
+        onPhotoTap: _userId.isEmpty && !_isAdmin ? null : () => pickAndUploadStorePhoto(context, code: store.dhlotteryCode, name: store.storeName),
         onQrTap: () => openPurchaseRecord(context, store: store, startQr: true),
         expandedChild: isExpanded
             ? Column(

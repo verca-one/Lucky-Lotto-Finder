@@ -145,7 +145,7 @@ class _PurchaseRecordScreenState extends State<PurchaseRecordScreen> {
   @override
   Widget build(BuildContext context) {
     final n = widget.manual ? 5 : _games.length;
-    final ok = _round != null && n > 0 && (widget.manual ? !_manualBad : _store != null); // 직접 입력만 판매점 없이
+    final ok = _round != null && (widget.manual ? !_manualBad : _store != null); // + 구입 기록은 판매점만 골라도 저장(번호 없이)
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.manual ? '번호 직접 입력' : '구입 기록', style: const TextStyle(fontWeight: FontWeight.w800)),
@@ -164,7 +164,7 @@ class _PurchaseRecordScreenState extends State<PurchaseRecordScreen> {
             onPressed: ok ? _save : null,
             child: Text(
               ok
-                  ? '저장 — $_round회 $n게임${widget.manual ? ' (안 고른 칸은 자동)' : ''}'
+                  ? '저장 — $_round회 ${n == 0 ? '판매점만 (번호 없이)' : '$n게임'}${widget.manual ? ' (안 고른 칸은 자동)' : ''}'
                   : widget.manual
                   ? '같은 줄에 겹친 번호가 있습니다'
                   : '판매점과 번호를 넣어 주세요',
@@ -509,7 +509,9 @@ class _PurchaseRecordsSectionState extends State<PurchaseRecordsSection> {
     final w = _wins[r.round];
     final ranks = [for (final g in r.games) w == null ? null : lottoRank(g, w.numbers, w.bonusNumber)];
     final best = ranks.whereType<int>().fold<int?>(null, (a, b) => a == null || b < a ? b : a);
-    final (String status, Color sc) = w == null
+    final (String status, Color sc) = r.games.isEmpty
+        ? ('번호 없이 판매점만 기록', Colors.blueGrey)
+        : w == null
         ? ('추첨 전 · 당첨번호 나오면 자동 확인', Colors.blueGrey)
         : best == null
         ? ('낙첨', Colors.grey.shade600)

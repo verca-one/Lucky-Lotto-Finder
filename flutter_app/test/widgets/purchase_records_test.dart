@@ -39,6 +39,8 @@ void main() {
           games: const [[1, 5, 18, 23, 40, 41], [2, 3, 4, 6, 7, 9]], createdAt: DateTime(2026, 11, 14)),
       PurchaseRecord(id: 'y', storeCode: 'S2', storeName: '행운', round: 1251,
           games: const [[1, 2, 3, 4, 5, 6]], createdAt: DateTime(2026, 11, 20)),
+
+      PurchaseRecord(id: 'z', storeCode: 'S3', storeName: '판매점만', round: 1250, games: const [], createdAt: DateTime(2026, 11, 13)),
     ];
     await t.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(child: PurchaseRecordsSection(
       loader: () async => records,
@@ -47,7 +49,8 @@ void main() {
           : null,
     )))));
     await t.pumpAndSettle();
-    expect(find.text('구입한 기록 (2)'), findsOneWidget);
+    expect(find.text('구입한 기록 (3)'), findsOneWidget);
+    expect(find.text('번호 없이 판매점만 기록'), findsOneWidget); // 판매점만 골라 저장한 기록
     expect(find.text('4등 당첨!'), findsOneWidget); // 1 5 18 23 맞음
     expect(find.text('4등'), findsOneWidget);
     expect(find.text('0개'), findsOneWidget);

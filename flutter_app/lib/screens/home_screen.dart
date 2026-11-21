@@ -196,6 +196,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     if (adminController.text == ADMIN_PASSWORD) {
                       final prefs = await SharedPreferences.getInstance();
                       await prefs.setBool('isAdmin', true);
+                      adminNotifier.value = true;
                       setState(() => _isAdmin = true);
                       Navigator.pop(context);
                       Navigator.push(
@@ -277,6 +278,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       onTap: () async {
                         final prefs = await SharedPreferences.getInstance();
                         await prefs.setBool('isAdmin', false);
+                        adminNotifier.value = false;
                         setState(() => _isAdmin = false);
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
@@ -436,6 +438,7 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
   List<Map<String, dynamic>> _rankedStores = [];
   List<Map<String, dynamic>> _internetStores = []; // 인터넷구매 지점 (별도 표시)
   Map<String, Map<String, dynamic>> _pensionInfo = {};
+  bool _isAdmin = false; // 관리자도 판매점 사진 올리기
   Map<String, String> _photos = {}; // 판매점 코드 → 승인된 사진 주소
   int _latestLottoRound = 0;
   // 홈 '최신 당첨 회차' 겹침 카드 데이터 — 로또·연금 독립 조회 (null = 불러오는 중)
@@ -480,12 +483,14 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
     _loadRanking();
     _loadUserId();
     loginNotifier.addListener(_onLogin);
+    adminNotifier.addListener(_onAdmin);
     favoritesNotifier.addListener(_loadFavorites);
   }
 
   @override
   void dispose() {
     loginNotifier.removeListener(_onLogin);
+    adminNotifier.removeListener(_onAdmin);
     _glowController.dispose();
     _shimmerController.dispose();
     favoritesNotifier.removeListener(_loadFavorites);
@@ -494,11 +499,18 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
 
   Future<void> _loadUserId() async {
     final prefs = await SharedPreferences.getInstance();
-    if (mounted) setState(() => _userId = prefs.getString('userId') ?? '');
+    if (mounted) setState(() {
+      _userId = prefs.getString('userId') ?? '';
+      _isAdmin = prefs.getBool('isAdmin') ?? false;
+    });
   }
 
   void _onLogin() {
     if (mounted) setState(() => _userId = loginNotifier.value);
+  }
+
+  void _onAdmin() {
+    if (mounted) setState(() => _isAdmin = adminNotifier.value);
   }
 
   Future<void> _loadFavorites() async {
@@ -1052,7 +1064,7 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
       onMapTap: address.isEmpty
           ? null
           : () => _openMap(mapType: 'naver', storeName: storeName, address: address),
-      onPhotoTap: _userId.isEmpty ? null : () => pickAndUploadStorePhoto(context, code: dhlotteryCode, name: storeName),
+      onPhotoTap: _userId.isEmpty && !_isAdmin ? null : () => pickAndUploadStorePhoto(context, code: dhlotteryCode, name: storeName),
         onQrTap: () => openPurchaseRecord(context, store: LotteryStore.fromJson({...store, 'lottery_type': 'lotto'}), startQr: true),
       expandedChild: isExpanded
           ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [

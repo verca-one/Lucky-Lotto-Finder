@@ -45,5 +45,10 @@ void main() {
     expect(r, isFalse);
     expect(find.text('프로필 로그인 후 사진을 올릴 수 있습니다'), findsOneWidget);
     expect(find.text('갤러리에서 고르기'), findsNothing);
+    // 관리자는 프로필 로그인 없이도 올리기 창이 열림
+    SharedPreferences.setMockInitialValues({'isAdmin': true});
+    await t.tap(find.text('올리기'));
+    await t.pumpAndSettle();
+    expect(find.text('갤러리에서 고르기'), findsOneWidget);
   });
 }
