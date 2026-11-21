@@ -54,7 +54,18 @@ void main() {
     expect(find.text('추첨 전 · 당첨번호 나오면 자동 확인'), findsOneWidget);
   });
 
-  testWidgets('번호 직접 입력 — 판매점 칸 · QR 없음 · 6개 고르면 한 게임 추가 · 7번째는 안 눌림', (t) async {
+  test('빈 칸 자동 — 고른 번호 유지 · 겹치지 않게 6개 · 정렬 · 모두 비면 자동', () {
+    final a = autoFill([3, null, 41, null, null, null]);
+    expect(a.length, 6);
+    expect(a.toSet().length, 6);
+    expect(a, containsAll([3, 41]));
+    expect(a, [...a]..sort());
+    final b = autoFill(List<int?>.filled(6, null));
+    expect(b.toSet().length, 6);
+    expect(b.every((n) => n >= 1 && n <= 45), isTrue);
+  });
+
+  testWidgets('번호 직접 입력 — 판매점 칸 · QR 없음 · 다섯 줄 × 드롭다운 6칸 · 줄 안 중복이면 빨간 테두리 · 저장 막힘', (t) async {
     SharedPreferences.setMockInitialValues({});
     t.view.physicalSize = const Size(1080, 2340);
     t.view.devicePixelRatio = 3;
@@ -64,14 +75,19 @@ void main() {
     expect(find.text('번호 직접 입력'), findsOneWidget);
     expect(find.byKey(const ValueKey('purchase_store')), findsNothing);
     expect(find.byKey(const ValueKey('purchase_qr')), findsNothing);
-    for (final n in [3, 11, 25, 30, 41, 44, 7]) {
-      await t.tap(find.byKey(ValueKey('manual_ball_$n')));
-      await t.pump();
+    for (var r = 0; r < 5; r++) {
+      expect(find.byKey(ValueKey('manual_row_$r')), findsOneWidget);
     }
-    expect(find.text('번호 고르기 — 6개씩 (6/6)'), findsOneWidget);
-    await t.tap(find.byKey(const ValueKey('manual_add_game')));
-    await t.pumpAndSettle();
-    expect(find.text('A'), findsOneWidget);
-    expect(find.text('번호 고르기 — 6개씩 (0/6)'), findsOneWidget);
+    Future<void> pick(int r, int k, int n) async {
+      await t.tap(find.byKey(ValueKey('manual_dd_${r}_$k')));
+      await t.pumpAndSettle();
+      await t.scrollUntilVisible(find.text('$n').last, 40, scrollable: find.byType(Scrollable).last);
+      await t.tap(find.text('$n').last);
+      await t.pumpAndSettle();
+    }
+    await pick(0, 0, 3);
+    await pick(0, 1, 3); // 같은 줄 중복
+    final row = t.widget<Container>(find.byKey(const ValueKey('manual_row_0')));
+    expect((row.decoration as BoxDecoration).border, Border.all(color: Colors.red));
   });
 }

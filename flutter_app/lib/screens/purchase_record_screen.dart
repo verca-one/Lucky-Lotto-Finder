@@ -1,6 +1,7 @@
 // 나의 번호 › 구입 기록 — 추가 화면(판매점 · 회차 · 번호) · 판매점 고르기(근처 · 검색 · 즐겨찾기) · 기록 목록(자동 당첨 확인)
 //   판매점 상세 팝업의 [여기서 산 번호 기록]으로 열면 판매점이 미리 정해진다.
 import 'dart:convert';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
@@ -16,6 +17,13 @@ import '../widgets/winning_number_boxes.dart' show numberBall, lottoRangeColor;
 import 'lotto_qr_scan_screen.dart';
 
 const _c = Color(0xFF1565C0);
+
+/// 한 줄 자동 채우기 — 고른 번호는 그대로, 빈 칸은 겹치지 않는 1~45 (반자동 · 모두 비면 자동), 정렬 (순수 함수)
+List<int> autoFill(List<int?> row, [Random? rnd]) {
+  final picked = row.whereType<int>().toSet();
+  final rest = [for (var n = 1; n <= 45; n++) if (!picked.contains(n)) n]..shuffle(rnd ?? Random());
+  return [...picked, ...rest.take(6 - picked.length)]..sort();
+}
 
 /// 구입 기록 추가 — 저장하면 true
 ///   [manual] = 번호 직접 입력 (판매점 없이 그냥 구입 번호 · 1~45 번호판)
@@ -43,7 +51,12 @@ class _PurchaseRecordScreenState extends State<PurchaseRecordScreen> {
   LotteryStore? _store;
   int? _round;
   final _games = <List<int>>[];
-  final _pick = <int>{}; // 직접 입력 — 고르는 중인 번호
+  // 직접 입력 — A~E 다섯 줄 × 6칸 (1~45 드롭다운). 안 고른 칸은 저장할 때 자동(반자동 · 빈 줄은 자동), 줄 안 중복이면 저장 막음
+  final _rows = List.generate(5, (_) => List<int?>.filled(6, null));
+
+  bool _dup(List<int?> r) => r.whereType<int>().length != r.whereType<int>().toSet().length;
+  bool get _manualBad => _rows.any(_dup);
+  List<List<int>> _manualGames() => [for (final r in _rows) autoFill(r)];
   List<(List<int>, String)> _saved = const []; // 저장한 번호 (번호, 저장 날짜)
 
   @override
@@ -97,6 +110,7 @@ class _PurchaseRecordScreenState extends State<PurchaseRecordScreen> {
   }
 
   Future<void> _save() async {
+    final games = widget.manual ? _manualGames() : _games; // 직접 입력은 여기서 빈 칸 자동
     final s = _store;
     await PurchaseRecords.add(
       PurchaseRecord(
@@ -105,14 +119,14 @@ class _PurchaseRecordScreenState extends State<PurchaseRecordScreen> {
         storeName: s?.storeName ?? '',
         storeAddress: s?.address ?? '',
         round: _round!,
-        games: _games,
+        games: games,
         createdAt: DateTime.now(),
       ),
     );
     if (!mounted) return;
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(SnackBar(content: Text('$_round회${s == null ? '' : ' · ${s.storeName}'} · ${_games.length}게임 기록했습니다')));
+    ).showSnackBar(SnackBar(content: Text('$_round회${s == null ? '' : ' · ${s.storeName}'} · ${games.length}게임 기록했습니다')));
     Navigator.pop(context, true);
   }
 
@@ -130,7 +144,8 @@ class _PurchaseRecordScreenState extends State<PurchaseRecordScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final ok = _round != null && _games.isNotEmpty && (widget.manual || _store != null); // 직접 입력만 판매점 없이
+    final n = widget.manual ? 5 : _games.length;
+    final ok = _round != null && n > 0 && (widget.manual ? !_manualBad : _store != null); // 직접 입력만 판매점 없이
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.manual ? '번호 직접 입력' : '구입 기록', style: const TextStyle(fontWeight: FontWeight.w800)),
@@ -149,9 +164,9 @@ class _PurchaseRecordScreenState extends State<PurchaseRecordScreen> {
             onPressed: ok ? _save : null,
             child: Text(
               ok
-                  ? '저장 — $_round회 ${_games.length}게임'
+                  ? '저장 — $_round회 $n게임${widget.manual ? ' (안 고른 칸은 자동)' : ''}'
                   : widget.manual
-                  ? '번호를 6개씩 골라 게임을 넣어 주세요'
+                  ? '같은 줄에 겹친 번호가 있습니다'
                   : '판매점과 번호를 넣어 주세요',
               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900),
             ),
@@ -204,40 +219,44 @@ class _PurchaseRecordScreenState extends State<PurchaseRecordScreen> {
             _section('어떤 번호를 샀나요 (최대 5게임)'),
           ],
           if (widget.manual) ...[
-            _section(
-              '번호 고르기 — 6개씩 (${_pick.length}/6)',
-              trailing: TextButton(onPressed: _pick.isEmpty ? null : () => setState(_pick.clear), child: const Text('지우기')),
-            ),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                for (var n = 1; n <= 45; n++)
-                  GestureDetector(
-                    key: ValueKey('manual_ball_$n'),
-                    onTap: () => setState(() {
-                      if (!_pick.remove(n) && _pick.length < 6) _pick.add(n);
-                    }),
-                    child: Opacity(
-                      opacity: _pick.contains(n) ? 1 : 0.35,
-                      child: numberBall('$n', lottoRangeColor(n), size: 36, fontSize: 13),
+            _section('번호 고르기 — 안 고른 칸은 저장할 때 자동'),
+            for (var r = 0; r < 5; r++)
+              Container(
+                key: ValueKey('manual_row_$r'),
+                margin: const EdgeInsets.only(bottom: 6),
+                padding: const EdgeInsets.fromLTRB(8, 2, 4, 2),
+                decoration: BoxDecoration(
+                  color: kManualColor.withValues(alpha: 0.05),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: _dup(_rows[r]) ? Colors.red : Colors.transparent),
+                ),
+                child: Row(children: [
+                  SizedBox(width: 18, child: Text('ABCDE'[r], style: const TextStyle(fontWeight: FontWeight.w900, color: kManualColor))),
+                  for (var k = 0; k < 6; k++)
+                    Expanded(
+                      child: DropdownButton<int>(
+                        key: ValueKey('manual_dd_${r}_$k'),
+                        value: _rows[r][k],
+                        isExpanded: true,
+                        isDense: true,
+                        underline: const SizedBox.shrink(),
+                        hint: const Center(child: Text('-')),
+                        menuMaxHeight: 320,
+                        items: [
+                          for (var n = 1; n <= 45; n++)
+                            DropdownMenuItem(value: n, child: Center(child: Text('$n', style: const TextStyle(fontWeight: FontWeight.w800)))),
+                        ],
+                        onChanged: (n) => setState(() => _rows[r][k] = n),
+                      ),
                     ),
+                  IconButton(
+                    visualDensity: VisualDensity.compact,
+                    tooltip: '이 줄 지우기',
+                    onPressed: _rows[r].every((n) => n == null) ? null : () => setState(() => _rows[r].fillRange(0, 6, null)),
+                    icon: Icon(Icons.close_rounded, size: 18, color: Colors.grey.shade500),
                   ),
-              ],
-            ),
-            const SizedBox(height: 10),
-            FilledButton.icon(
-              key: const ValueKey('manual_add_game'),
-              style: FilledButton.styleFrom(backgroundColor: kManualColor),
-              onPressed: _pick.length == 6
-                  ? () {
-                      _addGame(_pick.toList()..sort());
-                      setState(_pick.clear);
-                    }
-                  : null,
-              icon: const Icon(Icons.add),
-              label: Text(_pick.length == 6 ? '이 6개로 한 게임 추가' : '6개를 골라 주세요', style: const TextStyle(fontWeight: FontWeight.w900)),
-            ),
+                ]),
+              ),
             const SizedBox(height: 10),
           ] else ...[
             SizedBox(
