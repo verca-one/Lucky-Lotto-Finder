@@ -154,8 +154,15 @@ void main() {
         pension: pension(),
         speetoUpdatedAt: DateTime(2026, 10, 10, 3, 50),
         clock: () => kst(2026, 10, 12, 16),
+        speettoLoader: () async => {'스피또2000': (70, DateTime(2026, 11, 21, 5, 58)), '스피또1000': (111, null)},
       )));
+      await tester.pump();
       expect(tester.takeException(), isNull);
+      // 게임별 차수 · 업데이트 날짜(체크) — 시각 없는 게임은 차수만
+      expect(find.descendant(of: find.byKey(const ValueKey('header_speeto_스피또2000')), matching: find.text('70차')), findsOneWidget);
+      expect(find.descendant(of: find.byKey(const ValueKey('header_speeto_스피또2000')),
+          matching: find.text(formatUpdateTime(DateTime(2026, 11, 21, 5, 58)))), findsOneWidget);
+      expect(find.descendant(of: find.byKey(const ValueKey('header_speeto_스피또500')), matching: find.text('-')), findsOneWidget);
       final front = find.byKey(const ValueKey('header_lotto_front_1245_complete'));
       expect(find.descendant(of: front, matching: find.text('1245')), findsOneWidget);
       expect(find.descendant(of: front, matching: find.text('2026.10.10 (토) 추첨')), findsOneWidget);
