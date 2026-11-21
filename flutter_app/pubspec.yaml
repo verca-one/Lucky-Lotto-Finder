@@ -93,6 +93,7 @@ flutter:
     - assets/mamain_splash.png
     - assets/app_icon3_512.png
     - assets/dra.png
+    - assets/home_title_brush.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
@@ -119,11 +120,6 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
-  fonts:
-    # 홈 '최신 당첨 회차' 붓글씨 — 나눔손글씨 붓 OFL 변형본 (assets/fonts/LuckyBrush-OFL.txt)
-    - family: LuckyBrush
-      fonts:
-        - asset: assets/fonts/LuckyBrush-Regular.ttf
 
 flutter_native_splash:
   background_image: assets/sss.png

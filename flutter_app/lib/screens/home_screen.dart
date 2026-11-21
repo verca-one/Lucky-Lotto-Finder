@@ -627,22 +627,9 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
       onRefresh: _loadRanking,
       child: CustomScrollView(
         slivers: [
-          // 헤더 (파란 배경) — 로딩 중에도 먼저 표시
+          // 헤더 (흰 반투명 상자) — 회차 카드 + 최신 당첨번호(로또 · 연금)까지 한 상자, 경고문은 맨 아래 · 로딩 중에도 먼저 표시
           SliverToBoxAdapter(child: _buildHeader()),
-          // 최신 당첨번호 — 로또 · 연금 (번호 수집되면 바로 반영 · 발표 당일 회색 단계), 그 아래 복권명당 순위
           const SliverToBoxAdapter(child: SizedBox(height: 16)),
-          SliverToBoxAdapter(
-            child: RankingLottoNumbers(
-              key: ValueKey('ranking_numbers_$_numbersRefresh'),
-              onNewRound: _loadRoundCards, // 새 회차 번호가 들어오면 위 회차 카드도 다시 읽기
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: RankingPensionNumbers(
-              key: ValueKey('ranking_pension_$_numbersRefresh'),
-              onNewRound: _loadRoundCards,
-            ),
-          ),
 
           if (_isLoading) ...[
             // ── 스켈레톤 로딩 UI ──────────────────────────────
@@ -954,6 +941,19 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
       speetoUpdatedAt: latestUpdateTimes(_recentCrawlLogs)['speeto'],
       // 수동 탭으로만 이동 (헤더가 상세 화면이 닫힐 때까지 중복 탭을 막는다)
       onOpen: (card) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => RoundResultScreen(card: card))),
+      // 최신 당첨번호 — 로또 · 연금 (번호 수집되면 바로 반영 · 발표 당일 회색 단계)
+      below: [
+        RankingLottoNumbers(
+          key: ValueKey('ranking_numbers_$_numbersRefresh'),
+          margin: EdgeInsets.zero,
+          onNewRound: _loadRoundCards, // 새 회차 번호가 들어오면 위 회차 카드도 다시 읽기
+        ),
+        RankingPensionNumbers(
+          key: ValueKey('ranking_pension_$_numbersRefresh'),
+          margin: EdgeInsets.zero,
+          onNewRound: _loadRoundCards,
+        ),
+      ],
     );
   }
 

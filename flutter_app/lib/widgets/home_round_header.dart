@@ -83,6 +83,9 @@ class HomeRoundHeader extends StatefulWidget {
   /// 테스트용 시계 (기본 = 현재 시각)
   final DateTime Function()? clock;
 
+  /// 상자 안 회차 카드 아래에 함께 감쌀 내용 (홈: 로또 · 연금 당첨번호). 경고문은 그 아래 맨 끝.
+  final List<Widget> below;
+
   const HomeRoundHeader({
     super.key,
     this.lotto,
@@ -90,6 +93,7 @@ class HomeRoundHeader extends StatefulWidget {
     this.speetoUpdatedAt,
     this.onOpen,
     this.clock,
+    this.below = const [],
   });
 
   @override
@@ -143,25 +147,14 @@ class _HomeRoundHeaderState extends State<HomeRoundHeader> {
       ),
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        Row(children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(color: _kHeaderInk.withValues(alpha: 0.08), shape: BoxShape.circle),
-            child: const Icon(Icons.emoji_events_rounded, color: Color(0xFFF9A825), size: 20),
+        // 맨 위 '최신 당첨회차' 붓글씨 (사용자 제공 그림 · 바탕 투명)
+        const Center(
+          child: FractionallySizedBox(
+            widthFactor: 0.68,
+            child: Image(image: AssetImage('assets/home_title_brush.png'), semanticLabel: '최신 당첨회차'),
           ),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              // 붓글씨 (LuckyBrush — 이 여섯 글자만 들어 있는 부분 글꼴)
-              const Text('최신 당첨 회차', style: TextStyle(fontFamily: 'LuckyBrush', fontSize: 26, height: 1.1, color: _kHeaderInk)),
-              const SizedBox(height: 2),
-              Text('실제 당첨 이력을 분석한 통계입니다.',
-                  style: TextStyle(fontSize: 11.5, color: _kHeaderInk.withValues(alpha: 0.75))),
-            ]),
-          ),
-        ]),
-        const SizedBox(height: 12),
+        ),
+        const SizedBox(height: 6),
         IntrinsicHeight(
           child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
             Expanded(child: _GameStack(type: 'lotto', pair: lotto, loading: widget.lotto == null, onOpen: _open)),
@@ -188,6 +181,7 @@ class _HomeRoundHeaderState extends State<HomeRoundHeader> {
             ]),
           ),
         ],
+        if (widget.below.isNotEmpty) ...[const SizedBox(height: 12), ...widget.below],
         const SizedBox(height: 12),
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
           Icon(Icons.info_outline_rounded, size: 13, color: _kHeaderInk.withValues(alpha: 0.7)),

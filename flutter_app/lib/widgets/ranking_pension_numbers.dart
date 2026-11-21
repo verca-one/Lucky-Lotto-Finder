@@ -54,7 +54,9 @@ class RankingPensionNumbers extends StatefulWidget {
   final VoidCallback? onNewRound;
   final DateTime Function()? clock;
   final Duration pollEvery;
-  const RankingPensionNumbers({super.key, this.loader, this.onNewRound, this.clock, this.pollEvery = const Duration(minutes: 2)});
+  final EdgeInsets margin;
+  const RankingPensionNumbers({super.key, this.loader, this.onNewRound, this.clock, this.pollEvery = const Duration(minutes: 2),
+      this.margin = const EdgeInsets.fromLTRB(16, 0, 16, 12)});
   @override
   State<RankingPensionNumbers> createState() => _RankingPensionNumbersState();
 }
@@ -122,7 +124,7 @@ class _RankingPensionNumbersState extends State<RankingPensionNumbers> with Widg
 
   Widget _box({required Key key, required Color border, required Widget title, required List<Widget> rows}) => Container(
         key: key,
-        margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+        margin: widget.margin,
         padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
         decoration: BoxDecoration(
           color: Colors.white,

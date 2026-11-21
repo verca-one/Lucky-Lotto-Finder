@@ -45,7 +45,9 @@ class RankingLottoNumbers extends StatefulWidget {
   final VoidCallback? onNewRound;
   final DateTime Function()? clock;
   final Duration pollEvery;
-  const RankingLottoNumbers({super.key, this.loader, this.onNewRound, this.clock, this.pollEvery = const Duration(minutes: 2)});
+  final EdgeInsets margin;
+  const RankingLottoNumbers({super.key, this.loader, this.onNewRound, this.clock, this.pollEvery = const Duration(minutes: 2),
+      this.margin = const EdgeInsets.fromLTRB(16, 0, 16, 0)});
   @override
   State<RankingLottoNumbers> createState() => _RankingLottoNumbersState();
 }
@@ -119,7 +121,7 @@ class _RankingLottoNumbersState extends State<RankingLottoNumbers> with WidgetsB
     final nums = [...w.numbers]..sort();
     return Container(
       key: const ValueKey('ranking_lotto_numbers'),
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 0), // 아래 연금 상자와 붙임
+      margin: widget.margin, // 아래 연금 상자와 붙임
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
       decoration: BoxDecoration(
         color: Colors.white,
@@ -163,7 +165,7 @@ class _RankingLottoNumbersState extends State<RankingLottoNumbers> with WidgetsB
         );
     return Container(
       key: const ValueKey('ranking_lotto_pending'),
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 0), // 아래 연금 상자와 붙임
+      margin: widget.margin, // 아래 연금 상자와 붙임
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
       decoration: BoxDecoration(
         color: Colors.white,
