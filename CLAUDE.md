@@ -100,6 +100,15 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 관리자 브리핑: `lib/screens/admin_screen.dart` `BriefingDetailScreen` — '회차 상황판'(상단 보고 묶음) + '본 브리핑'(`MasterBriefingSection` → 지방장 연구 → 엔진 복기). 자동 새로고침 없음(앱바 ↻ 만), 탭은 keep-alive.
 - 연구 서비스: `lib/services/research/` (저장본 읽기 모델 · 리포지토리). 연구소 메뉴 순서는 `admin_research_lab_screen.dart` `kResearchLabEntries`.
 - 광고: `lib/services/ad_service.dart` — debug 빌드는 `kDebugMode` 로 Google 테스트 광고 ID, 관리자 폰은 광고 안 받음. 실광고 노출로 AdMob 무효 트래픽 제한을 받은 적 있으니 유지.
+- **로그인 = 프로필 아이디** (설정에서 저장한 SharedPreferences `userId`). 관리자 모드(`isAdmin`)는 별개의 폰 안 표시 — 서버 쪽 관리자 인증은 없다.
+  로그인 · 로그아웃은 `loginNotifier`(`lib/services/favorites_notifier.dart`)로 홈 · 지역 · 주변 화면에 바로 반영한다.
+- **판매점 카드**는 홈 · 지역 · 주변 모두 `RankingStoreCard` — 순위 배지 아래 승인 사진 · 카메라(`onPhotoTap`, 로그인 시만), 맨 아래 줄 [산 번호 QR](`onQrTap`).
+  `showStoreDetailPopup`(store_detail_popup.dart)은 **어디서도 열리지 않는 화면**이다. 기능을 거기 달지 말 것.
+- **구입한 기록** (즐겨찾기 › 나의 번호): 폰 안 `my_purchases` 에만 저장. 로또 용지 QR 은 폰 안에서 글자만 해석(`parseLottoQr`, 동행복권 접속 없음).
+  추천 메뉴의 '저장한 번호'(`my_lotto_numbers`)와 따로다. 당첨번호가 들어오면 등수를 자동으로 맞춰 본다.
+- **판매점 사진**: 사용자(로그인) 올리기 → '승인 대기' → 관리자 메뉴 '판매점 사진 승인'에서 승인한 것만 표시(로그인 무관).
+  표 · 함수 `store_photos.sql` · `store_photos_delete.sql`. 승인 · 목록 · 삭제는 서버 함수 + **승인 키**(DB `store_photo_admin` 에만, 앱 · 채팅에 쓰지 않음).
+  삭제는 목록에서만 지우고 Storage 파일은 남긴다(앱에 파일 삭제 권한을 열지 않으려고).
 
 ## 명령어
 
@@ -123,4 +132,8 @@ python tools/run_workflow.py research-strategy.yml
 - 폰에는 debug 서명 앱이 깔려 있다. `INSTALL_FAILED_UPDATE_INCOMPATIBLE` 이면 사용자에게 앱 삭제를 요청한다(`adb uninstall` 은 막혀 있음).
 - 푸쉬는 사용자가 한다. 커밋 후 `git push` 를 요청한다.
 - Bash heredoc 으로 큰 Python 패치를 넘기면 따옴표 때문에 깨진다 → 패치 스크립트를 파일로 써서 실행한다.
+  CRLF 파일(`pubspec.yaml` 등)은 읽을 때 줄바꿈을 바꾸면 파일 전체가 바뀐 것처럼 보이니, 바이트로 읽고 원래 줄바꿈으로 되돌려 쓴다.
+- `pubspec.yaml` 의 `version:` 줄은 사용자가 스토어 올릴 때 직접 바꾼다(미커밋 유지). 의존성 · 에셋을 추가하면 그 hunk 만 골라 커밋한다:
+  `git diff pubspec.yaml` 에서 `+version:` hunk 를 뺀 패치를 만들어 `git apply --cached`.
+- 폰 상태 확인(디버그 빌드만): `adb shell run-as com.luckylotto.finder cat shared_prefs/FlutterSharedPreferences.xml` — 값은 출력하지 말고 있음/길이만.
 - `supabase_config.py` 는 커밋하지 않는다(미추적 유지). 사용자의 미커밋 수정분(크롤러 · `pubspec.yaml` · 미추적 SQL/로그 등)은 건드리지도 커밋하지도 않는다.
