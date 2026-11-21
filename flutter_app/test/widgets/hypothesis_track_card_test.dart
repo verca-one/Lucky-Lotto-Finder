@@ -30,8 +30,11 @@ final _payload = <String, dynamic>{
 void main() {
   testWidgets('가설 트랙 — 번호 · 명당(가설 이유) · 사용 가설 · 성적', (tester) async {
     SharedPreferences.setMockInitialValues({});
-    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(
-        child: HypothesisTrackCard(target: 1247, loader: (_) async => HypothesisTrack.fromPayload(_payload))))));
+    // 가설 명당은 ④ 엔진 추천 명당 카드 안(HypothesisTrackStores)으로 옮김
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(child: Column(children: [
+      HypothesisTrackCard(target: 1247, loader: (_) async => HypothesisTrack.fromPayload(_payload)),
+      HypothesisTrackStores(target: 1247, loader: (_) async => HypothesisTrack.fromPayload(_payload)),
+    ])))));
     await tester.pumpAndSettle();
     expect(find.text('1247회 가설 트랙 — 제미나이 가설'), findsOneWidget);
     expect(find.text('사전 등록'), findsOneWidget);
@@ -67,7 +70,7 @@ void main() {
     expect(find.descendant(of: box, matching: find.text('· 다음 회차는 홀수 개수가 낮은 쪽 조합을 더 고른다')), findsOneWidget);
     // 번호 세트 아래 · 명당 위
     expect(tester.getTopLeft(box).dy > tester.getTopLeft(find.text('가설 번호 5세트')).dy, isTrue);
-    expect(tester.getTopLeft(box).dy < tester.getTopLeft(find.text('가설 명당 5곳')).dy, isTrue);
+    expect(find.text('제미나이 가설 명당 5곳'), findsNothing); // 명당은 ④ 카드로 옮김
   });
 
   testWidgets('공개 전이면 안내만', (tester) async {

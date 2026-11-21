@@ -1308,6 +1308,7 @@ class _KeepAliveState extends State<_KeepAlive> with AutomaticKeepAliveClientMix
 
 class _BriefingDetailScreenState extends State<BriefingDetailScreen> {
   int _gen = 0; // 새로고침 버튼 → 카드를 전부 새로 만들어 다시 불러옴 (자동 갱신 없음)
+  bool _agentOpen = false; // 본 브리핑 맨 아래 지방장 연구 — 처음엔 접힘
 
   void _refresh() {
     MasterBriefingService.instance.clearCache();
@@ -1358,8 +1359,9 @@ class _BriefingDetailScreenState extends State<BriefingDetailScreen> {
           // ── 본 브리핑 — 주요 브리핑부터 (힘을 줘서)
           _mainBriefingHero(),
           const MasterBriefingSection(),
-          _mainSectionTitle('지방장 연구', const Color(0xFF00695C)),
-          const AgentBriefingSection(),
+          _mainSectionTitle('지방장 연구', const Color(0xFF00695C),
+              open: _agentOpen, onTap: () => setState(() => _agentOpen = !_agentOpen)),
+          if (_agentOpen) const AgentBriefingSection(),
           _mainSectionTitle('엔진 복기', const Color(0xFF283593)),
           const EngineReviewBriefingCard(),
           const SizedBox(height: 32),
@@ -1402,13 +1404,23 @@ class _BriefingDetailScreenState extends State<BriefingDetailScreen> {
   );
 
   /// 본 브리핑 안 섹션 제목 — 주요 브리핑 머리와 같은 모양 (세로 막대 + 큰 글씨)
-  Widget _mainSectionTitle(String t, Color c) => Padding(
-    padding: const EdgeInsets.fromLTRB(0, 28, 0, 10),
-    child: Row(children: [
-      Container(width: 4, height: 20, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(2))),
-      const SizedBox(width: 8),
-      Text(t, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: c)),
-    ]),
+  /// [onTap] 이 있으면 접고 펼치는 제목 (open = 펼침)
+  Widget _mainSectionTitle(String t, Color c, {bool open = true, VoidCallback? onTap}) => InkWell(
+    key: ValueKey('main_section_$t'),
+    onTap: onTap,
+    child: Padding(
+      padding: const EdgeInsets.fromLTRB(0, 28, 0, 10),
+      child: Row(children: [
+        Container(width: 4, height: 20, decoration: BoxDecoration(color: c, borderRadius: BorderRadius.circular(2))),
+        const SizedBox(width: 8),
+        Text(t, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w900, color: c)),
+        if (onTap != null) ...[
+          const Spacer(),
+          Text(open ? '접기' : '펼치기', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: c)),
+          Icon(open ? Icons.expand_less_rounded : Icons.expand_more_rounded, color: c),
+        ],
+      ]),
+    ),
   );
 
   /// 본 브리핑 머리 — 주요 브리핑부터 아래가 이번 회차 본 브리핑

@@ -18,6 +18,8 @@ import 'hypothesis_track_card.dart';
 import 'purchase_recommend_card.dart' show lottoBall, statusChip, popularityValidationLine;
 import 'store_map_buttons.dart';
 import 'set_review_card.dart';
+import 'briefing_set_marks.dart';
+import 'briefing_nearby_picks.dart';
 import 'weekly_check_card.dart';
 import '../services/research/set_review.dart';
 
@@ -170,19 +172,22 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
         children: nums.map((n) => lottoBall(n, size: size)).toList(),
       );
 
-  Widget _setRow(int i, List<int> nums, Color color, {String? trailing}) => Container(
+  /// [markId] 가 있으면 체크(흐림 + 취소선) · ★(나의 번호 저장)
+  Widget _setRow(int i, List<int> nums, Color color, {String? trailing, String? markId}) => Container(
         margin: const EdgeInsets.only(bottom: 6),
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+        padding: EdgeInsets.symmetric(horizontal: markId == null ? 8 : 2, vertical: markId == null ? 7 : 3),
         decoration: BoxDecoration(color: color.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(10)),
-        child: Row(children: [
+        child: markId == null ? _setRowBody(i, nums, color, trailing) : BriefingSetMarks(id: markId, numbers: nums, child: _setRowBody(i, nums, color, trailing)),
+      );
+
+  Widget _setRowBody(int i, List<int> nums, Color color, String? trailing) => Row(children: [
           SizedBox(width: 18, child: Text('$i', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: color))),
           Expanded(child: _balls(nums)),
           if (trailing != null) ...[
             const SizedBox(width: 6),
             Text(trailing, style: const TextStyle(fontSize: 9.5, color: Color(0xFF888888))),
           ],
-        ]),
-      );
+        ]);
 
   // ① 엔진 추천번호 — 공식 최종 예측 5세트 (패턴 분석·추천번호 화면과 같은 스냅샷)
   Widget _engineCard(MasterBriefing b) {
@@ -214,7 +219,7 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
           ...f.sets.asMap().entries.map((s) {
             final ps = b.popularity?.scoreOf(s.value);
             return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              _setRow(s.key + 1, s.value, color),
+              _setRow(s.key + 1, s.value, color, markId: '${b.targetRound}:official:${s.key}'),
               if (ps != null) Padding(padding: const EdgeInsets.fromLTRB(26, 0, 0, 6), child: PopularityTag(score: ps)),
             ]);
           }),
@@ -283,7 +288,7 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
         Text(popularityValidationLine(p.popularity), style: TextStyle(fontSize: 10.5, color: Colors.teal.shade800, height: 1.4)),
         const SizedBox(height: 8),
         ...p.recommendations.asMap().entries.map((r) => _setRow(r.key + 1, r.value.numbers, color,
-            trailing: '인기도 ×${(r.value.popularityIndex ?? 1).toStringAsFixed(2)}')),
+            trailing: '인기도 ×${(r.value.popularityIndex ?? 1).toStringAsFixed(2)}', markId: '${b.targetRound}:purchase:${r.key}')),
         Text('마스터, 모든 조합의 1등 확률은 같습니다(1/8,145,060). 구매예측은 확률이 아니라 "당첨 시 나눠 가질 위험"을 줄이는 선택이며, '
             '인기도 ×0.xx 는 평균 조합 대비 판매 비율 추정입니다.',
             style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700, height: 1.4)),
@@ -316,16 +321,22 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
         if (kinds.isNotEmpty)
           Text(storeEdgeSummaryLine(kinds), style: TextStyle(fontSize: 10.5, color: Colors.brown.shade700)),
         const SizedBox(height: 8),
-        SizedBox(
-          width: double.infinity,
-          child: FilledButton.icon(
-            style: FilledButton.styleFrom(backgroundColor: color, visualDensity: VisualDensity.compact),
+        // 내 위치 — 추천 명당(④ · 가설 명당 · 적중 예측 순위) 중 가까운 곳을 따로
+        BriefingNearbyPicks(target: b.targetRound, color: color, picks: [
+          for (final (i, p) in b.stores.indexed)
+            (code: p.ranked.store.code, name: p.ranked.store.name, address: p.ranked.store.address,
+                lat: p.ranked.store.point?.latitude, lng: p.ranked.store.point?.longitude, tag: '④ 이번 주 추천 ${i + 1}위'),
+          if (b.hitRanking != null && b.hitRanking!.targetRound == b.targetRound)
+            for (final e in b.hitRanking!.ranking.where((e) => !e.isOnline))
+              (code: e.code, name: e.name, address: e.address, lat: null, lng: null, tag: '적중 예측 ${e.rank}위'),
+        ]),
+        Align(
+          alignment: Alignment.centerRight,
+          child: TextButton(
             onPressed: () => Navigator.push(context, MaterialPageRoute(
-              builder: (_) => NearbyEngineStoresScreen(
-                  targetRound: b.targetRound, storeEngineSidos: b.storeEngineRegions),
+              builder: (_) => NearbyEngineStoresScreen(targetRound: b.targetRound, storeEngineSidos: b.storeEngineRegions),
             )),
-            icon: const Icon(Icons.my_location, size: 18),
-            label: const Text('내 위치 — 주변 엔진 추천 명당 보기', style: TextStyle(fontWeight: FontWeight.w800)),
+            child: const Text('주변 엔진 추천 명당 전체 화면 →', style: TextStyle(fontSize: 11.5)),
           ),
         ),
         const SizedBox(height: 6),
@@ -392,6 +403,9 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
         const SizedBox(height: 4),
         StoreHitRankingCard(ranking: b.hitRanking, targetRound: b.targetRound,
             pickCodes: {for (final p in b.stores) p.ranked.store.code}),
+        const SizedBox(height: 8),
+        // 제미나이 가설 명당 5곳 (가설 트랙에서 옮겨 옴)
+        HypothesisTrackStores(key: ValueKey('track_stores_${b.targetRound}'), target: b.targetRound),
         const SizedBox(height: 8),
         BriefingFavoriteStores(pickCodes: {for (final p in b.stores) p.ranked.store.code}),
         const SizedBox(height: 8),
@@ -517,7 +531,7 @@ class PopularityPicksCard extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
                 decoration: BoxDecoration(color: color.withValues(alpha: 0.06), borderRadius: BorderRadius.circular(10)),
                 child: Column(children: [
-                  Row(children: [
+                  BriefingSetMarks(id: '$target:popularity:${e.key}', numbers: e.value.set, child: Row(children: [
                     SizedBox(width: 18, child: Text('${e.key + 1}', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: color))),
                     Expanded(
                       child: Row(
@@ -525,7 +539,7 @@ class PopularityPicksCard extends StatelessWidget {
                         children: e.value.set.map((n) => lottoBall(n, size: 28)).toList(),
                       ),
                     ),
-                  ]),
+                  ])),
                   const SizedBox(height: 4),
                   Align(alignment: Alignment.centerRight, child: PopularityTag(score: e.value)),
                 ]),

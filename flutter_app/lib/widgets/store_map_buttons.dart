@@ -85,3 +85,20 @@ class _MapButton extends StatelessWidget {
     );
   }
 }
+
+/// 판매점 지도 시트 — 이름 · 주소 + 네이버 지도 / 카카오맵 (좌표 없으면 이름 + 주소 검색)
+Future<void> showStoreMapSheet(BuildContext context, StoreMapTarget t) => showModalBottomSheet(
+      context: context,
+      builder: (c) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+          child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text(t.name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+            const SizedBox(height: 2),
+            Text(t.address.isNotEmpty ? t.address : '주소 정보 없음 — 이름으로 검색합니다', style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
+            const SizedBox(height: 12),
+            StoreMapButtons(target: t),
+          ]),
+        ),
+      ),
+    );

@@ -415,8 +415,18 @@ class _StoreHitRankingCardState extends State<StoreHitRankingCard> {
       ]),
     );
     if (!_open) {
+      final picks = r.ranking.where((e) => widget.pickCodes.contains(e.code)).toList();
       return Container(key: const ValueKey('store_hit_ranking'), width: double.infinity, padding: const EdgeInsets.all(12),
-          decoration: box, child: header);
+          decoration: box,
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            header,
+            if (picks.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              Text('이번 주 추천 명당 ${picks.length}곳의 순위', style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900, color: _green)),
+              const SizedBox(height: 4),
+              for (final e in picks) _row(e),
+            ],
+          ]));
     }
     return Container(
       key: const ValueKey('store_hit_ranking'),
