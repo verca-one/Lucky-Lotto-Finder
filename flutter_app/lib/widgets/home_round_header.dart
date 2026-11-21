@@ -71,6 +71,31 @@ const double kBackCardSide = 6;
 /// 흰 반투명 상단 상자 위 글씨색
 const _kHeaderInk = Color(0xFF14213D);
 
+/// 업데이트 값 (✓ + 값 · 없으면 시계 + 확인 중)
+List<Widget> _updateValue(String? v, Color ink) => [
+      Icon(v == null ? Icons.schedule_rounded : Icons.check_circle_rounded, color: v == null ? Colors.grey : ink, size: 14),
+      const SizedBox(width: 3),
+      Flexible(
+        child: Text(v ?? '확인 중', maxLines: 1, overflow: TextOverflow.ellipsis,
+            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: v == null ? Colors.grey.shade600 : ink)),
+      ),
+    ];
+
+/// 게임별 업데이트 칸 — 제목 + (당첨번호 · 당첨판매점) 두 줄
+Widget _updateBox(String type, String title, Color ink, Color bg, Color border, List<(String, String?)> lines) => Container(
+      key: ValueKey('header_updates_$type'),
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(12), border: Border.all(color: border)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(title, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900, color: ink)),
+        for (final (label, v) in lines) ...[
+          const SizedBox(height: 4),
+          Text(label.replaceFirst(RegExp(r'^(로또|연금) '), ''), style: TextStyle(fontSize: 10.5, color: ink.withValues(alpha: 0.75))),
+          Row(children: _updateValue(v?.replaceFirst(' 업데이트', ''), ink)),
+        ],
+      ]),
+    );
+
 /// 홈 업데이트 다섯 줄 (이름, 값 — null 이면 확인 중) — 순수 함수
 List<(String, String?)> updateLines({int? lottoNumbersRound, int? pensionNumbersRound, Map<String, DateTime> times = const {}}) {
   String? at(String k) => times[k] == null ? null : '${formatUpdateTime(times[k]!)} 업데이트';
@@ -193,34 +218,39 @@ class _HomeRoundHeaderState extends State<HomeRoundHeader> {
           ]),
         ),
         const SizedBox(height: 8),
-        // 업데이트 다섯 줄 — 당첨번호는 들어온 최신 회차, 판매점 · 스피또는 크롤링 마지막 완료 시각
-        Container(
-          key: const ValueKey('header_updates'),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.6),
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(children: [
-            for (final (label, value) in updateLines(
-              lottoNumbersRound: widget.lotto?.latestNumbersRound,
-              pensionNumbersRound: widget.pension?.latestNumbersRound,
-              times: {...widget.updateTimes, if (speeto != null) 'speeto': speeto},
-            ))
-              Padding(
-                padding: const EdgeInsets.symmetric(vertical: 2),
-                child: Row(children: [
-                  Text(label, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: _kHeaderInk)),
-                  const Spacer(),
-                  Icon(value == null ? Icons.schedule_rounded : Icons.check_circle_rounded,
-                      color: value == null ? Colors.grey : const Color(0xFF2E7D32), size: 14),
-                  const SizedBox(width: 4),
-                  Text(value ?? '확인 중', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
-                      color: value == null ? Colors.grey.shade600 : _kHeaderInk)),
-                ]),
+        // 업데이트 — 로또(노랑) · 연금(녹색) 칸을 나란히, 스피또는 아래 한 줄
+        //   당첨번호는 들어온 최신 회차, 판매점 · 스피또는 크롤링 마지막 완료 시각
+        Builder(builder: (_) {
+          final l = updateLines(
+            lottoNumbersRound: widget.lotto?.latestNumbersRound,
+            pensionNumbersRound: widget.pension?.latestNumbersRound,
+            times: {...widget.updateTimes, if (speeto != null) 'speeto': speeto},
+          );
+          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            IntrinsicHeight(
+              child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Expanded(child: _updateBox('lotto', '로또', const Color(0xFF8A6100), const Color(0xFFFFF8E1), const Color(0xFFFFE082), l.sublist(0, 2))),
+                const SizedBox(width: 10),
+                Expanded(child: _updateBox('pension', '연금복권', const Color(0xFF1C7A49), const Color(0xFFE8F5E9), const Color(0xFFA5D6A7), l.sublist(2, 4))),
+              ]),
+            ),
+            const SizedBox(height: 8),
+            Container(
+              key: const ValueKey('header_updates_speeto'),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                color: const Color(0xFFE0F2F1),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: const Color(0xFF80CBC4)),
               ),
-          ]),
-        ),
+              child: Row(children: [
+                const Text('스피또', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900, color: Color(0xFF00695C))),
+                const Spacer(),
+                ..._updateValue(l[4].$2, const Color(0xFF00695C)),
+              ]),
+            ),
+          ]);
+        }),
         if (widget.below.isNotEmpty) ...[const SizedBox(height: 12), ...widget.below],
         const SizedBox(height: 12),
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
