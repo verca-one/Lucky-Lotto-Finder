@@ -72,6 +72,9 @@ class StorePhotos {
     return [for (final r in rows as List) StorePhoto.fromJson(Map<String, dynamic>.from(r as Map))];
   }
 
+  /// 목록에서 삭제 (승인 키 필요) — shortcut: 보관함 파일은 남음(앱에 파일 삭제 권한을 열지 않으려고), Supabase 화면에서 정리
+  static Future<void> delete(String id, String key) => _db.rpc('delete_store_photo', params: {'p_id': id, 'p_key': key});
+
   static Future<void> review(String id, String status, String key) =>
       _db.rpc('review_store_photo', params: {'p_id': id, 'p_status': status, 'p_key': key});
 }

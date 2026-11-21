@@ -104,3 +104,17 @@ ON CONFLICT (id) DO UPDATE SET key = EXCLUDED.key;
 SELECT 'store_photos_table' AS check, (to_regclass('public.store_photos') IS NOT NULL)::text AS value
 UNION ALL SELECT 'bucket', (SELECT count(*) FROM storage.buckets WHERE id = 'store-photos')::text
 UNION ALL SELECT 'admin_key_set', (SELECT (key <> '여기에-승인키')::text FROM store_photo_admin WHERE id = 1);
+
+-- 6) (추가 2026-11-21) 관리자 사진 삭제 — 목록에서 지움 (승인 키 필요). 보관함 파일은 남으니 필요하면 Supabase Storage 화면에서 정리
+CREATE OR REPLACE FUNCTION delete_store_photo(p_id uuid, p_key text)
+RETURNS void
+LANGUAGE plpgsql SECURITY DEFINER SET search_path = public AS $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM store_photo_admin WHERE key = p_key) THEN
+    RAISE EXCEPTION '승인 키가 맞지 않습니다';
+  END IF;
+  DELETE FROM store_photos WHERE id = p_id;
+END;
+$$;
+REVOKE ALL ON FUNCTION delete_store_photo(uuid, text) FROM public;
+GRANT EXECUTE ON FUNCTION delete_store_photo(uuid, text) TO anon, authenticated;

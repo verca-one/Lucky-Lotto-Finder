@@ -15,6 +15,9 @@ import 'round_result_screen.dart';
 import '../widgets/ranking_store_card.dart';
 import '../widgets/store_detail_popup.dart';
 import '../services/store_photos.dart';
+import '../widgets/store_photo_widgets.dart' show pickAndUploadStorePhoto;
+import 'purchase_record_screen.dart' show openPurchaseRecord;
+import '../models/lottery_store.dart';
 import 'nearby_screen.dart';
 import 'region_screen.dart';
 import 'recommend_screen.dart';
@@ -1041,7 +1044,20 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
       onMapTap: address.isEmpty
           ? null
           : () => _openMap(mapType: 'naver', storeName: storeName, address: address),
-      expandedChild: isExpanded ? _buildExpandedDetail(dhlotteryCode, storeName, address) : null,
+      onPhotoTap: _userId.isEmpty ? null : () => pickAndUploadStorePhoto(context, code: dhlotteryCode, name: storeName),
+      expandedChild: isExpanded
+          ? Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              _buildExpandedDetail(dhlotteryCode, storeName, address),
+              // 여기서 산 번호 기록 — 판매점이 정해진 채 QR 카메라 → 즐겨찾기 › 나의 번호
+              OutlinedButton.icon(
+                key: ValueKey('purchase_qr_$dhlotteryCode'),
+                onPressed: () => openPurchaseRecord(context,
+                    store: LotteryStore.fromJson({...store, 'lottery_type': 'lotto'}), startQr: true),
+                icon: const Icon(Icons.qr_code_scanner_rounded, size: 18),
+                label: const Text('여기서 산 번호 기록 (QR)'),
+              ),
+            ])
+          : null,
       // 엔진·지방장 연구 정보는 관리자 메뉴 전용 → 홈 랭킹 카드에는 표시하지 않는다
       showResearch: false,
     );

@@ -13,7 +13,7 @@ Future<bool> pickAndUploadStorePhoto(BuildContext context, {required String code
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         ListTile(
           title: Text('$name 사진 올리기', style: const TextStyle(fontWeight: FontWeight.w900)),
-          subtitle: Text(adminKey == null ? '관리자가 승인하면 앱에 표시됩니다' : '관리자 — 올리면 바로 승인됩니다'),
+          subtitle: Text(adminKey == null ? '관리자 승인 후 업로드됩니다' : '관리자 — 올리면 바로 승인됩니다'),
         ),
         ListTile(leading: const Icon(Icons.photo_library_rounded), title: const Text('갤러리에서 고르기'), onTap: () => Navigator.pop(c, ImageSource.gallery)),
         ListTile(leading: const Icon(Icons.photo_camera_rounded), title: const Text('카메라로 찍기'), onTap: () => Navigator.pop(c, ImageSource.camera)),
@@ -27,7 +27,7 @@ Future<bool> pickAndUploadStorePhoto(BuildContext context, {required String code
   try {
     final p = await StorePhotos.upload(code: code, storeName: name, bytes: await f.readAsBytes(), admin: adminKey != null);
     if (adminKey != null) await StorePhotos.review(p.id, 'approved', adminKey);
-    messenger?.showSnackBar(SnackBar(content: Text(adminKey == null ? '사진을 올렸습니다 — 관리자 승인 후 표시됩니다' : '사진을 올리고 승인했습니다')));
+    messenger?.showSnackBar(SnackBar(content: Text(adminKey == null ? '사진을 보냈습니다 — 관리자 승인 후 업로드됩니다' : '사진을 올리고 승인했습니다')));
     return true;
   } catch (e) {
     messenger?.showSnackBar(SnackBar(content: Text('사진 올리기 실패: $e')));

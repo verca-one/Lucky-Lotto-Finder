@@ -5,8 +5,6 @@ import 'dart:convert';
 import '../models/lottery_store.dart';
 import '../services/supabase_service.dart';
 import '../services/badge_service.dart';
-import '../screens/purchase_record_screen.dart' show openPurchaseRecord;
-import 'store_photo_widgets.dart' show pickAndUploadStorePhoto;
 
 /// 평가 항목 정의
 class ReviewItem {
@@ -397,31 +395,6 @@ class _StoreDetailSheetState extends State<_StoreDetailSheet> {
                   ),
                 ),
               ],
-            ),
-            // 여기서 산 번호 기록 — 판매점이 정해진 채 QR 카메라 → 즐겨찾기 › 나의 번호 › 구입 기록
-            if (store.lotteryType == 'lotto' || store.lotteryType.isEmpty) ...[
-              const SizedBox(height: 8),
-              SizedBox(
-                width: double.infinity,
-                child: FilledButton.icon(
-                  key: const ValueKey('store_purchase_qr'),
-                  style: FilledButton.styleFrom(backgroundColor: Colors.black87),
-                  onPressed: () => openPurchaseRecord(context, store: store, startQr: true),
-                  icon: const Icon(Icons.qr_code_scanner_rounded, size: 18),
-                  label: const Text('여기서 산 번호 기록 (QR)', style: TextStyle(fontWeight: FontWeight.w800)),
-                ),
-              ),
-            ],
-            // 판매점 사진 올리기 — 관리자가 승인하면 홈 카드에 표시
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                key: const ValueKey('store_photo_upload'),
-                onPressed: () => pickAndUploadStorePhoto(context, code: store.dhlotteryCode, name: store.storeName),
-                icon: const Icon(Icons.add_a_photo_outlined, size: 18),
-                label: const Text('이 판매점 사진 올리기 (승인 후 표시)'),
-              ),
             ),
 
             const SizedBox(height: 16),

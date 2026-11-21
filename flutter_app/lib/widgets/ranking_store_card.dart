@@ -234,6 +234,9 @@ class RankingStoreCard extends StatelessWidget {
   /// 사진 영역 위 작은 지도 버튼 (기존 지도 열기 함수). null 이면 버튼 없음.
   final VoidCallback? onMapTap;
 
+  /// 판매점 사진 올리기 (로그인했을 때만 넘김 → 순위 배지 아래 카메라)
+  final VoidCallback? onPhotoTap;
+
   /// 강조 칩 반짝임 (기존 홈 애니메이션). null 이면 정적 표시.
   final Animation<double>? glow;
 
@@ -272,6 +275,7 @@ class RankingStoreCard extends StatelessWidget {
     this.onTap,
     this.onFavoriteTap,
     this.onMapTap,
+    this.onPhotoTap,
     this.glow,
     this.expandedChild,
     this.showResearch = true,
@@ -365,6 +369,14 @@ class RankingStoreCard extends StatelessWidget {
                       errorBuilder: (_, _, _) => const SizedBox(width: 64, height: 64)),
                 ),
               ],
+              if (onPhotoTap != null)
+                IconButton(
+                  key: const Key('ranking_photo_upload'),
+                  tooltip: '판매점 사진 올리기',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: onPhotoTap,
+                  icon: const Icon(Icons.photo_camera_outlined, size: 20, color: _faint),
+                ),
             ]),
           ),
           const SizedBox(width: 12),

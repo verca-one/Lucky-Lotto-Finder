@@ -15,15 +15,20 @@ void main() {
     expect(find.byKey(const ValueKey('store_photo_stats')), findsNothing);
   });
 
-  testWidgets('홈 순위 카드 — 승인된 사진 있으면 배지 아래 네모 사진 · 없으면 없음', (t) async {
-    Widget card(String? url) => MaterialApp(home: Scaffold(body: SingleChildScrollView(child: RankingStoreCard(
+  testWidgets('홈 순위 카드 — 승인된 사진 있으면 배지 아래 네모 사진 · 로그인했을 때만 카메라', (t) async {
+    Widget card(String? url, {VoidCallback? onPhoto}) => MaterialApp(home: Scaffold(body: SingleChildScrollView(child: RankingStoreCard(
+        onPhotoTap: onPhoto,
         data: RankingCardData.fromStore(1, {'dhlottery_code': 'A', 'store_name': '스파', 'address': '서울', 'region': '서울', 'first_count': 45},
             photoUrl: url)))));
     await t.pumpWidget(card(null));
     await t.pump();
     expect(find.byKey(const Key('ranking_store_photo')), findsNothing);
-    await t.pumpWidget(card('https://example.com/a.jpg'));
+    expect(find.byKey(const Key('ranking_photo_upload')), findsNothing); // 로그인 안 함 → 카메라 없음
+    var tapped = 0;
+    await t.pumpWidget(card('https://example.com/a.jpg', onPhoto: () => tapped++));
     await t.pump();
     expect(find.byKey(const Key('ranking_store_photo')), findsOneWidget);
+    await t.tap(find.byKey(const Key('ranking_photo_upload'))); // 로그인 → 배지 아래 카메라
+    expect(tapped, 1);
   });
 }

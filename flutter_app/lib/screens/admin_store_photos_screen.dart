@@ -66,6 +66,28 @@ class _AdminStorePhotosScreenState extends State<AdminStorePhotosScreen> {
     }
   }
 
+  Future<void> _delete(StorePhoto p) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('사진 삭제'),
+        content: Text('${p.storeName.isEmpty ? p.code : p.storeName} 사진을 지울까요? 되돌릴 수 없습니다.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('취소')),
+          TextButton(key: const ValueKey('photo_delete_confirm'), onPressed: () => Navigator.pop(c, true),
+              child: Text('삭제', style: TextStyle(color: Colors.red.shade700))),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await StorePhotos.delete(p.id, _key!);
+      if (mounted) setState(() => _gen++);
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('삭제 실패: $e')));
+    }
+  }
+
   Future<void> _uploadAsAdmin() async {
     final s = await showStorePicker(context);
     if (s == null || !mounted) return;
@@ -117,6 +139,8 @@ class _AdminStorePhotosScreenState extends State<AdminStorePhotosScreen> {
                         style: const TextStyle(fontWeight: FontWeight.w800)),
                   ),
                   OverflowBar(alignment: MainAxisAlignment.end, children: [
+                    IconButton(key: ValueKey('delete_${p.id}'), tooltip: '삭제', onPressed: () => _delete(p),
+                        icon: Icon(Icons.delete_outline_rounded, color: Colors.grey.shade600)),
                     if (status != 'rejected')
                       TextButton(key: ValueKey('reject_${p.id}'), onPressed: () => _review(p, 'rejected'),
                           child: Text(status == 'approved' ? '승인 취소(거절)' : '거절', style: TextStyle(color: Colors.red.shade700))),
