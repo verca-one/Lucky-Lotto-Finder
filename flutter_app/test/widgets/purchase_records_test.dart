@@ -93,4 +93,28 @@ void main() {
     final row = t.widget<Container>(find.byKey(const ValueKey('manual_row_0')));
     expect((row.decoration as BoxDecoration).border, Border.all(color: Colors.red));
   });
+
+  testWidgets('번호 추가 — 판매점만 기록한 것을 열면 판매점 · 회차가 채워져 있고, 저장하면 같은 기록을 고침(새로 안 만듦)', (t) async {
+    final r = PurchaseRecord(id: 'z', storeCode: 'S3', storeName: '판매점만', storeAddress: '서울', round: 1250, games: const [],
+        createdAt: DateTime(2026, 11, 13));
+    SharedPreferences.setMockInitialValues({'my_lotto_numbers': ['{"numbers":[1,2,3,4,5,6],"date":"2026-11-20T00:00:00"}']});
+    await PurchaseRecords.add(r);
+    t.view.physicalSize = const Size(1080, 2340);
+    t.view.devicePixelRatio = 3;
+    addTearDown(t.view.reset);
+    await t.pumpWidget(MaterialApp(home: PurchaseRecordScreen(existing: r)));
+    await t.pumpAndSettle();
+    expect(find.text('번호 추가'), findsOneWidget);
+    expect(find.text('판매점만'), findsOneWidget);
+    await t.tap(find.byKey(const ValueKey('purchase_saved')));
+    await t.pumpAndSettle();
+    await t.tap(find.text('1  2  3  4  5  6   (11/20)').last);
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const ValueKey('purchase_save')));
+    await t.pumpAndSettle();
+    final l = await PurchaseRecords.load();
+    expect(l.length, 1);
+    expect(l.single.id, 'z');
+    expect(l.single.games, [[1, 2, 3, 4, 5, 6]]);
+  });
 }

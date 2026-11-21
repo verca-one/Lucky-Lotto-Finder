@@ -27,11 +27,13 @@ List<int> autoFill(List<int?> row, [Random? rnd]) {
 
 /// 구입 기록 추가 — 저장하면 true
 ///   [manual] = 번호 직접 입력 (판매점 없이 그냥 구입 번호 · 1~45 번호판)
-Future<bool> openPurchaseRecord(BuildContext context, {LotteryStore? store, bool startQr = false, bool manual = false}) async =>
+///   [existing] = 이미 있는 기록에 번호 추가 (판매점 · 회차 · 번호가 채워진 채 열리고, 저장하면 그 기록을 고침)
+Future<bool> openPurchaseRecord(BuildContext context,
+        {LotteryStore? store, bool startQr = false, bool manual = false, PurchaseRecord? existing}) async =>
     await Navigator.push<bool>(
       context,
       MaterialPageRoute(
-        builder: (_) => PurchaseRecordScreen(store: store, startQr: startQr, manual: manual),
+        builder: (_) => PurchaseRecordScreen(store: store, startQr: startQr, manual: manual, existing: existing),
       ),
     ) ==
     true;
@@ -42,7 +44,8 @@ class PurchaseRecordScreen extends StatefulWidget {
   final LotteryStore? store;
   final bool startQr; // 열자마자 QR 카메라
   final bool manual; // 번호 직접 입력 (판매점 없음)
-  const PurchaseRecordScreen({super.key, this.store, this.startQr = false, this.manual = false});
+  final PurchaseRecord? existing; // 번호 추가할 기존 기록
+  const PurchaseRecordScreen({super.key, this.store, this.startQr = false, this.manual = false, this.existing});
   @override
   State<PurchaseRecordScreen> createState() => _PurchaseRecordScreenState();
 }
@@ -63,6 +66,15 @@ class _PurchaseRecordScreenState extends State<PurchaseRecordScreen> {
   void initState() {
     super.initState();
     _store = widget.store;
+    final e = widget.existing;
+    if (e != null) {
+      if (e.storeCode.isNotEmpty) {
+        _store = LotteryStore.fromJson({'dhlottery_code': e.storeCode, 'store_name': e.storeName, 'address': e.storeAddress,
+          'region': '', 'lottery_type': 'lotto', 'round': e.round, 'prize_tier': ''});
+      }
+      _round = e.round;
+      _games.addAll(e.games);
+    }
     _init();
     if (widget.startQr) WidgetsBinding.instance.addPostFrameCallback((_) => _scan());
   }
@@ -112,15 +124,17 @@ class _PurchaseRecordScreenState extends State<PurchaseRecordScreen> {
   Future<void> _save() async {
     final games = widget.manual ? _manualGames() : _games; // 직접 입력은 여기서 빈 칸 자동
     final s = _store;
+    final e = widget.existing;
+    if (e != null) await PurchaseRecords.remove(e.id); // 번호 추가 — 같은 기록을 고침 (id · 기록 시각 유지)
     await PurchaseRecords.add(
       PurchaseRecord(
-        id: DateTime.now().microsecondsSinceEpoch.toString(),
+        id: e?.id ?? DateTime.now().microsecondsSinceEpoch.toString(),
         storeCode: s?.dhlotteryCode ?? '',
         storeName: s?.storeName ?? '',
         storeAddress: s?.address ?? '',
         round: _round!,
         games: games,
-        createdAt: DateTime.now(),
+        createdAt: e?.createdAt ?? DateTime.now(),
       ),
     );
     if (!mounted) return;
@@ -148,7 +162,8 @@ class _PurchaseRecordScreenState extends State<PurchaseRecordScreen> {
     final ok = _round != null && (widget.manual ? !_manualBad : _store != null); // + 구입 기록은 판매점만 골라도 저장(번호 없이)
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.manual ? '번호 직접 입력' : '구입 기록', style: const TextStyle(fontWeight: FontWeight.w800)),
+        title: Text(widget.manual ? '번호 직접 입력' : widget.existing != null ? '번호 추가' : '구입 기록',
+            style: const TextStyle(fontWeight: FontWeight.w800)),
         backgroundColor: widget.manual ? kManualColor : _c,
         foregroundColor: Colors.white,
       ),
@@ -543,6 +558,25 @@ class _PurchaseRecordsSectionState extends State<PurchaseRecordsSection> {
                   style: TextStyle(fontWeight: FontWeight.w800, color: r.storeName.isEmpty ? Colors.grey.shade600 : null),
                 ),
               ),
+              if (r.storeCode.isNotEmpty && r.games.length < 5)
+                IconButton(
+                  key: ValueKey('purchase_add_qr_${r.id}'),
+                  tooltip: 'QR로 번호 넣기',
+                  visualDensity: VisualDensity.compact,
+                  onPressed: () async {
+                    if (await openPurchaseRecord(context, existing: r, startQr: true)) _load();
+                  },
+                  icon: const Icon(Icons.qr_code_scanner_rounded, size: 20, color: _c),
+                ),
+              if (r.storeCode.isNotEmpty && r.games.length < 5)
+                TextButton(
+                  key: ValueKey('purchase_add_numbers_${r.id}'),
+                  style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                  onPressed: () async {
+                    if (await openPurchaseRecord(context, existing: r)) _load();
+                  },
+                  child: Text(r.games.isEmpty ? '번호 추가' : '번호 더 넣기', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+                ),
               GestureDetector(
                 onTap: () => _delete(r),
                 child: Icon(Icons.delete_outline, size: 20, color: Colors.grey.shade400),
