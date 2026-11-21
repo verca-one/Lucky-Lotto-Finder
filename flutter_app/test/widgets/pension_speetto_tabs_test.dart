@@ -115,7 +115,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: SpeettoBriefingView(admin: false, loader: () async => b))));
     await tester.pumpAndSettle();
     await tester.scrollUntilVisible(find.byKey(const ValueKey('speetto_edition_SP500_48')), 200);
-    expect(find.text('스피또500 48회'), findsOneWidget);
+    expect(find.text('스피또500 48회 · 판매 중'), findsOneWidget);
     expect(find.text('남은 1등 지수 1.43'), findsOneWidget);
     expect(find.text('출고율 58%'), findsOneWidget);
     expect(find.textContaining('1등(2억원) 남은 3 / 5장'), findsOneWidget);
@@ -139,7 +139,7 @@ void main() {
     expect(find.text('확률 낮아짐'), findsOneWidget);
     expect(find.text('1장당 1등 1/371만 (처음 1/499만 · 1.35배)'), findsOneWidget);
     expect(find.text('판매 2026-03-01 ~ 2026-12-31 · 출고율 100%'), findsOneWidget);
-    expect(find.text('스피또500 48회'), findsNothing);
+    expect(find.text('스피또500 48회 · 판매 중'), findsNothing);
   });
 
   testWidgets('스피또 95% 알림 — 해당 차수 없으면 안 보임', (tester) async {
