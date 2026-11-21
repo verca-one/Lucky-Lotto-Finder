@@ -1327,6 +1327,7 @@ class _KeepAliveState extends State<_KeepAlive> with AutomaticKeepAliveClientMix
 class _BriefingDetailScreenState extends State<BriefingDetailScreen> {
   int _gen = 0; // 새로고침 버튼 → 카드를 전부 새로 만들어 다시 불러옴 (자동 갱신 없음)
   bool _agentOpen = false; // 본 브리핑 맨 아래 지방장 연구 — 처음엔 접힘
+  bool _engineOpen = false; // 그 아래 엔진 복기 — 처음엔 접힘
 
   void _refresh() {
     MasterBriefingService.instance.clearCache();
@@ -1381,8 +1382,9 @@ class _BriefingDetailScreenState extends State<BriefingDetailScreen> {
           _mainSectionTitle('지방장 연구', const Color(0xFF00695C),
               open: _agentOpen, onTap: () => setState(() => _agentOpen = !_agentOpen)),
           if (_agentOpen) const AgentBriefingSection(),
-          _mainSectionTitle('엔진 복기', const Color(0xFF283593)),
-          const EngineReviewBriefingCard(),
+          _mainSectionTitle('엔진 복기', const Color(0xFF283593),
+              open: _engineOpen, onTap: () => setState(() => _engineOpen = !_engineOpen)),
+          if (_engineOpen) const EngineReviewBriefingCard(),
           const SizedBox(height: 32),
         ]),
       )),
