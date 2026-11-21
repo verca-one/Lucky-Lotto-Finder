@@ -327,7 +327,7 @@ class _SpeettoBriefingViewState extends State<SpeettoBriefingView> {
         (
           k,
           games.where((g) => g.game == 'speedlotto_$k' && g.ok && g.stores.isNotEmpty).firstOrNull,
-          eds.where((e) => e.game == 'SP$k').toList(),
+          eds.where((e) => e.game == 'SP$k').toList()..sort((a, b) => b.edition.compareTo(a.edition)), // 최신 회차 위로
         ),
     ].where((x) => x.$2 != null || x.$3.isNotEmpty).toList();
     if (sections.isEmpty) {
