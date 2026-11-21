@@ -6,6 +6,7 @@ import '../models/lottery_store.dart';
 import '../services/supabase_service.dart';
 import '../services/badge_service.dart';
 import '../screens/purchase_record_screen.dart' show openPurchaseRecord;
+import 'store_photo_widgets.dart' show pickAndUploadStorePhoto;
 
 /// 평가 항목 정의
 class ReviewItem {
@@ -411,6 +412,17 @@ class _StoreDetailSheetState extends State<_StoreDetailSheet> {
                 ),
               ),
             ],
+            // 판매점 사진 올리기 — 관리자가 승인하면 홈 카드에 표시
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                key: const ValueKey('store_photo_upload'),
+                onPressed: () => pickAndUploadStorePhoto(context, code: store.dhlotteryCode, name: store.storeName),
+                icon: const Icon(Icons.add_a_photo_outlined, size: 18),
+                label: const Text('이 판매점 사진 올리기 (승인 후 표시)'),
+              ),
+            ),
 
             const SizedBox(height: 16),
             const Divider(),

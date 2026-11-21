@@ -11,6 +11,8 @@ import 'admin_pension_numbers_input_screen.dart';
 import 'admin_pension_store_screen.dart';
 import 'admin_coupon_screen.dart';
 import 'admin_briefing_hit_check_screen.dart';
+import 'admin_store_photos_screen.dart';
+import '../widgets/store_photo_widgets.dart' show StorePhotoStatsLine;
 import 'admin_report_screen.dart';
 import 'admin_crawl_status_screen.dart';
 import 'admin_review_screen.dart';
@@ -91,6 +93,22 @@ class _AdminScreenState extends State<AdminScreen> {
                   color: const Color(0xFF2E7D32),
                   onTap: () => Navigator.push(context,
                       MaterialPageRoute(builder: (_) => const AdminBriefingHitCheckScreen())),
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            // ── 판매점 사진 승인 (사용자가 올린 사진 → 승인한 것만 앱에 표시) ──
+            Card(
+              key: const ValueKey('menu_store_photos'),
+              child: Padding(
+                padding: const EdgeInsets.all(4),
+                child: _buildAdminMenuItem(
+                  icon: Icons.photo_library_rounded,
+                  title: '판매점 사진 승인',
+                  subtitle: '사용자가 올린 판매점 사진 승인 · 거절 · 직접 올리기 (승인한 사진만 홈 카드에 표시)',
+                  color: const Color(0xFF6A1B9A),
+                  onTap: () => Navigator.push(context,
+                      MaterialPageRoute(builder: (_) => const AdminStorePhotosScreen())),
                 ),
               ),
             ),
@@ -1355,6 +1373,7 @@ class _BriefingDetailScreenState extends State<BriefingDetailScreen> {
             const ManualRecommendCard(),
             const RoundDebriefTop(),
             const ExtraLotteryBriefingCard(),
+            const StorePhotoStatsLine(),
           ]),
           // ── 본 브리핑 — 주요 브리핑부터 (힘을 줘서)
           _mainBriefingHero(),

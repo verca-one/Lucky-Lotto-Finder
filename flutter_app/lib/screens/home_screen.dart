@@ -14,6 +14,7 @@ import '../widgets/ranking_pension_numbers.dart';
 import 'round_result_screen.dart';
 import '../widgets/ranking_store_card.dart';
 import '../widgets/store_detail_popup.dart';
+import '../services/store_photos.dart';
 import 'nearby_screen.dart';
 import 'region_screen.dart';
 import 'recommend_screen.dart';
@@ -430,6 +431,7 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
   List<Map<String, dynamic>> _rankedStores = [];
   List<Map<String, dynamic>> _internetStores = []; // 인터넷구매 지점 (별도 표시)
   Map<String, Map<String, dynamic>> _pensionInfo = {};
+  Map<String, String> _photos = {}; // 판매점 코드 → 승인된 사진 주소
   int _latestLottoRound = 0;
   // 홈 '최신 당첨 회차' 겹침 카드 데이터 — 로또·연금 독립 조회 (null = 불러오는 중)
   GameRoundData? _lottoRounds;
@@ -581,12 +583,15 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
 
       final pensionData = secondResults[1] as Map<String, Map<String, dynamic>>;
       crawlLogs = secondResults[2] as List<Map<String, dynamic>>;
+      // 관리자가 승인한 판매점 사진 (표가 없거나 실패하면 사진 없이)
+      final photos = await StorePhotos.approvedFor(codes).catchError((_) => <String, String>{});
 
       if (!mounted) return;
       setState(() {
         _rankedStores = stores;
         _internetStores = internetStores;
         _pensionInfo = pensionData;
+        _photos = photos;
         _latestLottoRound = latestRound ?? 0;
         _badgeLoadFailed = BadgeService.loadFailed;
         _recentCrawlLogs = crawlLogs;
@@ -1018,7 +1023,7 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
     final streakBadges = [?topMonthBadge, ...otherStreakBadges];
     final otherBadges = badges.where((b) => b.type != StoreBadgeType.streak).toList();
 
-    final data = RankingCardData.fromStore(rank, store, pension: _pensionInfo[dhlotteryCode]);
+    final data = RankingCardData.fromStore(rank, store, pension: _pensionInfo[dhlotteryCode], photoUrl: _photos[dhlotteryCode]);
     final tier = data.tier;
 
     final Widget cardWidget = RankingStoreCard(

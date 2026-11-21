@@ -85,7 +85,7 @@ class RankingCardData {
     this.photoUrl,
   });
 
-  factory RankingCardData.fromStore(int rank, Map<String, dynamic> s, {Map<String, dynamic>? pension}) =>
+  factory RankingCardData.fromStore(int rank, Map<String, dynamic> s, {Map<String, dynamic>? pension, String? photoUrl}) =>
       RankingCardData(
         rank: rank,
         code: (s['dhlottery_code'] ?? '').toString(),
@@ -97,6 +97,7 @@ class RankingCardData {
         latestFirstWin: _pos(_i(s['latest_first_win'])),
         latestSecondWin: _pos(_i(s['latest_second_win'])),
         rankChange: RankChangeInfo.fromData(s['rank_status']?.toString(), _i(s['rank_change'])),
+        photoUrl: photoUrl,
         pensionFirst: _i(pension?['first_count']) ?? 0,
         pensionSecond: _i(pension?['second_count']) ?? 0,
       );
@@ -352,7 +353,19 @@ class RankingStoreCard extends StatelessWidget {
         if (showMedal && data.rank > 0) ...[
           Padding(
             padding: const EdgeInsets.only(top: 2),
-            child: RankMedal(rank: data.rank, size: medalSize),
+            // 관리자가 승인한 판매점 사진이 있으면 순위 배지 아래 네모 사진
+            child: Column(children: [
+              RankMedal(rank: data.rank, size: medalSize),
+              if (data.photoUrl != null) ...[
+                const SizedBox(height: 8),
+                ClipRRect(
+                  key: const Key('ranking_store_photo'),
+                  borderRadius: BorderRadius.circular(10),
+                  child: Image.network(data.photoUrl!, width: 64, height: 64, fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => const SizedBox(width: 64, height: 64)),
+                ),
+              ],
+            ]),
           ),
           const SizedBox(width: 12),
         ],
