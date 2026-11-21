@@ -939,6 +939,7 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
       lotto: _lottoRounds,
       pension: _pensionRounds,
       speetoUpdatedAt: latestUpdateTimes(_recentCrawlLogs)['speeto'],
+      updateTimes: latestUpdateTimes(_recentCrawlLogs),
       // 수동 탭으로만 이동 (헤더가 상세 화면이 닫힐 때까지 중복 탭을 막는다)
       onOpen: (card) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => RoundResultScreen(card: card))),
       // 최신 당첨번호 — 로또 · 연금 (번호 수집되면 바로 반영 · 발표 당일 회색 단계)

@@ -71,6 +71,18 @@ const double kBackCardSide = 6;
 /// 흰 반투명 상단 상자 위 글씨색
 const _kHeaderInk = Color(0xFF14213D);
 
+/// 홈 업데이트 다섯 줄 (이름, 값 — null 이면 확인 중) — 순수 함수
+List<(String, String?)> updateLines({int? lottoNumbersRound, int? pensionNumbersRound, Map<String, DateTime> times = const {}}) {
+  String? at(String k) => times[k] == null ? null : '${formatUpdateTime(times[k]!)} 업데이트';
+  return [
+    ('로또 당첨번호', lottoNumbersRound == null ? null : '$lottoNumbersRound회 번호'),
+    ('로또 당첨판매점', at('lotto')),
+    ('연금 당첨번호', pensionNumbersRound == null ? null : '$pensionNumbersRound회 번호'),
+    ('연금 당첨판매점', at('pension')),
+    ('스피또', at('speeto')),
+  ];
+}
+
 class HomeRoundHeader extends StatefulWidget {
   /// null = 아직 불러오는 중
   final GameRoundData? lotto;
@@ -86,6 +98,9 @@ class HomeRoundHeader extends StatefulWidget {
   /// 상자 안 회차 카드 아래에 함께 감쌀 내용 (홈: 로또 · 연금 당첨번호). 경고문은 그 아래 맨 끝.
   final List<Widget> below;
 
+  /// 크롤링 성공 로그의 종류별 최신 완료 시각 (lotto · pension · speeto) — 업데이트 다섯 줄
+  final Map<String, DateTime> updateTimes;
+
   const HomeRoundHeader({
     super.key,
     this.lotto,
@@ -94,6 +109,7 @@ class HomeRoundHeader extends StatefulWidget {
     this.onOpen,
     this.clock,
     this.below = const [],
+    this.updateTimes = const {},
   });
 
   @override
@@ -148,40 +164,63 @@ class _HomeRoundHeaderState extends State<HomeRoundHeader> {
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         // 맨 위 '최신 당첨회차' 붓글씨 (사용자 제공 그림 · 바탕 투명)
-        // 즐겨찾기 메뉴처럼 왼쪽 · 작게
-        const Image(
-          image: AssetImage('assets/home_title_brush.png'),
-          height: 46,
-          alignment: Alignment.centerLeft,
-          semanticLabel: '최신 당첨회차',
-        ),
-        const SizedBox(height: 6),
-        IntrinsicHeight(
-          child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            Expanded(child: _GameStack(type: 'lotto', pair: lotto, loading: widget.lotto == null, onOpen: _open)),
-            const SizedBox(width: 10),
-            Expanded(child: _GameStack(type: 'pension', pair: pension, loading: widget.pension == null, onOpen: _open)),
+        // '최신 당첨회차' 붓글씨 + 로또 · 연금 회차 카드 — 한 상자
+        Container(
+          key: const ValueKey('header_round_box'),
+          padding: const EdgeInsets.fromLTRB(10, 8, 10, 12),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.7),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(color: _kHeaderInk.withValues(alpha: 0.12)),
+            boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 3))],
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            // 즐겨찾기 메뉴처럼 왼쪽 · 작게
+            const Image(
+              image: AssetImage('assets/home_title_brush.png'),
+              height: 46,
+              alignment: Alignment.centerLeft,
+              semanticLabel: '최신 당첨회차',
+            ),
+            const SizedBox(height: 6),
+            IntrinsicHeight(
+              child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                Expanded(child: _GameStack(type: 'lotto', pair: lotto, loading: widget.lotto == null, onOpen: _open)),
+                const SizedBox(width: 10),
+                Expanded(child: _GameStack(type: 'pension', pair: pension, loading: widget.pension == null, onOpen: _open)),
+              ]),
+            ),
           ]),
         ),
-        if (speeto != null) ...[
-          const SizedBox(height: 8),
-          Container(
-            key: const ValueKey('header_speeto'),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.6),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Row(children: [
-              const Text('스피또', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: _kHeaderInk)),
-              const Spacer(),
-              const Icon(Icons.check_circle_rounded, color: Color(0xFF2E7D32), size: 14),
-              const SizedBox(width: 4),
-              Text('${formatUpdateTime(speeto)} 업데이트',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _kHeaderInk)),
-            ]),
+        const SizedBox(height: 8),
+        // 업데이트 다섯 줄 — 당첨번호는 들어온 최신 회차, 판매점 · 스피또는 크롤링 마지막 완료 시각
+        Container(
+          key: const ValueKey('header_updates'),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.6),
+            borderRadius: BorderRadius.circular(12),
           ),
-        ],
+          child: Column(children: [
+            for (final (label, value) in updateLines(
+              lottoNumbersRound: widget.lotto?.latestNumbersRound,
+              pensionNumbersRound: widget.pension?.latestNumbersRound,
+              times: {...widget.updateTimes, if (speeto != null) 'speeto': speeto},
+            ))
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 2),
+                child: Row(children: [
+                  Text(label, style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: _kHeaderInk)),
+                  const Spacer(),
+                  Icon(value == null ? Icons.schedule_rounded : Icons.check_circle_rounded,
+                      color: value == null ? Colors.grey : const Color(0xFF2E7D32), size: 14),
+                  const SizedBox(width: 4),
+                  Text(value ?? '확인 중', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600,
+                      color: value == null ? Colors.grey.shade600 : _kHeaderInk)),
+                ]),
+              ),
+          ]),
+        ),
         if (widget.below.isNotEmpty) ...[const SizedBox(height: 12), ...widget.below],
         const SizedBox(height: 12),
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
