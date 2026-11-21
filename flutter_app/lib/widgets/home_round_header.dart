@@ -3,6 +3,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'speetto_briefing_view.dart' show SpeettoBriefing, SpeettoBriefingView, SpeettoGame, kSpeettoColor;
+
 import '../services/round_status_service.dart';
 
 const _weekdays = ['월', '화', '수', '목', '금', '토', '일'];
@@ -81,32 +83,6 @@ List<Widget> _updateValue(String? v, Color ink) => [
       ),
     ];
 
-/// 게임별 업데이트 칸 — 제목 + (당첨번호 · 당첨판매점) 두 줄
-Widget _updateBox(String type, String title, Color ink, Color bg, Color border, List<(String, String?)> lines) => Container(
-      key: ValueKey('header_updates_$type'),
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-      decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(12), border: Border.all(color: border)),
-      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(title, style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900, color: ink)),
-        for (final (label, v) in lines) ...[
-          const SizedBox(height: 4),
-          Text(label.replaceFirst(RegExp(r'^(로또|연금) '), ''), style: TextStyle(fontSize: 10.5, color: ink.withValues(alpha: 0.75))),
-          Row(children: _updateValue(v?.replaceFirst(' 업데이트', ''), ink)),
-        ],
-      ]),
-    );
-
-/// 홈 업데이트 다섯 줄 (이름, 값 — null 이면 확인 중) — 순수 함수
-List<(String, String?)> updateLines({int? lottoNumbersRound, int? pensionNumbersRound, Map<String, DateTime> times = const {}}) {
-  String? at(String k) => times[k] == null ? null : '${formatUpdateTime(times[k]!)} 업데이트';
-  return [
-    ('로또 당첨번호', lottoNumbersRound == null ? null : '$lottoNumbersRound회 번호'),
-    ('로또 당첨판매점', at('lotto')),
-    ('연금 당첨번호', pensionNumbersRound == null ? null : '$pensionNumbersRound회 번호'),
-    ('연금 당첨판매점', at('pension')),
-    ('스피또', at('speeto')),
-  ];
-}
 
 class HomeRoundHeader extends StatefulWidget {
   /// null = 아직 불러오는 중
@@ -123,8 +99,11 @@ class HomeRoundHeader extends StatefulWidget {
   /// 상자 안 회차 카드 아래에 함께 감쌀 내용 (홈: 로또 · 연금 당첨번호). 경고문은 그 아래 맨 끝.
   final List<Widget> below;
 
-  /// 크롤링 성공 로그의 종류별 최신 완료 시각 (lotto · pension · speeto) — 업데이트 다섯 줄
+  /// 크롤링 성공 로그의 종류별 최신 완료 시각 (lotto · pension · speeto)
   final Map<String, DateTime> updateTimes;
+
+  /// 테스트용: 스피또 공개 자료 (게임별 최근 차수)
+  final Future<SpeettoBriefing?> Function()? speettoLoader;
 
   const HomeRoundHeader({
     super.key,
@@ -135,6 +114,7 @@ class HomeRoundHeader extends StatefulWidget {
     this.clock,
     this.below = const [],
     this.updateTimes = const {},
+    this.speettoLoader,
   });
 
   @override
@@ -218,39 +198,8 @@ class _HomeRoundHeaderState extends State<HomeRoundHeader> {
           ]),
         ),
         const SizedBox(height: 8),
-        // 업데이트 — 로또(노랑) · 연금(녹색) 칸을 나란히, 스피또는 아래 한 줄
-        //   당첨번호는 들어온 최신 회차, 판매점 · 스피또는 크롤링 마지막 완료 시각
-        Builder(builder: (_) {
-          final l = updateLines(
-            lottoNumbersRound: widget.lotto?.latestNumbersRound,
-            pensionNumbersRound: widget.pension?.latestNumbersRound,
-            times: {...widget.updateTimes, if (speeto != null) 'speeto': speeto},
-          );
-          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            IntrinsicHeight(
-              child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                Expanded(child: _updateBox('lotto', '로또', const Color(0xFF8A6100), const Color(0xFFFFF8E1), const Color(0xFFFFE082), l.sublist(0, 2))),
-                const SizedBox(width: 10),
-                Expanded(child: _updateBox('pension', '연금복권', const Color(0xFF1C7A49), const Color(0xFFE8F5E9), const Color(0xFFA5D6A7), l.sublist(2, 4))),
-              ]),
-            ),
-            const SizedBox(height: 8),
-            Container(
-              key: const ValueKey('header_updates_speeto'),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-              decoration: BoxDecoration(
-                color: const Color(0xFFE0F2F1),
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: const Color(0xFF80CBC4)),
-              ),
-              child: Row(children: [
-                const Text('스피또', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900, color: Color(0xFF00695C))),
-                const Spacer(),
-                ..._updateValue(l[4].$2, const Color(0xFF00695C)),
-              ]),
-            ),
-          ]);
-        }),
+        // 스피또 — 2000 · 1000 · 500 최근 당첨 차수 · 크롤링 업데이트 시각, 누르면 스피또 당첨 정보
+        _SpeettoUpdateBox(updatedAt: speeto ?? widget.updateTimes['speeto'], loader: widget.speettoLoader),
         if (widget.below.isNotEmpty) ...[const SizedBox(height: 12), ...widget.below],
         const SizedBox(height: 12),
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
@@ -548,4 +497,74 @@ class RoundStatusPill extends StatelessWidget {
       ),
     );
   }
+}
+
+/// 홈 스피또 상자 — 게임별(2000 · 1000 · 500) 최근 당첨 차수 + 업데이트 시각, 누르면 스피또 당첨 정보(일반 모드 화면)
+class _SpeettoUpdateBox extends StatefulWidget {
+  final DateTime? updatedAt;
+  final Future<SpeettoBriefing?> Function()? loader;
+  const _SpeettoUpdateBox({this.updatedAt, this.loader});
+  @override
+  State<_SpeettoUpdateBox> createState() => _SpeettoUpdateBoxState();
+}
+
+class _SpeettoUpdateBoxState extends State<_SpeettoUpdateBox> {
+  static const _ink = Color(0xFF00695C);
+  late final Future<SpeettoBriefing?> _f = (widget.loader ?? SpeettoBriefing.loadPublic)().catchError((_) => null);
+
+  @override
+  Widget build(BuildContext context) => Material(
+        color: const Color(0xFFE0F2F1),
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          key: const ValueKey('header_updates_speeto'),
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => Scaffold(
+                appBar: AppBar(title: const Text('스피또 당첨 정보', style: TextStyle(fontWeight: FontWeight.w800)),
+                    backgroundColor: kSpeettoColor, foregroundColor: Colors.white),
+                body: const SpeettoBriefingView(admin: false),
+              ))),
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(12, 8, 8, 8),
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(12), border: Border.all(color: const Color(0xFF80CBC4))),
+            child: Row(children: [
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Row(children: [
+                    const Text('스피또', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: _ink)),
+                    const Spacer(),
+                    ..._updateValue(widget.updatedAt == null ? null : '${formatUpdateTime(widget.updatedAt!)} 업데이트', _ink),
+                  ]),
+                  FutureBuilder<SpeettoBriefing?>(
+                    future: _f,
+                    builder: (context, snap) {
+                      final byGame = {for (final g in snap.data?.games ?? const <SpeettoGame>[]) g.label: g.latestEdition};
+                      return Padding(
+                        padding: const EdgeInsets.only(top: 6),
+                        child: Row(children: [
+                          for (final g in const ['스피또2000', '스피또1000', '스피또500'])
+                            Expanded(
+                              child: Container(
+                                key: ValueKey('header_speeto_$g'),
+                                margin: const EdgeInsets.only(right: 6),
+                                padding: const EdgeInsets.symmetric(vertical: 5),
+                                decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.75), borderRadius: BorderRadius.circular(8)),
+                                child: Column(children: [
+                                  Text(g.replaceFirst('스피또', ''), style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: _ink)),
+                                  Text(byGame[g] == null ? '-' : '${byGame[g]}차',
+                                      style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: Colors.grey.shade800)),
+                                ]),
+                              ),
+                            ),
+                        ]),
+                      );
+                    },
+                  ),
+                ]),
+              ),
+              const Icon(Icons.chevron_right_rounded, color: _ink),
+            ]),
+          ),
+        ),
+      );
 }

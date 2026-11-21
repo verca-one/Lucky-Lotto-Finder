@@ -165,14 +165,13 @@ void main() {
       expect(find.text('로또 1244회 · ${formatUpdateTime(t1244)} 업데이트'), findsOneWidget);
       expect(find.byKey(const ValueKey('header_pension_front_336_complete')), findsOneWidget);
       expect(find.text('연금 335회 · ${formatUpdateTime(t335)} 업데이트'), findsOneWidget);
-      // 업데이트 — 로또 · 연금 칸(당첨번호 · 당첨판매점) + 스피또 한 줄 · 판매점 시각 없으면 '확인 중'
-      for (final k in ['lotto', 'pension']) {
-        final box = find.byKey(ValueKey('header_updates_$k'));
-        expect(find.descendant(of: box, matching: find.text('당첨번호')), findsOneWidget);
-        expect(find.descendant(of: box, matching: find.text('당첨판매점')), findsOneWidget);
-      }
+      // 스피또 상자 — 업데이트 시각 · 게임별 칸 (로또 · 연금 업데이트 칸은 회차 카드와 중복이라 없음)
+      expect(find.byKey(const ValueKey('header_updates_lotto')), findsNothing);
       expect(find.descendant(of: find.byKey(const ValueKey('header_updates_speeto')),
           matching: find.text('${formatUpdateTime(DateTime(2026, 10, 10, 3, 50))} 업데이트')), findsOneWidget);
+      for (final g in ['스피또2000', '스피또1000', '스피또500']) {
+        expect(find.byKey(ValueKey('header_speeto_$g')), findsOneWidget);
+      }
     });
 
     testWidgets('추첨일 도래 → 결과 대기 상태 카드', (tester) async {
@@ -312,14 +311,4 @@ void main() {
     expect(find.text('판매점 수집 전'), findsOneWidget);
   });
 
-  test('업데이트 다섯 줄 — 번호는 회차 · 판매점 · 스피또는 크롤링 완료 시각 · 없으면 null(확인 중)', () {
-    final t = DateTime(2026, 11, 21, 5, 59);
-    expect(updateLines(lottoNumbersRound: 1250, pensionNumbersRound: 342, times: {'pension': t, 'speeto': t}), [
-      ('로또 당첨번호', '1250회 번호'),
-      ('로또 당첨판매점', null),
-      ('연금 당첨번호', '342회 번호'),
-      ('연금 당첨판매점', '${formatUpdateTime(t)} 업데이트'),
-      ('스피또', '${formatUpdateTime(t)} 업데이트'),
-    ]);
-  });
 }
