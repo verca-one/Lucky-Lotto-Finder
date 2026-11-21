@@ -841,16 +841,17 @@ class _RegionScreenState extends State<RegionScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
-                  '지역별 명당',
-                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.white60, letterSpacing: 1.0),
+                // '지역별 명당 전국 판매점' 붓글씨 (사용자 제공 그림 · 바탕 투명, 파란 바탕 위라 흰색으로 칠함)
+                const Image(
+                  image: AssetImage('assets/region_title_brush.png'),
+                  width: double.infinity, // 남는 너비에 맞춤 (그림 비율 약 5.6:1)
+                  fit: BoxFit.contain,
+                  alignment: Alignment.centerLeft,
+                  color: Colors.white,
+                  colorBlendMode: BlendMode.srcIn,
+                  semanticLabel: '지역별 명당 전국 판매점',
                 ),
-                const SizedBox(height: 4),
-                const Text(
-                  '전국 판매점',
-                  style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -0.5, height: 1.1),
-                ),
-                const SizedBox(height: 10),
+                const SizedBox(height: 8),
                 Row(
                   children: [
                     _buildRegionChip('all', '전체'),

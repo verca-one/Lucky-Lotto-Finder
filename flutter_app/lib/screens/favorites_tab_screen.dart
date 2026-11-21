@@ -58,7 +58,15 @@ class _FavoritesTabScreenState extends State<FavoritesTabScreen>
                         children: [
                           Text('나의', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: Colors.white60, letterSpacing: 1.0)),
                           SizedBox(height: 4),
-                          Text('즐겨찾기', style: TextStyle(fontSize: 26, fontWeight: FontWeight.w900, color: Colors.white, letterSpacing: -0.5)),
+                          // '즐겨찾기' 붓글씨 (사용자 제공 그림 · 바탕 투명, 파란 바탕 위라 흰색으로 칠함)
+                          Image(
+                            image: AssetImage('assets/favorites_title_brush.png'),
+                            height: 46,
+                            alignment: Alignment.centerLeft,
+                            color: Colors.white,
+                            colorBlendMode: BlendMode.srcIn,
+                            semanticLabel: '즐겨찾기',
+                          ),
                         ],
                       ),
                     ),

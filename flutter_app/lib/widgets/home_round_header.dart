@@ -150,7 +150,7 @@ class _HomeRoundHeaderState extends State<HomeRoundHeader> {
         // 맨 위 '최신 당첨회차' 붓글씨 (사용자 제공 그림 · 바탕 투명)
         const Center(
           child: FractionallySizedBox(
-            widthFactor: 0.68,
+            widthFactor: 0.8,
             child: Image(image: AssetImage('assets/home_title_brush.png'), semanticLabel: '최신 당첨회차'),
           ),
         ),
