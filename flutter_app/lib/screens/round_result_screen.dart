@@ -33,6 +33,17 @@ class _Look {
 const _lottoLook = _Look(Color(0xFFF9A825), Color(0xFFEF6C00), Color(0xFF8A4B00), Color(0xFFFFF8E1));
 const _pensionLook = _Look(Color(0xFF2EAD6B), Color(0xFF1C7A49), Color(0xFF145A36), Color(0xFFE8F5E9));
 
+/// 연금복권720+ 등수 (등수, 조건, 맞히는 끝자리 수, 조 표시, 당첨금) — 1등 번호 하나로 1~7등이 정해짐 · 보너스는 따로
+const kPensionRanks = [
+  ('1등', '조 + 6자리', 6, '조', '월 700만원 × 20년'),
+  ('2등', '각 조 + 6자리', 6, '각조', '월 100만원 × 10년'),
+  ('3등', '끝 5자리', 5, '', '100만원'),
+  ('4등', '끝 4자리', 4, '', '10만원'),
+  ('5등', '끝 3자리', 3, '', '5만원'),
+  ('6등', '끝 2자리', 2, '', '5천원'),
+  ('7등', '끝 1자리', 1, '', '1천원'),
+];
+
 String _won(int v) {
   final s = v.toString();
   final b = StringBuffer();
@@ -202,6 +213,7 @@ class _RoundResultScreenState extends State<RoundResultScreen> {
         return [
           _numbers(r),
           if (r.prizes.isNotEmpty) ...[const SizedBox(height: 12), _prizeTable(r.prizes)],
+          if (_pension && r.pensionNumber != null) ...[const SizedBox(height: 12), _pensionRanks(r)],
           const SizedBox(height: 12),
           _stores(r),
         ];
@@ -281,6 +293,58 @@ class _RoundResultScreenState extends State<RoundResultScreen> {
             ],
           ]),
         ),
+    ]));
+  }
+
+  /// 연금 등수별 — 줄마다 그 등수에 맞혀야 하는 자리만 색 공 (앞자리는 빈 칸)
+  Widget _pensionRanks(_RoundResult r) {
+    final n = r.pensionNumber!;
+    Widget digits(String num, int keep) => Row(mainAxisSize: MainAxisSize.min, children: [
+          for (final e in num.split('').asMap().entries)
+            Padding(
+              padding: const EdgeInsets.only(right: 3),
+              child: e.key >= 6 - keep
+                  ? numberBall(e.value, kPensionDigitColors[e.key % 6], size: 24, fontSize: 11.5)
+                  : Container(width: 24, height: 24, decoration: BoxDecoration(color: Colors.grey.shade200, shape: BoxShape.circle)),
+            ),
+        ]);
+    Widget line(String rank, String cond, Widget nums, String prize, {bool top = false}) => Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+          decoration: BoxDecoration(color: top ? _look.soft : const Color(0xFFF7F8FB), borderRadius: BorderRadius.circular(10)),
+          child: Row(children: [
+            SizedBox(
+              width: 58,
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Text(rank, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: top ? _look.b : const Color(0xFF14213D))),
+                Text(cond, style: TextStyle(fontSize: 9.5, color: Colors.grey.shade600)),
+              ]),
+            ),
+            Expanded(child: FittedBox(fit: BoxFit.scaleDown, alignment: Alignment.centerLeft, child: nums)),
+            const SizedBox(width: 6),
+            Text(prize, style: TextStyle(fontSize: 11.5, fontWeight: top ? FontWeight.w900 : FontWeight.w700)),
+          ]),
+        );
+    Widget groupChip(String t) => Container(
+          margin: const EdgeInsets.only(right: 4),
+          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+          decoration: BoxDecoration(color: t == '각조' ? Colors.grey.shade300 : _look.b, borderRadius: BorderRadius.circular(6)),
+          child: Text(t, style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: t == '각조' ? Colors.grey.shade800 : Colors.white)),
+        );
+    return _box(Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      _title('등수별 당첨', Icons.payments_rounded),
+      const SizedBox(height: 4),
+      Text('1등 번호 하나로 1~7등이 정해집니다 — 2등부터는 끝자리부터 맞는 개수로', style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+      const SizedBox(height: 10),
+      for (final (rank, cond, keep, group, prize) in kPensionRanks)
+        line(rank, cond, Row(mainAxisSize: MainAxisSize.min, children: [
+          if (group == '조' && r.pensionGroup != null) groupChip('${r.pensionGroup}조'),
+          if (group == '각조') groupChip('각조'),
+          digits(n, keep),
+        ]), prize, top: rank == '1등'),
+      if (r.pensionBonus != null)
+        line('보너스', '각 조 + 6자리', Row(mainAxisSize: MainAxisSize.min, children: [groupChip('각조'), digits(r.pensionBonus!, 6)]),
+            '월 100만원 × 10년'),
     ]));
   }
 
