@@ -6,6 +6,11 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'agent_extra_section.dart';
 import 'briefing_store_widgets.dart' show FavoriteStoreStar;
+import 'package:geolocator/geolocator.dart';
+import '../models/lottery_store.dart';
+import '../services/store_map_launcher.dart' show StoreMapTarget;
+import '../services/supabase_service.dart';
+import 'store_map_buttons.dart';
 
 const kSpeettoColor = Color(0xFF00897B);
 
@@ -220,11 +225,18 @@ class SpeettoBriefingView extends StatefulWidget {
 
 class _SpeettoBriefingViewState extends State<SpeettoBriefingView> {
   late Future<SpeettoBriefing?> _f;
+  Map<String, LotteryStore> _info = const {}; // 판매점 코드 → 주소 · 좌표 (지도 버튼용)
 
   @override
   void initState() {
     super.initState();
     _f = (widget.loader ?? (widget.admin ? SpeettoBriefing.loadAdmin : SpeettoBriefing.loadPublic))();
+    _f.then((b) async {
+      final codes = {for (final g in b?.games ?? const <SpeettoGame>[]) for (final s in g.stores) if (s.code.isNotEmpty) s.code};
+      if (codes.isEmpty) return;
+      final l = await SupabaseService.getStoresByCodes(codes.toList());
+      if (mounted) setState(() => _info = {for (final s in l) s.dhlotteryCode: s});
+    }).catchError((_) {});
   }
 
   @override
@@ -236,6 +248,10 @@ class _SpeettoBriefingViewState extends State<SpeettoBriefingView> {
         return ListView(padding: const EdgeInsets.all(16), children: [
           _hero(),
           const SizedBox(height: 12),
+          if (widget.admin) ...[
+            SpeettoNearbyCard(games: b?.games ?? const [], info: _info, onMap: _showMap),
+            const SizedBox(height: 12),
+          ],
           if (snap.connectionState != ConnectionState.done)
             const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator()))
           else ...[
@@ -257,6 +273,32 @@ class _SpeettoBriefingViewState extends State<SpeettoBriefingView> {
       },
     );
   }
+
+  /// 판매점 지도 — 이름 · 주소 + 네이버 지도 / 카카오맵 (좌표 없으면 이름+주소 검색)
+  Future<void> _showMap(String code, String name, LotteryStore? s) => showModalBottomSheet(
+        context: context,
+        builder: (c) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(name, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+              const SizedBox(height: 2),
+              Text(s?.address.isNotEmpty == true ? s!.address : '주소 정보 없음 — 이름으로 검색합니다',
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade700)),
+              const SizedBox(height: 12),
+              StoreMapButtons(target: StoreMapTarget(storeId: code, name: name, address: s?.address ?? '', lat: s?.latitude, lng: s?.longitude)),
+            ]),
+          ),
+        ),
+      );
+
+  Widget _mapButton(String code, String name, LotteryStore? s) => IconButton(
+        key: ValueKey('speetto_map_$code'),
+        visualDensity: VisualDensity.compact,
+        tooltip: '지도',
+        icon: const Icon(Icons.map_rounded, color: kSpeettoColor, size: 20),
+        onPressed: () => _showMap(code, name, s),
+      );
 
   Widget _hero() => Container(
         width: double.infinity,
@@ -310,6 +352,7 @@ class _SpeettoBriefingViewState extends State<SpeettoBriefingView> {
               ),
               Text('역대 1등 ${e.value.first}회${e.value.second > 0 ? ' · 2등 ${e.value.second}회' : ''}',
                   style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800)),
+              if (e.value.code.isNotEmpty) _mapButton(e.value.code, e.value.name, _info[e.value.code]),
               if (e.value.code.isNotEmpty) FavoriteStoreStar(code: e.value.code, name: e.value.name),
             ]),
           ),
@@ -406,6 +449,137 @@ class _SpeettoBriefingViewState extends State<SpeettoBriefingView> {
           ]),
           const SizedBox(height: 8),
           child,
+        ]),
+      );
+}
+
+/// 내 주변 1등 판매점 — 게임별(2000 · 1000 · 500) 원래 순위를 그대로 두고 [radiusM] 안에 있는 곳만 (순수 함수)
+///   반환: 게임 → [(원래 순위, 판매점, 거리 m)] (순위 순)
+List<(SpeettoGame, List<(int, SpeettoStore, double)>)> nearbyRanked(
+    List<SpeettoGame> games, Map<String, LotteryStore> info, double lat, double lng, {double radiusM = 20000}) {
+  return [
+    for (final g in games.where((g) => g.ok && g.stores.isNotEmpty))
+      (g, [
+        for (final (i, s) in g.stores.indexed)
+          if (info[s.code]?.latitude != null && info[s.code]?.longitude != null)
+            if (Geolocator.distanceBetween(lat, lng, info[s.code]!.latitude!, info[s.code]!.longitude!) case final d when d <= radiusM)
+              (i + 1, s, d),
+      ]),
+  ];
+}
+
+/// 스피또 탭 맨 위 — 내 주변 스피또 1등 판매점 (게임별 · 원래 순위 유지 · 거리 · 지도)
+class SpeettoNearbyCard extends StatefulWidget {
+  final List<SpeettoGame> games;
+  final Map<String, LotteryStore> info; // 판매점 코드 → 주소 · 좌표
+  final Future<void> Function(String code, String name, LotteryStore? s) onMap;
+
+  /// 테스트용: 내 위치 (위도, 경도)
+  final Future<(double, double)> Function()? locate;
+  const SpeettoNearbyCard({super.key, required this.games, required this.info, required this.onMap, this.locate});
+  @override
+  State<SpeettoNearbyCard> createState() => _SpeettoNearbyCardState();
+}
+
+class _SpeettoNearbyCardState extends State<SpeettoNearbyCard> {
+  static const _radiusKm = 20;
+  Future<(double, double)>? _f;
+
+  static Future<(double, double)> _locate() async {
+    var perm = await Geolocator.checkPermission();
+    if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
+    if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) throw '위치 권한이 없어 주변 판매점을 찾을 수 없습니다';
+    final p = await Geolocator.getCurrentPosition(desiredAccuracy: LocationAccuracy.medium, timeLimit: const Duration(seconds: 12));
+    return (p.latitude, p.longitude);
+  }
+
+  String _dist(double m) => m < 1000 ? '${m.round()}m' : '${(m / 1000).toStringAsFixed(1)}km';
+
+  Widget _result(double lat, double lng) {
+    final groups = nearbyRanked(widget.games, widget.info, lat, lng, radiusM: _radiusKm * 1000);
+    if (groups.isEmpty) {
+      return Padding(padding: const EdgeInsets.only(top: 8), child: Text('게임별 1등 판매점 자료가 아직 없습니다.', style: TextStyle(fontSize: 12, color: Colors.grey.shade700)));
+    }
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      for (final (g, rows) in groups) ...[
+        const SizedBox(height: 10),
+        Text('${g.label} · 내 주변 ${_radiusKm}km ${rows.length}곳',
+            style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: kSpeettoColor)),
+        const SizedBox(height: 4),
+        if (rows.isEmpty)
+          Text('${_radiusKm}km 안에 ${g.label} 1등 판매점이 없습니다.', style: TextStyle(fontSize: 11.5, color: Colors.grey.shade600)),
+        for (final (rank, s, d) in rows)
+          Container(
+            key: ValueKey('speetto_near_${g.game}_${s.code}'),
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.fromLTRB(10, 6, 0, 6),
+            decoration: BoxDecoration(color: kSpeettoColor.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(10)),
+            child: Row(children: [
+              SizedBox(width: 22, child: Text('$rank', style: const TextStyle(fontWeight: FontWeight.w900, color: kSpeettoColor))),
+              Expanded(
+                child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                  Text(s.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
+                  Text('${_dist(d)} · ${s.region.isEmpty ? '-' : s.region} · 역대 1등 ${s.first}회${s.second > 0 ? ' · 2등 ${s.second}회' : ''}',
+                      style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700)),
+                ]),
+              ),
+              IconButton(
+                visualDensity: VisualDensity.compact,
+                tooltip: '지도',
+                icon: const Icon(Icons.map_rounded, color: kSpeettoColor, size: 20),
+                onPressed: () => widget.onMap(s.code, s.name, widget.info[s.code]),
+              ),
+              FavoriteStoreStar(code: s.code, name: s.name),
+            ]),
+          ),
+      ],
+    ]);
+  }
+
+  @override
+  Widget build(BuildContext context) => Container(
+        key: const ValueKey('speetto_nearby'),
+        width: double.infinity,
+        padding: const EdgeInsets.all(14),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: kSpeettoColor.withValues(alpha: 0.3)),
+        ),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Icon(Icons.near_me_rounded, color: kSpeettoColor, size: 20),
+            const SizedBox(width: 6),
+            const Expanded(child: Text('내 주변 스피또 1등 판매점', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900))),
+            FilledButton.icon(
+              key: const ValueKey('speetto_nearby_search'),
+              style: FilledButton.styleFrom(backgroundColor: kSpeettoColor, visualDensity: VisualDensity.compact),
+              onPressed: () => setState(() {
+                _f = (widget.locate ?? _locate)();
+              }),
+              icon: const Icon(Icons.my_location_rounded, size: 16),
+              label: Text(_f == null ? '주변 검색' : '다시 검색', style: const TextStyle(fontWeight: FontWeight.w800)),
+            ),
+          ]),
+          if (_f == null)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text('아래 게임별 1등 판매점 중 내 위치 ${_radiusKm}km 안에 있는 곳을 순위 그대로 보여줍니다 (2000 · 1000 · 500).',
+                  style: TextStyle(fontSize: 11.5, color: Colors.grey.shade700)),
+            )
+          else
+            FutureBuilder<(double, double)>(
+              future: _f,
+              builder: (context, snap) {
+                if (snap.connectionState != ConnectionState.done) {
+                  return const Padding(padding: EdgeInsets.all(12), child: Center(child: CircularProgressIndicator()));
+                }
+                if (snap.hasError) {
+                  return Padding(padding: const EdgeInsets.only(top: 8), child: Text('${snap.error}', style: TextStyle(fontSize: 12, color: Colors.orange.shade900)));
+                }
+                return _result(snap.data!.$1, snap.data!.$2);
+              },
+            ),
         ]),
       );
 }

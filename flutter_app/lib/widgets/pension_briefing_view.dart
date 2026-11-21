@@ -54,7 +54,9 @@ class _PensionBriefingViewState extends State<PensionBriefingView> {
   }
 
   Future<void> _reload() async {
-    setState(() => _f = (widget.loader ?? (widget.admin ? PensionBriefing.loadAdmin : PensionBriefing.loadPublic))());
+    setState(() {
+      _f = (widget.loader ?? (widget.admin ? PensionBriefing.loadAdmin : PensionBriefing.loadPublic))();
+    });
     await _f;
   }
 

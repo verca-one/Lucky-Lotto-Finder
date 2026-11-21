@@ -1,5 +1,6 @@
 // 연금복권 · 스피또 탭 — 관리자 브리핑 · 일반 모드 추천
 import 'package:flutter/material.dart';
+import 'package:flutter_app/models/lottery_store.dart';
 import 'package:flutter_app/services/research/pension_briefing.dart';
 import 'package:flutter_app/widgets/pension_briefing_view.dart';
 import 'package:flutter_app/widgets/speetto_briefing_view.dart';
@@ -145,5 +146,29 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: SpeettoAlertCard(loader: () async => null))));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('speetto_alert')), findsNothing);
+  });
+
+  testWidgets('스피또 주변 검색 — 게임별(2000 · 1000) 원래 순위 그대로 · 20km 안만 · 거리 표시', (tester) async {
+    SharedPreferences.setMockInitialValues({});
+    final b = SpeettoBriefing.fromPayload({'games': [
+      {'game': 'speedlotto_2000', 'label': '스피또2000', 'status': 'ok', 'latest_edition': 70, 'stores': [
+        {'store_code': 'A', 'name': '먼곳', 'region': '부산', 'first': 3, 'second': 0, 'last_edition': 70},
+        {'store_code': 'B', 'name': '가까운곳', 'region': '서울', 'first': 1, 'second': 2, 'last_edition': 69}]},
+      {'game': 'speedlotto_1000', 'label': '스피또1000', 'status': 'ok', 'latest_edition': 111, 'stores': [
+        {'store_code': 'A', 'name': '먼곳', 'region': '부산', 'first': 6, 'second': 0, 'last_edition': 108}]}]});
+    LotteryStore st(String code, double lat, double lng) => LotteryStore.fromJson(
+        {'dhlottery_code': code, 'store_name': code, 'address': '주소', 'region': '', 'lottery_type': 'speedlotto_2000',
+          'round': 0, 'prize_tier': '', 'latitude': lat, 'longitude': lng});
+    final info = {'A': st('A', 35.18, 129.07), 'B': st('B', 37.57, 126.98)}; // 부산 · 서울
+    final r = nearbyRanked(b.games, info, 37.56, 126.97);
+    expect(r.map((g) => '${g.$1.label}:${[for (final x in g.$2) '${x.$1}${x.$2.code}'].join(',')}'),
+        ['스피또2000:2B', '스피또1000:']); // 원래 2위 그대로 · 부산(먼곳)은 20km 밖
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(child: SpeettoNearbyCard(
+        games: b.games, info: info, onMap: (_, _, _) async {}, locate: () async => (37.56, 126.97))))));
+    await tester.tap(find.byKey(const ValueKey('speetto_nearby_search')));
+    await tester.pumpAndSettle();
+    expect(find.text('스피또2000 · 내 주변 20km 1곳'), findsOneWidget);
+    expect(find.byKey(const ValueKey('speetto_near_speedlotto_2000_B')), findsOneWidget);
+    expect(find.text('20km 안에 스피또1000 1등 판매점이 없습니다.'), findsOneWidget);
   });
 }

@@ -297,7 +297,9 @@ class _StorePickerState extends State<_StorePicker> {
                     key: const ValueKey('pick_store_search'),
                     textInputAction: TextInputAction.search,
                     decoration: const InputDecoration(hintText: '판매점 이름', prefixIcon: Icon(Icons.search), border: OutlineInputBorder(), isDense: true),
-                    onSubmitted: (q) => setState(() => _search = q.trim().length < 2 ? null : _find(q.trim())),
+                    onSubmitted: (q) => setState(() {
+                      _search = q.trim().length < 2 ? null : _find(q.trim());
+                    }),
                   ),
                 ),
                 Expanded(child: _list(_search, '두 글자 이상 입력 후 검색')),

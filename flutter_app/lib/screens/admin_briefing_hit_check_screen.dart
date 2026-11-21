@@ -63,7 +63,9 @@ class _AdminBriefingHitCheckScreenState extends State<AdminBriefingHitCheckScree
   }
 
   Future<void> _reload() async {
-    setState(() => _f = (widget.loader ?? BriefingHitCheck.load)());
+    setState(() {
+      _f = (widget.loader ?? BriefingHitCheck.load)();
+    });
     await _f;
   }
 
