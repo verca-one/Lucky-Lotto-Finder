@@ -19,6 +19,7 @@ from datetime import datetime, timedelta, timezone
 import os
 import re
 import sys
+import threading
 import time
 
 import research_hypothesis_factory as F
@@ -224,6 +225,29 @@ def ask_claude(prompt, system=None, sch=None):
     return json.loads(text), resp.model, usage
 
 
+GEMINI_DEADLINE = 200  # 초 — 이 안에 답이 없으면 실패로 (기본 규칙으로 대체)
+
+
+def _within(sec, fn):
+    """fn() 을 sec 초 안에 끝내지 못하면 TimeoutError. SDK timeout 은 바이트가 조금씩 오면 안 끊겨서
+    2026-11-21 제미나이(스피또 프롬프트)가 27분 동안 매달려 서버 작업이 통째로 취소됨"""
+    box = {}
+
+    def run():
+        try:
+            box["v"] = fn()
+        except BaseException as e:  # 호출한 쪽에서 그대로 다시 던짐
+            box["e"] = e
+    t = threading.Thread(target=run, daemon=True)  # daemon: 매달린 호출이 프로세스 종료를 막지 않게
+    t.start()
+    t.join(sec)
+    if t.is_alive():
+        raise TimeoutError(f"{sec}초 안에 응답 없음")
+    if "e" in box:
+        raise box["e"]
+    return box["v"]
+
+
 def ask_gemini(prompt, system=None, sch=None):
     """Gemini Interactions API (google-genai). → (데이터, 모델, 사용량)"""
     from google import genai
@@ -232,17 +256,17 @@ def ask_gemini(prompt, system=None, sch=None):
     client = genai.Client(api_key=m.group(0) if m else raw.strip(), http_options={"timeout": 180_000})  # 3분 (ms)
     for attempt in range(3):
         try:
-            it = client.interactions.create(
+            it = _within(GEMINI_DEADLINE, lambda: client.interactions.create(
                 model=GEMINI_MODEL,
                 system_instruction=system or SYSTEM,
                 input=prompt,
                 response_format={"type": "text", "mime_type": "application/json", "schema": _strip_additional(sch or schema())},
-            )
+            ))
             break
         except Exception as e:  # SDK 예외 종류가 버전마다 달라 구글 오류 문장을 남김 (키처럼 보이는 문자열은 가림)
             msg = re.sub(r"AIza[0-9A-Za-z_\-]{20,}", "AIza***", str(e))[:400]
             # 일시 오류(붐빔 503 · 429 · 연결 끊김)는 기다렸다 다시 — 2026-11 503 으로 3주 연속 복기가 규칙 대체됨
-            if attempt < 2 and re.search(r"503|429|500|high demand|unavailable|disconnect|timed? ?out|Connection", msg, re.I):
+            if attempt < 2 and re.search(r"503|429|500|high demand|unavailable|disconnect|Connection", msg, re.I):
                 print(f"[gemini] 일시 오류 — {30 * (attempt + 1)}초 뒤 다시 ({attempt + 1}/3): {type(e).__name__}", file=sys.stderr)
                 time.sleep(30 * (attempt + 1))
                 continue
