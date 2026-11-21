@@ -68,6 +68,9 @@ const double kBackCardPeek = 20;
 /// 뒤 카드가 앞 카드 오른쪽으로 드러나는 폭
 const double kBackCardSide = 6;
 
+/// 흰 반투명 상단 상자 위 글씨색
+const _kHeaderInk = Color(0xFF14213D);
+
 class HomeRoundHeader extends StatefulWidget {
   /// null = 아직 불러오는 중
   final GameRoundData? lotto;
@@ -130,12 +133,9 @@ class _HomeRoundHeaderState extends State<HomeRoundHeader> {
     final speeto = widget.speetoUpdatedAt;
     return Container(
       width: double.infinity,
+      // 흰 반투명 상자 (예전 파란 상자와 같은 투명도 0x88) — 글씨는 진한 남색
       decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0x881565C0), Color(0x881E88E5)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
+        color: Color(0x88FFFFFF),
         borderRadius: BorderRadius.only(
           bottomLeft: Radius.circular(32),
           bottomRight: Radius.circular(32),
@@ -147,16 +147,17 @@ class _HomeRoundHeaderState extends State<HomeRoundHeader> {
           Container(
             width: 36,
             height: 36,
-            decoration: BoxDecoration(color: Colors.white.withValues(alpha: 0.2), shape: BoxShape.circle),
-            child: const Icon(Icons.emoji_events_rounded, color: Colors.white, size: 20),
+            decoration: BoxDecoration(color: _kHeaderInk.withValues(alpha: 0.08), shape: BoxShape.circle),
+            child: const Icon(Icons.emoji_events_rounded, color: Color(0xFFF9A825), size: 20),
           ),
           const SizedBox(width: 10),
           Expanded(
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              const Text('최신 당첨 회차', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: Colors.white)),
+              // 붓글씨 (LuckyBrush — 이 여섯 글자만 들어 있는 부분 글꼴)
+              const Text('최신 당첨 회차', style: TextStyle(fontFamily: 'LuckyBrush', fontSize: 26, height: 1.1, color: _kHeaderInk)),
               const SizedBox(height: 2),
               Text('실제 당첨 이력을 분석한 통계입니다.',
-                  style: TextStyle(fontSize: 11.5, color: Colors.white.withValues(alpha: 0.85))),
+                  style: TextStyle(fontSize: 11.5, color: _kHeaderInk.withValues(alpha: 0.75))),
             ]),
           ),
         ]),
@@ -174,28 +175,28 @@ class _HomeRoundHeaderState extends State<HomeRoundHeader> {
             key: const ValueKey('header_speeto'),
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
             decoration: BoxDecoration(
-              color: Colors.white.withValues(alpha: 0.16),
+              color: Colors.white.withValues(alpha: 0.6),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Row(children: [
-              const Text('스피또', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: Colors.white)),
+              const Text('스피또', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: _kHeaderInk)),
               const Spacer(),
-              const Icon(Icons.check_circle_rounded, color: Colors.lightGreenAccent, size: 14),
+              const Icon(Icons.check_circle_rounded, color: Color(0xFF2E7D32), size: 14),
               const SizedBox(width: 4),
               Text('${formatUpdateTime(speeto)} 업데이트',
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.white)),
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: _kHeaderInk)),
             ]),
           ),
         ],
         const SizedBox(height: 12),
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Icon(Icons.info_outline_rounded, size: 13, color: Colors.white.withValues(alpha: 0.85)),
+          Icon(Icons.info_outline_rounded, size: 13, color: _kHeaderInk.withValues(alpha: 0.7)),
           const SizedBox(width: 4),
           Flexible(
             child: Text(
               '당첨을 보장하지 않으며, 당첨주기 예상은 참고 정보입니다.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 11, color: Colors.white.withValues(alpha: 0.85)),
+              style: TextStyle(fontSize: 11, color: _kHeaderInk.withValues(alpha: 0.7)),
             ),
           ),
         ]),

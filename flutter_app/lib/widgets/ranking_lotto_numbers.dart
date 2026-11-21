@@ -119,11 +119,11 @@ class _RankingLottoNumbersState extends State<RankingLottoNumbers> with WidgetsB
     final nums = [...w.numbers]..sort();
     return Container(
       key: const ValueKey('ranking_lotto_numbers'),
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 0), // 아래 연금 상자와 붙임
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
         border: Border.all(color: const Color(0xFFFFE082)),
         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 6, offset: const Offset(0, 2))],
       ),
@@ -163,11 +163,11 @@ class _RankingLottoNumbersState extends State<RankingLottoNumbers> with WidgetsB
         );
     return Container(
       key: const ValueKey('ranking_lotto_pending'),
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+      margin: const EdgeInsets.fromLTRB(16, 0, 16, 0), // 아래 연금 상자와 붙임
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
         border: Border.all(color: kPendingLine),
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

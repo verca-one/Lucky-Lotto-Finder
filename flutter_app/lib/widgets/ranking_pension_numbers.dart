@@ -126,7 +126,7 @@ class _RankingPensionNumbersState extends State<RankingPensionNumbers> with Widg
         padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: const BorderRadius.vertical(bottom: Radius.circular(16)), // 위 로또 상자와 붙임
           border: Border.all(color: border),
           boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 6, offset: const Offset(0, 2))],
         ),
