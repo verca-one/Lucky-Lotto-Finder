@@ -34,7 +34,9 @@ concurrency:
 jobs:
   strategy:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    env:
+      PYTHONUNBUFFERED: '1'   # 취소돼도 어디서 멈췄는지 기록이 남게
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -51,6 +53,7 @@ jobs:
         run: python research_set_review.py
       - name: AI 전략기획부 — 방향 제시 (Claude · Gemini, 키 있는 것만)
         continue-on-error: true
+        timeout-minutes: 15   # 여기서 멈춰도 뒤 단계는 돌게
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
