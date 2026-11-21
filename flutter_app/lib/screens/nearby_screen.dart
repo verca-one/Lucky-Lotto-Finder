@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math' as math;
 import '../widgets/store_photo_widgets.dart' show pickAndUploadStorePhoto;
+import '../services/store_photos.dart';
 import 'purchase_record_screen.dart' show openPurchaseRecord;
 import '../models/lottery_store.dart';
 import '../services/supabase_service.dart';
@@ -35,6 +36,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
   Set<String> _favorites = {};
   Map<String, int> _top30Ranks = {}; // dhlotteryCode -> 순위
   String _userId = '';
+  Map<String, String> _photos = {}; // 승인된 판매점 사진 (로그인 무관)
 
   // GPS 정밀도 관련
   bool _isRefiningGps = false; // 정밀 측정 진행 중
@@ -61,6 +63,9 @@ class _NearbyScreenState extends State<NearbyScreen> {
     _loadTop30Ranks();
     _loadUserId();
     loginNotifier.addListener(_onLogin);
+    StorePhotos.approvedAll().then((m) {
+      if (mounted) setState(() => _photos = m);
+    });
     _getCurrentLocation();
     _loadLatestRound();
     favoritesNotifier.addListener(_onFavoritesChanged);
@@ -812,7 +817,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
       padding: const EdgeInsets.only(bottom: 10),
       child: RankingStoreCard(
         key: ValueKey('nearby_card_${store.dhlotteryCode}'),
-        data: RankingCardData.fromLotteryStore(store),
+        data: RankingCardData.fromLotteryStore(store, photoUrl: _photos[store.dhlotteryCode]),
         extras: _extras[store.dhlotteryCode],
         badges: others,
         highlightBadges: highlight,

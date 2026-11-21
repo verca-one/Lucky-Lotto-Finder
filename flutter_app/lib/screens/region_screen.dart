@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:geolocator/geolocator.dart';
 import '../widgets/store_photo_widgets.dart' show pickAndUploadStorePhoto;
+import '../services/store_photos.dart';
 import 'purchase_record_screen.dart' show openPurchaseRecord;
 import '../models/lottery_store.dart';
 import '../services/supabase_service.dart';
@@ -27,6 +28,7 @@ class _RegionScreenState extends State<RegionScreen> {
   // 판매점 즐겨찾기
   Set<String> _favorites = {};
   String _userId = '';
+  Map<String, String> _photos = {}; // 승인된 판매점 사진 (로그인 무관)
 
   // 지역 즐겨찾기
   Set<String> _favoriteRegions = {};
@@ -52,6 +54,9 @@ class _RegionScreenState extends State<RegionScreen> {
     _loadStores();
     _loadUserId();
     loginNotifier.addListener(_onLogin);
+    StorePhotos.approvedAll().then((m) {
+      if (mounted) setState(() => _photos = m);
+    });
     SupabaseService.getLatestRound('lotto').then((r) {
       if (mounted && r != null) setState(() => _latestRound = r);
     });
@@ -1216,7 +1221,7 @@ class _RegionScreenState extends State<RegionScreen> {
       padding: const EdgeInsets.only(bottom: 10),
       child: RankingStoreCard(
         key: ValueKey('region_card_${store.dhlotteryCode}_$rank'),
-        data: RankingCardData.fromLotteryStore(store, rank: homeRank ?? 0),
+        data: RankingCardData.fromLotteryStore(store, rank: homeRank ?? 0, photoUrl: _photos[store.dhlotteryCode]),
         extras: _extras[store.dhlotteryCode],
         badges: others,
         highlightBadges: highlight,

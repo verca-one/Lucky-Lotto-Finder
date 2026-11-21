@@ -40,6 +40,25 @@ class StorePhotos {
     return out;
   }
 
+  static Future<Map<String, String>>? _all;
+
+  /// 승인된 사진 전체 (판매점 → 가장 최근 승인 사진) — 지역 · 주변 카드용, 앱이 켜져 있는 동안 한 번만 읽음 (로그인 무관)
+  /// shortcut: 승인 사진이 수천 장을 넘으면 화면에 보이는 판매점 코드로만 읽도록(approvedFor) 바꿀 것
+  static Future<Map<String, String>> approvedAll() => _all ??= () async {
+        try {
+          final rows = await _db.from('store_photos').select('dhlottery_code,path,reviewed_at')
+              .eq('status', 'approved').order('reviewed_at', ascending: false).limit(5000);
+          final out = <String, String>{};
+          for (final r in rows as List) {
+            out.putIfAbsent('${r['dhlottery_code']}', () => publicUrl('${r['path']}'));
+          }
+          return out;
+        } catch (_) {
+          _all = null; // 표 없음 · 실패 — 다음에 다시
+          return <String, String>{};
+        }
+      }();
+
   /// 갤러리 · 카메라에서 한 장 (긴 변 1280 · 품질 80 으로 줄여서)
   static Future<XFile?> pick(ImageSource source) =>
       ImagePicker().pickImage(source: source, maxWidth: 1280, maxHeight: 1280, imageQuality: 80);

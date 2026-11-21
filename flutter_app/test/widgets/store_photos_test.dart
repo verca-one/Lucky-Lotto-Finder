@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_app/widgets/ranking_store_card.dart';
 import 'package:flutter_app/widgets/store_photo_widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   testWidgets('브리핑 통계 — 승인 · 대기 · 거절 장수 (표 없으면 숨김)', (t) async {
@@ -32,5 +33,17 @@ void main() {
     await t.tap(find.byKey(const Key('ranking_photo_upload'))); // 로그인 → 배지 아래 카메라
     expect(tapped, 1);
     expect(find.byKey(const Key('ranking_purchase_qr')), findsOneWidget); // QR 은 펼치지 않아도 맨 아래 줄
+  });
+
+  testWidgets('사진 올리기 권한 = 프로필 로그인 — 로그인 안 했으면 고르기 창 없이 안내만', (t) async {
+    SharedPreferences.setMockInitialValues({});
+    bool? r;
+    await t.pumpWidget(MaterialApp(home: Scaffold(body: Builder(builder: (c) => TextButton(
+        onPressed: () async => r = await pickAndUploadStorePhoto(c, code: 'A', name: '스파'), child: const Text('올리기'))))));
+    await t.tap(find.text('올리기'));
+    await t.pumpAndSettle();
+    expect(r, isFalse);
+    expect(find.text('프로필 로그인 후 사진을 올릴 수 있습니다'), findsOneWidget);
+    expect(find.text('갤러리에서 고르기'), findsNothing);
   });
 }

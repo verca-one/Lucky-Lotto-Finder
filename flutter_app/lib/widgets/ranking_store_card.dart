@@ -103,7 +103,7 @@ class RankingCardData {
       );
 
   /// 주변·지역 목록의 LotteryStore → 카드 데이터. rank 0 = 순위 없는 목록(메달·순위 테마 없음)
-  factory RankingCardData.fromLotteryStore(LotteryStore s, {int rank = 0}) {
+  factory RankingCardData.fromLotteryStore(LotteryStore s, {int rank = 0, String? photoUrl}) {
     int? latest(int? v, List<int>? wins) {
       if (v != null && v > 0) return v;
       final w = (wins ?? const <int>[]).where((x) => x > 0);
@@ -120,6 +120,7 @@ class RankingCardData {
       latestFirstWin: latest(s.latestFirstWin, s.firstWins),
       latestSecondWin: latest(s.latestSecondWin, s.secondWins),
       rankChange: RankChangeInfo.fromData(s.rankStatus, s.rankChange),
+      photoUrl: photoUrl,
     );
   }
 
