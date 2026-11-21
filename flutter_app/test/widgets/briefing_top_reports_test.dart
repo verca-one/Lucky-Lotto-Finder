@@ -109,7 +109,7 @@ void main() {
     expect(distText(23456), '23km');
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(child: AgentHitsReport(loader: () async => d)))));
     await tester.pumpAndSettle();
-    expect(find.text('다음 회차(1248회) 지방장 추천점 · 2곳'), findsOneWidget);
+    expect(find.text('다음 회차(로또 1248회) 지방장 추천점 · 2곳'), findsOneWidget);
     expect(find.text('서울 노원구 · 새가게'), findsNothing);
     await tester.tap(find.byKey(const ValueKey('agent_next_toggle')));
     await tester.pumpAndSettle();

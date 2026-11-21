@@ -441,7 +441,7 @@ class _AgentHitsReportState extends State<AgentHitsReport> {
               const Icon(Icons.trending_up_rounded, size: 17, color: kAgentColor),
               const SizedBox(width: 6),
               Expanded(
-                child: Text('다음 회차(${d.next}회) 지방장 추천점${picks.isEmpty ? '' : ' · ${picks.length}곳'}',
+                child: Text('다음 회차(로또 ${d.next}회) 지방장 추천점${picks.isEmpty ? '' : ' · ${picks.length}곳'}',
                     style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900, color: kAgentColor)),
               ),
               if (base.isNotEmpty)
@@ -523,7 +523,7 @@ class _AgentHitsReportState extends State<AgentHitsReport> {
                 const Icon(Icons.place_rounded, size: 18, color: kAgentColor),
                 const SizedBox(width: 6),
                 Expanded(
-                  child: Text('지방장 적중 · ${d.round}회 — 1등 $firsts곳 · 2등 ${hits.length - firsts}곳',
+                  child: Text('로또 지방장 적중 · ${d.round}회 — 1등 $firsts곳 · 2등 ${hits.length - firsts}곳',
                       style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: kAgentColor)),
                 ),
               ]),
