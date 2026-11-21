@@ -354,12 +354,12 @@ class RankingStoreCard extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        if (showMedal && data.rank > 0) ...[
+        // 왼쪽 칸: 순위 배지 · 승인된 사진 · 카메라(로그인) — 배지 없는 카드도 사진 · 카메라는 보임
+        if ((showMedal && data.rank > 0) || data.photoUrl != null || onPhotoTap != null) ...[
           Padding(
             padding: const EdgeInsets.only(top: 2),
-            // 관리자가 승인한 판매점 사진이 있으면 순위 배지 아래 네모 사진
             child: Column(children: [
-              RankMedal(rank: data.rank, size: medalSize),
+              if (showMedal && data.rank > 0) RankMedal(rank: data.rank, size: medalSize),
               if (data.photoUrl != null) ...[
                 const SizedBox(height: 8),
                 ClipRRect(

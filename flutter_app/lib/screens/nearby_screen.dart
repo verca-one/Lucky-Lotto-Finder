@@ -6,6 +6,8 @@ import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:math' as math;
+import '../widgets/store_photo_widgets.dart' show pickAndUploadStorePhoto;
+import 'purchase_record_screen.dart' show openPurchaseRecord;
 import '../models/lottery_store.dart';
 import '../services/supabase_service.dart';
 import '../services/badge_service.dart';
@@ -35,19 +37,18 @@ class _NearbyScreenState extends State<NearbyScreen> {
   String _userId = '';
 
   // GPS 정밀도 관련
-  bool _isRefiningGps = false;     // 정밀 측정 진행 중
-  double? _gpsAccuracy;            // 현재 채택된 위치의 accuracy (m)
-  bool _isApproxLocation = false;  // 대략적 위치 권한 사용 중
+  bool _isRefiningGps = false; // 정밀 측정 진행 중
+  double? _gpsAccuracy; // 현재 채택된 위치의 accuracy (m)
+  bool _isApproxLocation = false; // 대략적 위치 권한 사용 중
 
-  static const double _goodAccuracyM  = 30.0;   // 이 이하면 즉시 채택
-  static const double _usableAccuracyM = 150.0;  // 이 이하면 사용 가능
+  static const double _goodAccuracyM = 30.0; // 이 이하면 즉시 채택
+  static const double _usableAccuracyM = 150.0; // 이 이하면 사용 가능
   static const Duration _refineTimeout = Duration(seconds: 20);
 
   // 랜덤확률분석엔진 연동
   int _latestRound = 0;
 
   bool _mapReady = false; // flutter_map 컨트롤러 attach 완료 여부
-
 
   /// 카드 하단 통계(평균 간격 등) — 목록 단위 일괄 조회
   Map<String, RankingStoreExtras> _extras = {};
@@ -66,8 +67,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
 
   Future<void> _loadExtras(List<LotteryStore> stores) async {
     try {
-      final x = await RankingExtrasService.load(
-          stores.map((s) => <String, dynamic>{'dhlottery_code': s.dhlotteryCode}).toList());
+      final x = await RankingExtrasService.load(stores.map((s) => <String, dynamic>{'dhlottery_code': s.dhlotteryCode}).toList());
       if (mounted) setState(() => _extras = x);
     } catch (_) {}
   }
@@ -93,7 +93,10 @@ class _NearbyScreenState extends State<NearbyScreen> {
   /// 초기 위치 확보 + 백그라운드에서 정밀도 개선
   Future<void> _getCurrentLocation() async {
     try {
-      setState(() { _isLoading = true; _error = null; });
+      setState(() {
+        _isLoading = true;
+        _error = null;
+      });
 
       // 권한 확인
       LocationPermission permission = await Geolocator.checkPermission();
@@ -123,7 +126,11 @@ class _NearbyScreenState extends State<NearbyScreen> {
       // 정밀 측정 시작 (스트림 기반)
       await _refineLocation(triggerSearch: true);
     } catch (e) {
-      if (mounted) setState(() { _error = e.toString(); _isLoading = false; });
+      if (mounted)
+        setState(() {
+          _error = e.toString();
+          _isLoading = false;
+        });
     }
   }
 
@@ -131,19 +138,19 @@ class _NearbyScreenState extends State<NearbyScreen> {
   /// triggerSearch=true 이면 충분한 정밀도 확보 시 주변판매점 검색.
   Future<void> _refineLocation({bool triggerSearch = false}) async {
     if (_isRefiningGps) return;
-    if (mounted) setState(() { _isRefiningGps = true; _isApproxLocation = false; });
+    if (mounted)
+      setState(() {
+        _isRefiningGps = true;
+        _isApproxLocation = false;
+      });
 
     try {
       final deadline = DateTime.now().add(_refineTimeout);
       Position? best = _currentPosition;
 
       await for (final pos in Geolocator.getPositionStream(
-        locationSettings: const LocationSettings(
-          accuracy: LocationAccuracy.best,
-          distanceFilter: 0,
-        ),
+        locationSettings: const LocationSettings(accuracy: LocationAccuracy.best, distanceFilter: 0),
       ).timeout(_refineTimeout, onTimeout: (sink) => sink.close())) {
-
         if (!mounted) break;
 
         // 더 정확한 위치만 채택
@@ -176,7 +183,11 @@ class _NearbyScreenState extends State<NearbyScreen> {
         await _searchNearbyStores();
       }
     } catch (e) {
-      if (mounted) setState(() { _isRefiningGps = false; _isLoading = false; });
+      if (mounted)
+        setState(() {
+          _isRefiningGps = false;
+          _isLoading = false;
+        });
     }
   }
 
@@ -219,9 +230,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
         _isSearching = false;
       });
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('반경 5km로 확장 검색 완료!')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('반경 5km로 확장 검색 완료!')));
       }
     } catch (e) {
       setState(() => _isSearching = false);
@@ -311,11 +320,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
       if (stores.isNotEmpty) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (_sheetController.isAttached) {
-            _sheetController.animateTo(
-              0.5,
-              duration: const Duration(milliseconds: 400),
-              curve: Curves.easeOut,
-            );
+            _sheetController.animateTo(0.5, duration: const Duration(milliseconds: 400), curve: Curves.easeOut);
           }
         });
       }
@@ -325,9 +330,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
         _isLoading = false;
       });
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('오류: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('오류: $e')));
       }
     }
   }
@@ -343,13 +346,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            SizedBox(
-              width: 40, height: 40,
-              child: CircularProgressIndicator(
-                strokeWidth: 3,
-                color: const Color(0xFF1565C0),
-              ),
-            ),
+            SizedBox(width: 40, height: 40, child: CircularProgressIndicator(strokeWidth: 3, color: const Color(0xFF1565C0))),
             const SizedBox(height: 16),
             Text('위치를 찾는 중...', style: TextStyle(fontSize: 14, color: Colors.grey.shade500)),
           ],
@@ -366,14 +363,14 @@ class _NearbyScreenState extends State<NearbyScreen> {
             children: [
               Container(
                 padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFE3F2FD),
-                  shape: BoxShape.circle,
-                ),
+                decoration: BoxDecoration(color: const Color(0xFFE3F2FD), shape: BoxShape.circle),
                 child: const Icon(Icons.location_off_rounded, size: 48, color: Color(0xFF1565C0)),
               ),
               const SizedBox(height: 20),
-              Text('위치를 확인할 수 없습니다', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
+              Text(
+                '위치를 확인할 수 없습니다',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey.shade700),
+              ),
               const SizedBox(height: 8),
               Text(
                 '$_error',
@@ -401,14 +398,14 @@ class _NearbyScreenState extends State<NearbyScreen> {
             children: [
               Container(
                 padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF5F5F5),
-                  shape: BoxShape.circle,
-                ),
+                decoration: BoxDecoration(color: const Color(0xFFF5F5F5), shape: BoxShape.circle),
                 child: Icon(Icons.location_searching_rounded, size: 48, color: Colors.grey.shade400),
               ),
               const SizedBox(height: 20),
-              Text('위치를 가져올 수 없습니다', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
+              Text(
+                '위치를 가져올 수 없습니다',
+                style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.grey.shade700),
+              ),
               const SizedBox(height: 24),
               ElevatedButton.icon(
                 onPressed: _getCurrentLocation,
@@ -432,19 +429,13 @@ class _NearbyScreenState extends State<NearbyScreen> {
           child: FlutterMap(
             mapController: _mapController,
             options: MapOptions(
-              initialCenter: LatLng(
-                _currentPosition!.latitude,
-                _currentPosition!.longitude,
-              ),
+              initialCenter: LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
               initialZoom: 14.0,
               onTap: (_, __) => setState(() => _selectedMarkerIndex = null),
               onMapReady: () => setState(() => _mapReady = true),
             ),
             children: [
-              TileLayer(
-                urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
-                userAgentPackageName: 'com.luckylotto.finder',
-              ),
+              TileLayer(urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png', userAgentPackageName: 'com.luckylotto.finder'),
               MarkerLayer(markers: _buildMapMarkers()),
             ],
           ),
@@ -463,22 +454,13 @@ class _NearbyScreenState extends State<NearbyScreen> {
                 decoration: BoxDecoration(
                   color: Colors.white,
                   borderRadius: BorderRadius.circular(24),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.15),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
+                  boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 8, offset: const Offset(0, 2))],
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     _isSearching
-                        ? const SizedBox(
-                            width: 16, height: 16,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF1565C0)),
-                          )
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: Color(0xFF1565C0)))
                         : const Icon(Icons.refresh_rounded, size: 16, color: Color(0xFF1565C0)),
                     const SizedBox(width: 6),
                     const Text(
@@ -492,7 +474,6 @@ class _NearbyScreenState extends State<NearbyScreen> {
           ),
         ),
 
-
         // 내 위치 버튼 (지도 오른쪽, 시트 위)
         Positioned(
           right: 12,
@@ -500,21 +481,14 @@ class _NearbyScreenState extends State<NearbyScreen> {
           child: GestureDetector(
             onTap: _moveToCurrentLocation,
             child: Container(
-              width: 42, height: 42,
+              width: 42,
+              height: 42,
               decoration: BoxDecoration(
                 color: Colors.white,
                 shape: BoxShape.circle,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.15),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
-                  ),
-                ],
+                boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.15), blurRadius: 8, offset: const Offset(0, 2))],
               ),
-              child: const Center(
-                child: Icon(Icons.my_location_rounded, size: 20, color: Color(0xFF1565C0)),
-              ),
+              child: const Center(child: Icon(Icons.my_location_rounded, size: 20, color: Color(0xFF1565C0))),
             ),
           ),
         ),
@@ -533,13 +507,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
               decoration: const BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Color(0x22000000),
-                    blurRadius: 12,
-                    offset: Offset(0, -3),
-                  ),
-                ],
+                boxShadow: [BoxShadow(color: Color(0x22000000), blurRadius: 12, offset: Offset(0, -3))],
               ),
               child: Column(
                 children: [
@@ -557,11 +525,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
                       } else {
                         target = 0.09;
                       }
-                      _sheetController.animateTo(
-                        target,
-                        duration: const Duration(milliseconds: 300),
-                        curve: Curves.easeOut,
-                      );
+                      _sheetController.animateTo(target, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
                     },
                     onVerticalDragUpdate: (details) {
                       if (!_sheetController.isAttached) return;
@@ -584,15 +548,14 @@ class _NearbyScreenState extends State<NearbyScreen> {
                         target = current > 0.3 ? 0.5 : 0.09;
                       } else {
                         // 느린 드래그 → 가장 가까운 스냅 포인트
-                        if (current < 0.3) target = 0.09;
-                        else if (current < 0.7) target = 0.5;
-                        else target = 0.92;
+                        if (current < 0.3)
+                          target = 0.09;
+                        else if (current < 0.7)
+                          target = 0.5;
+                        else
+                          target = 0.92;
                       }
-                      _sheetController.animateTo(
-                        target,
-                        duration: const Duration(milliseconds: 250),
-                        curve: Curves.easeOut,
-                      );
+                      _sheetController.animateTo(target, duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
                     },
                     child: SizedBox(
                       width: double.infinity,
@@ -601,10 +564,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
                         child: Container(
                           width: 40,
                           height: 4,
-                          decoration: BoxDecoration(
-                            color: Colors.grey.shade300,
-                            borderRadius: BorderRadius.circular(2),
-                          ),
+                          decoration: BoxDecoration(color: Colors.grey.shade300, borderRadius: BorderRadius.circular(2)),
                         ),
                       ),
                     ),
@@ -623,10 +583,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
                         const SizedBox(width: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFE3F2FD),
-                            borderRadius: BorderRadius.circular(10),
-                          ),
+                          decoration: BoxDecoration(color: const Color(0xFFE3F2FD), borderRadius: BorderRadius.circular(10)),
                           child: Text(
                             '$storeCount개',
                             style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF1565C0)),
@@ -646,10 +603,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
                               children: [
                                 Container(
                                   padding: const EdgeInsets.all(16),
-                                  decoration: const BoxDecoration(
-                                    color: Color(0xFFF5F5F5),
-                                    shape: BoxShape.circle,
-                                  ),
+                                  decoration: const BoxDecoration(color: Color(0xFFF5F5F5), shape: BoxShape.circle),
                                   child: Icon(Icons.search_off_rounded, size: 40, color: Colors.grey.shade400),
                                 ),
                                 const SizedBox(height: 14),
@@ -658,10 +612,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
                                   style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Colors.grey.shade600),
                                 ),
                                 const SizedBox(height: 6),
-                                Text(
-                                  '지도를 이동한 뒤 "이 주변 검색"을 눌러보세요',
-                                  style: TextStyle(fontSize: 12, color: Colors.grey.shade400),
-                                ),
+                                Text('지도를 이동한 뒤 "이 주변 검색"을 눌러보세요', style: TextStyle(fontSize: 12, color: Colors.grey.shade400)),
                               ],
                             ),
                           )
@@ -711,11 +662,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
     });
     // 시트가 너무 접혀 있으면 절반으로 펼치기
     if (_sheetController.isAttached && _sheetController.size < 0.35) {
-      _sheetController.animateTo(
-        0.5,
-        duration: const Duration(milliseconds: 300),
-        curve: Curves.easeOut,
-      );
+      _sheetController.animateTo(0.5, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
     }
     // 리스트를 해당 아이템으로 스크롤
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -728,11 +675,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
     const estimatedItemHeight = 180.0;
     final maxExtent = _listScrollController!.position.maxScrollExtent;
     final offset = (index * estimatedItemHeight).clamp(0.0, maxExtent);
-    _listScrollController!.animateTo(
-      offset,
-      duration: const Duration(milliseconds: 350),
-      curve: Curves.easeOut,
-    );
+    _listScrollController!.animateTo(offset, duration: const Duration(milliseconds: 350), curve: Curves.easeOut);
   }
 
   /// 리스트 카드 탭 → 지도 마커를 시트 위 보이는 영역 중앙으로 이동 + 카드 인라인 토글 펼침
@@ -745,10 +688,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
         final zoom = _mapController!.camera.zoom;
         final metersPerPx = 156543.03392 / (1 << zoom.round()) * math.cos(store.latitude! * math.pi / 180);
         final latOffset = (visibleMapHeight / 2.2) * metersPerPx / 111320;
-        _mapController!.move(
-          LatLng(store.latitude! - latOffset, store.longitude!),
-          zoom,
-        );
+        _mapController!.move(LatLng(store.latitude! - latOffset, store.longitude!), zoom);
       } catch (_) {}
     }
     // 카드 펼침/접힘만 — 목록 자동 스크롤·다른 카드 자동 접힘 없음 (화면이 저절로 움직이지 않게)
@@ -799,15 +739,9 @@ class _NearbyScreenState extends State<NearbyScreen> {
         padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
         child: Row(
           children: [
-            const SizedBox(
-              width: 12, height: 12,
-              child: CircularProgressIndicator(strokeWidth: 1.5, color: Color(0xFF1565C0)),
-            ),
+            const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5, color: Color(0xFF1565C0))),
             const SizedBox(width: 6),
-            Text(
-              'GPS 정밀 측정 중...',
-              style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
-            ),
+            Text('GPS 정밀 측정 중...', style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
           ],
         ),
       );
@@ -863,12 +797,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
   }
 
   Widget _buildStoreCard(LotteryStore store, int index) {
-    final distance = _calculateDistance(
-      _currentPosition!.latitude,
-      _currentPosition!.longitude,
-      store.latitude ?? 0,
-      store.longitude ?? 0,
-    );
+    final distance = _calculateDistance(_currentPosition!.latitude, _currentPosition!.longitude, store.latitude ?? 0, store.longitude ?? 0);
     final isFav = _favorites.contains(store.dhlotteryCode);
     final isExpanded = _expandedStoreIndices.contains(index);
     final (highlight, others) = splitStoreBadges(BadgeService.getBadges(store.dhlotteryCode));
@@ -888,38 +817,51 @@ class _NearbyScreenState extends State<NearbyScreen> {
         showMedal: false,
         selected: _selectedMarkerIndex == index,
         trailing: DistanceTag(km: distance),
-        extraChips: [
-          if (_top30Ranks.containsKey(store.dhlotteryCode)) _buildTop30Badge(_top30Ranks[store.dhlotteryCode]!),
-        ],
+        extraChips: [if (_top30Ranks.containsKey(store.dhlotteryCode)) _buildTop30Badge(_top30Ranks[store.dhlotteryCode]!)],
         onTap: () => _onCardTap(store, index),
         onFavoriteTap: () => _toggleFavorite(store.dhlotteryCode),
+        // 판매점 사진 올리기 — 로그인했을 때만 순위 배지 아래 카메라 (관리자 승인 후 업로드)
+        onPhotoTap: _userId.isEmpty ? null : () => pickAndUploadStorePhoto(context, code: store.dhlotteryCode, name: store.storeName),
         expandedChild: isExpanded
-            ? Row(
+            ? Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _openExternalMap('naver', store),
-                      icon: const Icon(Icons.map_outlined, size: 15),
-                      label: const Text('네이버지도', style: TextStyle(fontSize: 13)),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        side: BorderSide(color: Colors.grey.shade300),
-                        foregroundColor: Colors.grey.shade700,
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => _openExternalMap('naver', store),
+                          icon: const Icon(Icons.map_outlined, size: 15),
+                          label: const Text('네이버지도', style: TextStyle(fontSize: 13)),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            side: BorderSide(color: Colors.grey.shade300),
+                            foregroundColor: Colors.grey.shade700,
+                          ),
+                        ),
                       ),
-                    ),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => _openExternalMap('kakao', store),
+                          icon: const Icon(Icons.place_outlined, size: 15),
+                          label: const Text('카카오지도', style: TextStyle(fontSize: 13)),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(vertical: 8),
+                            side: BorderSide(color: Colors.grey.shade300),
+                            foregroundColor: Colors.grey.shade700,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () => _openExternalMap('kakao', store),
-                      icon: const Icon(Icons.place_outlined, size: 15),
-                      label: const Text('카카오지도', style: TextStyle(fontSize: 13)),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
-                        side: BorderSide(color: Colors.grey.shade300),
-                        foregroundColor: Colors.grey.shade700,
-                      ),
-                    ),
+                  // 여기서 산 번호 기록 — 판매점이 정해진 채 QR 카메라 → 즐겨찾기 › 나의 번호
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    key: ValueKey('purchase_qr_${store.dhlotteryCode}'),
+                    onPressed: () => openPurchaseRecord(context, store: store, startQr: true),
+                    icon: const Icon(Icons.qr_code_scanner_rounded, size: 18),
+                    label: const Text('여기서 산 번호 기록 (QR)'),
                   ),
                 ],
               )
@@ -934,16 +876,16 @@ class _NearbyScreenState extends State<NearbyScreen> {
       borderRadius: BorderRadius.circular(8),
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 10),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF5F5F5),
-          borderRadius: BorderRadius.circular(8),
-        ),
+        decoration: BoxDecoration(color: const Color(0xFFF5F5F5), borderRadius: BorderRadius.circular(8)),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(icon, size: 16, color: const Color(0xFF666666)),
             const SizedBox(width: 6),
-            Text(label, style: const TextStyle(fontSize: 13, color: Color(0xFF555555), fontWeight: FontWeight.w500)),
+            Text(
+              label,
+              style: const TextStyle(fontSize: 13, color: Color(0xFF555555), fontWeight: FontWeight.w500),
+            ),
           ],
         ),
       ),
@@ -953,11 +895,11 @@ class _NearbyScreenState extends State<NearbyScreen> {
   Widget _buildInfoChip(String label, Color textColor, Color bgColor) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-      decoration: BoxDecoration(
-        color: bgColor,
-        borderRadius: BorderRadius.circular(10),
+      decoration: BoxDecoration(color: bgColor, borderRadius: BorderRadius.circular(10)),
+      child: Text(
+        label,
+        style: TextStyle(fontSize: 11, color: textColor, fontWeight: FontWeight.w600),
       ),
-      child: Text(label, style: TextStyle(fontSize: 11, color: textColor, fontWeight: FontWeight.w600)),
     );
   }
 
@@ -971,11 +913,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
       ),
       child: Text(
         '복권명당 TOP30:$rank위',
-        style: TextStyle(
-          fontSize: 10,
-          color: Colors.amber.shade800,
-          fontWeight: FontWeight.bold,
-        ),
+        style: TextStyle(fontSize: 10, color: Colors.amber.shade800, fontWeight: FontWeight.bold),
       ),
     );
   }
@@ -996,17 +934,9 @@ class _NearbyScreenState extends State<NearbyScreen> {
             color: const Color(0xFF1565C0),
             shape: BoxShape.circle,
             border: Border.all(color: Colors.white, width: 3),
-            boxShadow: [
-              BoxShadow(
-                color: const Color(0xFF1565C0).withValues(alpha: 0.4),
-                blurRadius: 10,
-                spreadRadius: 2,
-              ),
-            ],
+            boxShadow: [BoxShadow(color: const Color(0xFF1565C0).withValues(alpha: 0.4), blurRadius: 10, spreadRadius: 2)],
           ),
-          child: const Center(
-            child: Icon(Icons.my_location_rounded, color: Colors.white, size: 20),
-          ),
+          child: const Center(child: Icon(Icons.my_location_rounded, color: Colors.white, size: 20)),
         ),
       ),
     );
@@ -1031,13 +961,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
                   Icons.place,
                   color: isSelected ? Colors.white : const Color(0xFFE53935),
                   size: isSelected ? 44 : 36,
-                  shadows: const [
-                    Shadow(
-                      color: Color(0x55000000),
-                      blurRadius: 4,
-                      offset: Offset(0, 2),
-                    ),
-                  ],
+                  shadows: const [Shadow(color: Color(0x55000000), blurRadius: 4, offset: Offset(0, 2))],
                 ),
               ),
             ),
@@ -1066,13 +990,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
                     decoration: BoxDecoration(
                       color: Colors.white,
                       borderRadius: BorderRadius.circular(10),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withValues(alpha: 0.2),
-                          blurRadius: 6,
-                          offset: const Offset(0, 2),
-                        ),
-                      ],
+                      boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.2), blurRadius: 6, offset: const Offset(0, 2))],
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -1103,10 +1021,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
                     ),
                   ),
                   // 꼬리 (삼각형)
-                  CustomPaint(
-                    size: const Size(14, 8),
-                    painter: _BubbleTailPainter(),
-                  ),
+                  CustomPaint(size: const Size(14, 8), painter: _BubbleTailPainter()),
                 ],
               ),
             ),
@@ -1161,20 +1076,14 @@ class _NearbyScreenState extends State<NearbyScreen> {
       if (stores.isNotEmpty) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (_sheetController.isAttached && _sheetController.size < 0.35) {
-            _sheetController.animateTo(
-              0.5,
-              duration: const Duration(milliseconds: 400),
-              curve: Curves.easeOut,
-            );
+            _sheetController.animateTo(0.5, duration: const Duration(milliseconds: 400), curve: Curves.easeOut);
           }
         });
       }
     } catch (e) {
       setState(() => _isSearching = false);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('검색 오류: $e')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('검색 오류: $e')));
       }
     }
   }
@@ -1182,10 +1091,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
   /// 내 위치 버튼 — 지도를 현재 위치로 이동만 (정밀 측정 중이면 현재 best 위치 사용)
   void _moveToCurrentLocation() {
     if (_currentPosition != null) {
-      _mapController?.move(
-        LatLng(_currentPosition!.latitude, _currentPosition!.longitude),
-        14.0,
-      );
+      _mapController?.move(LatLng(_currentPosition!.latitude, _currentPosition!.longitude), 14.0);
     } else {
       // 위치가 없으면 재측정 트리거
       _remeasureLocation();
@@ -1197,11 +1103,9 @@ class _NearbyScreenState extends State<NearbyScreen> {
     const double earthRadius = 6371;
     final dLat = _toRadians(lat2 - lat1);
     final dLon = _toRadians(lon2 - lon1);
-    final a = math.sin(dLat / 2) * math.sin(dLat / 2) +
-        math.cos(_toRadians(lat1)) *
-            math.cos(_toRadians(lat2)) *
-            math.sin(dLon / 2) *
-            math.sin(dLon / 2);
+    final a =
+        math.sin(dLat / 2) * math.sin(dLat / 2) +
+        math.cos(_toRadians(lat1)) * math.cos(_toRadians(lat2)) * math.sin(dLon / 2) * math.sin(dLon / 2);
     final c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a));
     return earthRadius * c;
   }
@@ -1283,20 +1187,13 @@ class _InlineReviewSectionState extends State<_InlineReviewSection> {
   }
 
   Future<void> _showReviewDialog() async {
-    final myVotes = await SupabaseService.getMyVotes(
-      dhlotteryCode: widget.dhlotteryCode,
-      deviceId: _deviceId,
-    );
+    final myVotes = await SupabaseService.getMyVotes(dhlotteryCode: widget.dhlotteryCode, deviceId: _deviceId);
 
     if (!mounted) return;
 
     final result = await showDialog<bool>(
       context: context,
-      builder: (ctx) => _ReviewDialog(
-        dhlotteryCode: widget.dhlotteryCode,
-        deviceId: _deviceId,
-        initialVotes: myVotes,
-      ),
+      builder: (ctx) => _ReviewDialog(dhlotteryCode: widget.dhlotteryCode, deviceId: _deviceId, initialVotes: myVotes),
     );
 
     if (result == true && mounted) {
@@ -1321,14 +1218,16 @@ class _InlineReviewSectionState extends State<_InlineReviewSection> {
               children: [
                 const Text('신고 사유를 선택하세요', style: TextStyle(fontSize: 13, color: Colors.grey)),
                 const SizedBox(height: 12),
-                ...reportReasons.map((reason) => RadioListTile<String>(
-                  title: Text(reason, style: const TextStyle(fontSize: 14)),
-                  value: reason,
-                  groupValue: selectedReason,
-                  dense: true,
-                  contentPadding: EdgeInsets.zero,
-                  onChanged: (v) => setDialogState(() => selectedReason = v),
-                )),
+                ...reportReasons.map(
+                  (reason) => RadioListTile<String>(
+                    title: Text(reason, style: const TextStyle(fontSize: 14)),
+                    value: reason,
+                    groupValue: selectedReason,
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    onChanged: (v) => setDialogState(() => selectedReason = v),
+                  ),
+                ),
                 const SizedBox(height: 8),
                 TextField(
                   controller: detailController,
@@ -1394,50 +1293,57 @@ class _InlineReviewSectionState extends State<_InlineReviewSection> {
               ],
             ),
           )
-        else Row(
-          mainAxisAlignment: MainAxisAlignment.end,
-          children: [
-            GestureDetector(
-              onTap: _showReportDialog,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: Colors.red.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.red.shade200),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.flag_outlined, size: 14, color: Colors.red.shade400),
-                    const SizedBox(width: 4),
-                    Text('신고', style: TextStyle(fontSize: 11, color: Colors.red.shade400, fontWeight: FontWeight.w600)),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: _showReviewDialog,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(
-                  color: Colors.blue.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.blue.shade200),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.rate_review_outlined, size: 14, color: Colors.blue.shade400),
-                    const SizedBox(width: 4),
-                    Text('평가', style: TextStyle(fontSize: 11, color: Colors.blue.shade400, fontWeight: FontWeight.w600)),
-                  ],
+        else
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              GestureDetector(
+                onTap: _showReportDialog,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.red.shade200),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.flag_outlined, size: 14, color: Colors.red.shade400),
+                      const SizedBox(width: 4),
+                      Text(
+                        '신고',
+                        style: TextStyle(fontSize: 11, color: Colors.red.shade400, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
-          ],
-        ),
+              const SizedBox(width: 8),
+              GestureDetector(
+                onTap: _showReviewDialog,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.blue.shade200),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.rate_review_outlined, size: 14, color: Colors.blue.shade400),
+                      const SizedBox(width: 4),
+                      Text(
+                        '평가',
+                        style: TextStyle(fontSize: 11, color: Colors.blue.shade400, fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
         const SizedBox(height: 10),
         // 승인된 평가 수치 표시
         const Text('판매점 평가', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
@@ -1454,21 +1360,27 @@ class _InlineReviewSectionState extends State<_InlineReviewSection> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(color: Colors.blue.shade50, borderRadius: BorderRadius.circular(12)),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(Icons.thumb_up, size: 14, color: Colors.blue),
-                    const SizedBox(width: 4),
-                    Text('${counts['up']}', style: const TextStyle(fontSize: 11, color: Colors.blue)),
-                  ]),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.thumb_up, size: 14, color: Colors.blue),
+                      const SizedBox(width: 4),
+                      Text('${counts['up']}', style: const TextStyle(fontSize: 11, color: Colors.blue)),
+                    ],
+                  ),
                 ),
                 const SizedBox(width: 6),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(color: Colors.red.shade50, borderRadius: BorderRadius.circular(12)),
-                  child: Row(mainAxisSize: MainAxisSize.min, children: [
-                    const Icon(Icons.thumb_down, size: 14, color: Colors.red),
-                    const SizedBox(width: 4),
-                    Text('${counts['down']}', style: const TextStyle(fontSize: 11, color: Colors.red)),
-                  ]),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      const Icon(Icons.thumb_down, size: 14, color: Colors.red),
+                      const SizedBox(width: 4),
+                      Text('${counts['down']}', style: const TextStyle(fontSize: 11, color: Colors.red)),
+                    ],
+                  ),
                 ),
               ],
             ),
@@ -1485,11 +1397,7 @@ class _ReviewDialog extends StatefulWidget {
   final String deviceId;
   final Map<String, String> initialVotes;
 
-  const _ReviewDialog({
-    required this.dhlotteryCode,
-    required this.deviceId,
-    required this.initialVotes,
-  });
+  const _ReviewDialog({required this.dhlotteryCode, required this.deviceId, required this.initialVotes});
 
   @override
   State<_ReviewDialog> createState() => _ReviewDialogState();
@@ -1529,9 +1437,7 @@ class _ReviewDialogState extends State<_ReviewDialog> {
 
     if (mounted) {
       setState(() => _isSubmitting = false);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('평가가 제출되었습니다. 승인 후 반영됩니다.')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('평가가 제출되었습니다. 승인 후 반영됩니다.')));
       Navigator.pop(context, true);
     }
   }
@@ -1591,10 +1497,7 @@ class _ReviewDialogState extends State<_ReviewDialog> {
         ),
       ),
       actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context, false),
-          child: const Text('닫기'),
-        ),
+        TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('닫기')),
         ElevatedButton(
           onPressed: (!hasVotes || _isSubmitting) ? null : _submit,
           style: ElevatedButton.styleFrom(backgroundColor: Colors.blue),
@@ -1606,4 +1509,3 @@ class _ReviewDialogState extends State<_ReviewDialog> {
     );
   }
 }
-
