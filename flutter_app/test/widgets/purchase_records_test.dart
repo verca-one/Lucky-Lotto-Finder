@@ -47,7 +47,7 @@ void main() {
           : null,
     )))));
     await t.pumpAndSettle();
-    expect(find.text('구입 기록 (2)'), findsOneWidget);
+    expect(find.text('구입한 기록 (2)'), findsOneWidget);
     expect(find.text('4등 당첨!'), findsOneWidget); // 1 5 18 23 맞음
     expect(find.text('4등'), findsOneWidget);
     expect(find.text('0개'), findsOneWidget);

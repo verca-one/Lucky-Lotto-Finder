@@ -422,7 +422,7 @@ class _PurchaseRecordsSectionState extends State<PurchaseRecordsSection> {
       Row(children: [
         const Icon(Icons.receipt_long_rounded, color: _c, size: 22),
         const SizedBox(width: 8),
-        Expanded(child: Text('구입 기록${r == null ? '' : ' (${r.length})'}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
+        Expanded(child: Text('구입한 기록${r == null ? '' : ' (${r.length})'}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
         FilledButton.icon(
           key: const ValueKey('purchase_add'),
           style: FilledButton.styleFrom(backgroundColor: _c, visualDensity: VisualDensity.compact),
