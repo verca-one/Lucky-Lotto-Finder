@@ -61,7 +61,7 @@ class StorePhotos {
 
   /// 갤러리 · 카메라에서 한 장 (긴 변 1280 · 품질 80 으로 줄여서)
   static Future<XFile?> pick(ImageSource source) =>
-      ImagePicker().pickImage(source: source, maxWidth: 1280, maxHeight: 1280, imageQuality: 80);
+      ImagePicker().pickImage(source: source, maxWidth: 800, maxHeight: 800, imageQuality: 70); // 한 장 0.1MB 안팎 — 전송량 아끼려고
 
   /// 올리기 — 항상 '승인 대기'로 들어감 (관리자 직접 올리기는 이어서 review 로 승인)
   static Future<StorePhoto> upload({required String code, required String storeName, required Uint8List bytes, bool admin = false}) async {
