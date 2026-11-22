@@ -530,7 +530,12 @@ class _NearbyScreenState extends State<NearbyScreen> {
                 borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
                 boxShadow: [BoxShadow(color: Color(0x22000000), blurRadius: 12, offset: Offset(0, -3))],
               ),
-              child: Column(
+              // 가장 작게 접으면 손잡이 · 헤더 · GPS 줄보다 낮아져 넘침 → 넘치는 아래쪽은 잘라서 숨김
+              child: LayoutBuilder(builder: (context, box) => ClipRect(child: OverflowBox(
+                alignment: Alignment.topCenter,
+                minHeight: 0,
+                maxHeight: math.max(box.maxHeight, 200),
+                child: Column(
                 children: [
                   // 손잡이 바 (드래그 + 탭)
                   GestureDetector(
@@ -647,7 +652,7 @@ class _NearbyScreenState extends State<NearbyScreen> {
                           ),
                   ),
                 ],
-              ),
+              )))),
             );
           },
         ),
