@@ -253,7 +253,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 fit: BoxFit.cover,
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 2),
             const Text('복권명당 찾기'),
             if (_isAdmin) ...[
               const SizedBox(width: 8),
