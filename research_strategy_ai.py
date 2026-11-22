@@ -225,7 +225,7 @@ def ask_claude(prompt, system=None, sch=None):
     return json.loads(text), resp.model, usage
 
 
-GEMINI_DEADLINE = 200  # 초 — 이 안에 답이 없으면 실패로 (기본 규칙으로 대체)
+GEMINI_DEADLINE = 420  # 초 — 이 안에 답이 없으면 실패로 (기본 규칙으로 대체). 잘 될 때도 한 번에 5~6분 걸림 (11-19)
 
 
 def _within(sec, fn):

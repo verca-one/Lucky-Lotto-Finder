@@ -36,7 +36,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PYTHONUNBUFFERED: '1'   # 취소돼도 어디서 멈췄는지 기록이 남게
-    timeout-minutes: 45
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -53,7 +53,7 @@ jobs:
         run: python research_set_review.py
       - name: AI 전략기획부 — 방향 제시 (Claude · Gemini, 키 있는 것만)
         continue-on-error: true
-        timeout-minutes: 15   # 여기서 멈춰도 뒤 단계는 돌게
+        timeout-minutes: 25   # 제미나이 로또 · 연금 · 스피또 각 7분까지 — 넘으면 뒤 단계로
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
