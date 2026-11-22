@@ -126,7 +126,7 @@ class _RankingLottoNumbersState extends State<RankingLottoNumbers> with WidgetsB
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-        border: Border.all(color: const Color(0xFFFFE082)),
+        border: Border.all(color: const Color(0xFFD5D9DE)), // 회색 테두리
         boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.04), blurRadius: 6, offset: const Offset(0, 2))],
       ),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

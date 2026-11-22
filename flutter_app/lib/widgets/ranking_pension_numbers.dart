@@ -151,7 +151,7 @@ class _RankingPensionNumbersState extends State<RankingPensionNumbers> with Widg
         );
     return _box(
       key: const ValueKey('ranking_pension_numbers'),
-      border: const Color(0xFFFFCC80),
+      border: const Color(0xFFD5D9DE), // 회색 테두리 (로또 상자와 같게)
       title: Row(children: [
         Text('연금복권720+ ${w.round}회 당첨번호',
             style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: Color(0xFF1A1A2E))),
