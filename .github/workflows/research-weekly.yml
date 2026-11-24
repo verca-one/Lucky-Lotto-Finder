@@ -1,6 +1,7 @@
 name: Research Weekly Check
 
-# 비서 토요일 아침 최종 점검 — 08:00 KST. 가설 공장을 한 번 더 돌린 뒤 월요일 취합과 비교해 '변경점 있음/없음'을 남긴다.
+# 토요일 아침 08:00 KST — 가설 공장 · 판매점 가설 · 추천번호 복기만 최신으로.
+# 추천번호는 월요일 최초 생성본으로 확정 (2026-11-25): 토요일에 다시 뽑지 않는다. 주중 가설 · 복기 규칙은 다음 회차부터.
 # (월요일 취합은 research-engine.yml publish 단계에서 엔진이 구매할 번호를 등록한 시점에 만든다)
 on:
   schedule:
@@ -41,14 +42,3 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python research_set_review.py
-      - name: 가설 트랙 다시 뽑기 — 이번 주 가설로 토요일 최종본 (번호 5세트 · 명당 5곳, 브리핑 ⑤)
-        continue-on-error: true
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-        run: python research_hypothesis_track.py --final
-      - name: 토요일 최종 점검 — 월요일 대비 변경점
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-        run: python research_weekly_digest.py --stage sat

@@ -55,6 +55,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 기타
 - API 키·비밀키 값은 채팅에 출력하지 않는다. 환경변수는 이름만 확인한다.
 - 기존 엔진(Number/Store/Joint/MND)과 기존 추천번호 결과는 삭제·임의 변경하지 않는다.
+- **비인기 추천조합(②, `popularity_pick pop-1.0`, `research_popularity*.py`)은 절대 수정하지 않는다** (2026-11-24 사용자 지시). 다른 추천번호(① 공식 · ③ 구매예측 · ④ 가설 트랙)를 고칠 때도 이쪽 코드 · 규칙 · 결과는 그대로 둔다.
 
 ---
 
@@ -74,16 +75,17 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 연구 워커(research-*.yml) → research_results(분석) · research_predictions(사전 등록 장부)
         ↓ 읽기 전용
 앱 — 저장본만 표시. 앱은 연구 계산·저장을 하지 않는다. 쓰기는 요청 테이블 insert 뿐
-     (research_engine_requests: 엔진 바로 시작 · research_weekly_requests: 토요일 최종본 지금 반영)
+     (research_engine_requests: 엔진 바로 시작 · research_weekly_requests: 예전 '토요일 최종본 지금 반영' — 2026-11-25 부터 앱에서 요청하지 않음)
 ```
 
-- **사전 등록 장부** `research_predictions` (algorithm · version · target_round, 마감 전 등록 후 고정): `official_final fr-1.0`(①엔진) · `popularity_pick pop-1.0`(②비인기) · `purchase_prediction pp-0.x`(③구매예측) · `hypothesis_track ht-1.0` / 토요일 최종본 `ht-1.0-sat`(④제미나이 가설).
-- **회차 흐름(KST)**: 토 20:35 추첨 → 당첨번호·판매점 수집 → 월 0시 다음 회차 번호 공개(`research_release.RELEASE_DAYS = 2`, 앱 `RecommendRelease`) → 매일 17시 전략 → 토 08:00 최종 점검.
+- **사전 등록 장부** `research_predictions` (algorithm · version · target_round, 마감 전 등록 후 고정): `official_final fr-1.0`(①엔진) · `popularity_pick pop-1.0`(②비인기) · `purchase_prediction pp-0.x`(③구매예측) · `hypothesis_track ht-1.0`(④제미나이 가설). `ht-1.0-sat`(토요일 최종본)은 1251회까지의 과거 기록 — 새로 만들지 않는다.
+- **추천번호는 월요일 최초 생성본으로 확정** (2026-11-25 사용자 정책): 토요일에 다시 뽑거나 덮어쓰지 않는다. 주중에 생긴 가설 · 복기 규칙은 다음 회차부터. 다시 만들어야 하면 덮어쓰지 말고 별도 버전으로 저장. 알고리즘은 확률이 높아진다는 근거 없이 바꾸지 않는다(진단 먼저 → 승인 후 수정).
+- **회차 흐름(KST)**: 토 20:35 추첨 → 당첨번호·판매점 수집 → 월 0시 다음 회차 번호 공개(`research_release.RELEASE_DAYS = 2`, 앱 `RecommendRelease`) → 매일 17시 전략 (토 08:00 에는 가설 공장 · 판매점 가설 · 복기만 최신으로, 번호는 그대로).
 - **워크플로 역할**
   - `research-engine.yml` (2시간마다 gate): `research_pipeline_gate.py` 준비 판단 → Dart 엔진을 `flutter test tool/server/research_pipeline_test.dart` 로 헤드리스 실행 → publish(공식 등록 · 비인기 · 복기 · 가설 트랙 · 회차 검증 · 월요일 취합 · 공개 요약).
   - `research-worker.yml` (Crawl Lotto 직후): 당첨자 수 수집 · 지역 연구 · 지방장 238명(`research_agent_worker.py`).
-  - `research-strategy.yml` (매일 17시): AI 브리핑전담부서(`research_set_review.py`, 제미나이) → AI 전략기획부(`research_strategy_ai.py`) → 가설 공장 → 판매점 가설 → 가설 트랙 → 토요일 미리보기 → 연금 · 스피또.
-  - `research-weekly.yml` (토 08:00): 토요일 최종본(`research_hypothesis_track.py --final`, `research_weekly_digest.py --stage sat`).
+  - `research-strategy.yml` (매일 17시): AI 브리핑전담부서(`research_set_review.py`, 제미나이) → AI 전략기획부(`research_strategy_ai.py`) → 가설 공장 → 판매점 가설 → 가설 트랙 → 연금 · 스피또.
+  - `research-weekly.yml` (토 08:00): 가설 공장 · 판매점 가설 · 추천번호 복기만. `research_hypothesis_track.py --final` · `research_weekly_digest.py --stage sat|preview` 는 코드만 남아 있고 호출하지 않는다.
   - `research-request-poll.yml` (10분마다): 앱 요청 테이블을 보고 engine / weekly 워크플로를 실행.
 - **"성공"으로 찍혀도 막힐 수 있다**: 대부분 단계가 `continue-on-error`. 당첨자 수가 비면 가설 트랙 · 비인기가 조용히 대기한다. 앱 브리핑의 '제미나이 · 연구 흐름 경고' 상자(`PipelineAlertReport`)가 이를 드러낸다.
 

@@ -113,7 +113,7 @@ class _HypothesisTrackCardState extends State<HypothesisTrackCard> {
         child: Text(
           t.isFinal
               ? '토요일 아침 8시 최종 점검 뒤 이번 주 가설로 다시 뽑았습니다 — 월요일 선정 대비 번호 ${t.changedSets}세트 · 명당 ${t.changedStores}곳 바뀜'
-              : '월요일 선정본입니다. 토요일 아침 8시 최종 점검 뒤 이번 주 가설로 다시 뽑습니다.',
+              : '월요일 선정본으로 확정입니다. 주중에 생긴 가설 · 복기 규칙은 다음 회차부터 반영합니다.',
           style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: kTrackColor),
         ),
       ),

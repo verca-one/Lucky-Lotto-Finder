@@ -26,7 +26,7 @@ void main() {
   });
   testWidgets('월요일 취합만 → 토요일 예정', (t) async {
     await show(t, {'round': 1246, 'next': 1247, 'wed': snap()});
-    expect(find.text('월요일 취합 완료 · 토요일 아침 8시 최종 점검 예정'), findsOneWidget);
+    expect(find.text('월요일 취합 완료 · 이번 회차 추천번호 확정'), findsOneWidget);
     expect(find.textContaining('이번 주 가설 46개'), findsOneWidget);
   });
   testWidgets('토요일 변경점 없음', (t) async {

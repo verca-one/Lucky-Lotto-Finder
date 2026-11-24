@@ -79,13 +79,6 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: python research_hypothesis_track.py
-      - name: 토요일 최종본 미리보기 — 월요일 대비 변경점 (앱 ❗ · 확인 후 [지금 반영])
-        if: ${{ !cancelled() }}
-        continue-on-error: true
-        env:
-          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
-          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
-        run: python research_weekly_digest.py --stage preview
       - name: 연금복권 — 명당 · 번호 엔진 · 연금 가설 트랙 (목 18시 KST 이후 고정)
         if: ${{ !cancelled() }}
         continue-on-error: true
