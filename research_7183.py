@@ -464,6 +464,20 @@ def ask_dream(prompt):
     raise RuntimeError(last)
 
 
+def quota_until(msg, now):
+    """제미나이 한도 초과(429) 문장에서 다시 부를 수 있는 시각을 읽는다. 한도 초과가 아니면 None.
+    무료 등급은 하루 20번이고 태평양 시간 자정(= 17:00 KST)에 풀린다 — 못 읽으면 다음 17:05 KST."""
+    if not re.search(r"\b429\b|RESOURCE_EXHAUSTED", msg or ""):
+        return None
+    m = re.search(r"retry in (?:(\d+)h)?(?:(\d+)m)?([\d.]+)s", msg)
+    if m:
+        sec = int(m.group(1) or 0) * 3600 + int(m.group(2) or 0) * 60 + float(m.group(3))
+        return now + timedelta(seconds=sec + 300)          # 5분 여유
+    k = now.astimezone(KST)
+    nxt = k.replace(hour=17, minute=5, second=0, microsecond=0)
+    return (nxt if nxt > k else nxt + timedelta(days=1)).astimezone(timezone.utc)
+
+
 def rotations(d):
     return {tuple(d[i:] + d[:i]) for i in range(len(d))}
 
@@ -589,8 +603,14 @@ def weekly(db, a):
     prev = next((x["payload"] for x in got if x["target_round"] == latest), None)
     have_ai = bool(cur and cur.get("source") == "gemini") and not a.force
     registered = bool(cur and cur.get("sets_status") == "registered")
+    until = (cur or {}).get("quota_until")
+    quota_wait = bool(until) and now < datetime.fromisoformat(until) and not a.force
+    wait_note = f"제미나이 한도 초과 — {datetime.fromisoformat(until).astimezone(KST):%m/%d %H:%M}(KST) 이후 다시 시도" if quota_wait else None
     if have_ai and registered:
         print(f"{target}회 7183 에이전트 이미 있음(제미나이 · 번호 등록) — 고정")
+        return cur
+    if quota_wait and registered:
+        print(f"{target}회 7183 에이전트 — {wait_note} (번호는 등록됨 · 할 일 없음)")
         return cur
     carry = cur or prev or {}
     cycles = [dict(c) for c in (carry.get("cycles") or SEED_CYCLES)]
@@ -618,11 +638,17 @@ def weekly(db, a):
     data = model = err = None
     if have_ai:   # 이번 회차 꿈은 이미 받음 — 다시 부르지 않고 번호 등록만 마저 한다
         model = cur.get("model")
+    elif quota_wait:   # 한도가 풀릴 때까지 부르지 않는다 (번호 등록만 마저 한다)
+        err = wait_note
     elif os.environ.get("GEMINI_API_KEY"):
         try:
             data, model = ask_dream(prompt)
         except Exception as e:   # 실패한 날은 계산값만 — 다음 실행에서 다시
             err = str(e)[:1500]
+            qu = quota_until(err, now)
+            until = qu.isoformat() if qu else None
+            if qu:
+                print(f"  제미나이 한도 초과 — {qu.astimezone(KST):%m/%d %H:%M}(KST) 이후 다시 시도")
     else:
         err = "GEMINI_API_KEY 없음"
     nx = res["next"]
@@ -667,6 +693,7 @@ def weekly(db, a):
     payload = {
         "version": VERSION, "target_round": target, "latest_round": latest, "generated_at": now.isoformat(),
         "source": "gemini" if ai else "rule", "model": model, "ai_error": err,
+        "quota_until": None if ai else until,       # 제미나이 한도가 풀리는 시각 — 그때까지 다시 부르지 않음
         "sets": sets, "sets_status": sets_status, "sets_by": sets_by, "sets_note": sets_note, "gold_numbers": gold_numbers,
         "reg_version": REG_VERSION,
         "scanned": res["patterns"], "formulas": res["formulas"], "alive_total": nx["laws_total"], "alive": nx["laws"],
@@ -710,6 +737,11 @@ def selfcheck():
                         {"name": "큰수", "digits": [5, 100], "why": ""}, {"name": "짝", "digits": [2, 4, 6], "why": "x"}, "쓰레기"], cl, 1251)
     assert [c["name"] for c in got] == ["짝"] and got[0]["registered_round"] == 1251, got
     laws = [{"id": 1, "law": "a", "mode": "m", "next": 1, "chance": 0.1, "f": ["6개 합", 0, 0]}]
+    t0 = datetime(2026, 11, 24, 17, 49, 50, tzinfo=timezone.utc)
+    q = quota_until("429 RESOURCE_EXHAUSTED ... Please retry in 14h10m8.61556793s.', 'status'", t0)
+    assert q.astimezone(KST).strftime("%m/%d %H:%M") == "11/25 17:04", q          # 14시간 10분 뒤 + 5분 여유
+    assert quota_until("429 RESOURCE_EXHAUSTED", t0).astimezone(KST).strftime("%m/%d %H:%M") == "11/25 17:05"   # 못 읽으면 다음 17:05
+    assert quota_until("503 UNAVAILABLE high demand", t0) is None
     assert [x["id"] for x in clean_trusted([{"id": 9, "why": ""}, {"id": "1", "why": "w"}, {"id": 1, "why": "중복"}, None], laws)] == [1]
 
 
