@@ -18,6 +18,17 @@ void main() {
     expect(lottoRank([1, 2, 7, 10, 9, 8], win, 7), isNull);
   });
 
+  test('④ 등록본 고르기 — 7183 에이전트 등록본이 있으면 그것 (서버 회차 검증 · 추천번호 복기와 같은 규칙)', () {
+    final d = kHitGroups.firstWhere((x) => x.key == 'hypothesis');
+    final regs = [
+      reg('hypothesis_track', 'ht-1.0', 1252, [[1, 2, 3, 4, 5, 6]], '2026-11-23'),
+      reg('hypothesis_track', '7183-1.0', 1252, [[7, 8, 9, 10, 11, 12]], '2026-11-22'),
+      reg('hypothesis_track', 'ht-1.0', 1251, [[1, 2, 3, 4, 5, 6]], '2026-11-20'),
+    ];
+    expect(pickRegistration(regs, 1252, d)!['version'], '7183-1.0');
+    expect(pickRegistration(regs, 1251, d)!['version'], 'ht-1.0'); // 예전 회차는 그대로
+  });
+
   test('회차별 결과 — 구매예측 최신 버전 · 제미나이 토요일 최종본 우선 · 당첨금 합계', () {
     final regs = [
       reg('official_final', 'fr-1.0', 1247, [[8, 14, 21, 30, 31, 32], [1, 2, 3, 4, 5, 6]]),

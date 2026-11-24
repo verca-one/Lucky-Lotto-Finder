@@ -87,14 +87,14 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - `research-strategy.yml` (매일 17시): AI 브리핑전담부서(`research_set_review.py`, 제미나이) → AI 전략기획부(`research_strategy_ai.py`) → 가설 공장 → 판매점 가설 → 가설 트랙 → 연금 · 스피또.
   - `research-weekly.yml` (토 08:00): 가설 공장 · 판매점 가설 · 추천번호 복기만. `research_hypothesis_track.py --final` · `research_weekly_digest.py --stage sat|preview` 는 코드만 남아 있고 호출하지 않는다.
   - `research-request-poll.yml` (10분마다): 앱 요청 테이블을 보고 engine / weekly 워크플로를 실행.
-  - `research-7183.yml` (매일 18:30, 제미나이는 회차당 1번): **7183 에이전트**(`research_7183.py`) — 사용자 구상 '법칙 생태계'. 세는 쪽(법칙 식 · 조수의 숫자 패턴 · 채점)은 서버 계산, 꿈꾸는 쪽(추리 · 새 순환 · 믿는 법칙 · 연구 노트)은 제미나이. `research_results(agent_7183)` 에 회차당 1건. 채점은 '다음 회차 적중' 하나이고 우연 기대(그 회차 상황에서 무작위 조합이 예상을 만족하는 비율)와 나란히 본다. 브리핑 ④ 제미나이 추천번호를 대체할 예정(3단계).
+  - `research-7183.yml` (매일 18:30, 제미나이는 회차당 1번): **7183 에이전트**(`research_7183.py`) — 사용자 구상 '법칙 생태계'. 세는 쪽(법칙 식 · 조수의 숫자 패턴 · 채점)은 서버 계산, 꿈꾸는 쪽(추리 · 새 순환 · 믿는 법칙 · 연구 노트)은 제미나이. `research_results(agent_7183)` 에 회차당 1건. 채점은 '다음 회차 적중' 하나이고 우연 기대(그 회차 상황에서 무작위 조합이 예상을 만족하는 비율)와 나란히 본다. 번호 5세트는 월요일 공개 뒤 첫 실행에서 `research_predictions(hypothesis_track · 7183-1.0)` 에 한 번 등록하고 고정 — **브리핑의 제미나이 추천번호(④) 자리를 대체**한다(앱 `Agent7183Card`, 조수의 황금 숫자 상자 포함). 예전 가설 트랙(ht-1.0)은 계속 돌지만 번호는 브리핑에 나오지 않고 가설 명당 5곳만 쓴다.
 - **"성공"으로 찍혀도 막힐 수 있다**: 대부분 단계가 `continue-on-error`. 당첨자 수가 비면 가설 트랙 · 비인기가 조용히 대기한다. 앱 브리핑의 '제미나이 · 연구 흐름 경고' 상자(`PipelineAlertReport`)가 이를 드러낸다.
 
 ## 반드시 짝으로 바꿔야 하는 규칙 (앱 ↔ 서버)
 
 회차 검증(`research_debrief_worker.py`)은 브리핑이 보여준 것을 서버에서 **재현**해서 채점한다. 한쪽만 바꾸면 채점이 어긋난다.
 - 브리핑 '이번 주 엔진 추천 명당': 앱 `master_briefing_service.dart` `selectAgentPicks` · `hitAgentPicks`(`kHitRuleFrom`) ↔ 서버 `briefing_picks` · `hit_picks`(`HIT_RULE_FROM`).
-- 회차별 등록본 고르기: 앱 `briefing_hit_check.dart` `pickRegistration` ↔ 서버 `research_set_review.pick`.
+- 회차별 등록본 고르기: 앱 `briefing_hit_check.dart` `pickRegistration`(`kHitGroups` prefer) ↔ 서버 `research_set_review.pick`(`AREAS`) ↔ `research_debrief_worker.pick_reg`. ④ 자리는 7183 에이전트 등록본(`hypothesis_track 7183-1.0`)이 있으면 그것을 먼저 고른다 — 세 곳을 같이 바꿀 것.
 - 1등 기록 준비 판단: `research_pipeline_gate.need_first` ↔ `research_agent_worker.ready_latest`.
 - 엔진 공개 요일: `research_release.RELEASE_DAYS` ↔ 앱 `recommend_release.dart`.
 

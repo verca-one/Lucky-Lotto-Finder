@@ -17,7 +17,8 @@ const kHitGroups = [
   HitGroupDef('official', 'official_final', '① 엔진 추천번호', '엔진 추천', version: 'fr-1.0'),
   HitGroupDef('popularity', 'popularity_pick', '② 비인기 추천조합', '비인기', version: 'pop-1.0'),
   HitGroupDef('purchase', 'purchase_prediction', '③ 구매예측 번호', '구매예측'),
-  HitGroupDef('hypothesis', 'hypothesis_track', '④ 제미나이 가설 추천번호', '제미나이', prefer: ['ht-1.0-sat', 'ht-1.0']),
+  // 7183 에이전트 등록본(7183-1.0)이 있으면 그것이 ④ — 서버 research_set_review.AREAS · research_debrief_worker.pick_reg 와 짝
+  HitGroupDef('hypothesis', 'hypothesis_track', '④ 제미나이 추천번호', '제미나이', prefer: ['7183-1.0', 'ht-1.0-sat', 'ht-1.0']),
 ];
 
 /// 4등 · 5등은 고정 당첨금 (1~3등은 회차별 research_prize_stats)

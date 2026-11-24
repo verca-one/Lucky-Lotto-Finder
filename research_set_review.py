@@ -50,7 +50,7 @@ AREAS = [  # (key, algorithm, 고정 버전, 먼저 고를 버전, 이름)
     ("official", "official_final", "fr-1.0", [], "① 엔진 추천번호"),
     ("popularity", "popularity_pick", "pop-1.0", [], "② 비인기 추천조합"),
     ("purchase", "purchase_prediction", None, [], "③ 구매예측 번호"),
-    ("hypothesis", "hypothesis_track", None, ["ht-1.0-sat", "ht-1.0"], "④ 제미나이 가설 추천번호"),
+    ("hypothesis", "hypothesis_track", None, ["7183-1.0", "ht-1.0-sat", "ht-1.0"], "④ 제미나이 추천번호"),
 ]
 FEATURES = {
     "win_sum": ("번호 합", lambda ns: sum(ns)),

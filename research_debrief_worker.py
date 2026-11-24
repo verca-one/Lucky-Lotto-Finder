@@ -43,7 +43,7 @@ GROUPS = [  # (key, algorithm, 고정 version 또는 None=최신, 이름, 역할
     ("purchase", "purchase_prediction", None, "구매예측 번호", "브리핑 ③"),
     ("number_engine", "number_engine", None, "Number 엔진 기본 조합", "연구소 기록 (브리핑 아님)"),
     ("random", "random_control", None, "무작위 대조군", "연구소 기록 (브리핑 아님)"),
-    ("hypothesis", "hypothesis_track", None, "가설 트랙 (제미나이 가설)", "브리핑 ⑤ 가설 기반 · 토요일 최종본 우선"),
+    ("hypothesis", "hypothesis_track", None, "제미나이 추천번호 (7183 에이전트 · 예전 회차는 가설 트랙)", "브리핑 ④ 자리 · 7183 등록본 우선"),
 ]
 BRIEFED = ("official", "popularity", "purchase")   # 브리핑이 실제로 추천한 번호 영역
 TIER = {"first": 1, "second": 2}
@@ -129,7 +129,8 @@ def win_of(d, t):
 # ── 번호 ──────────────────────────────────────────────────────────
 def pick_reg(regs, t, algo, version):
     rows = [r for r in regs if r["target_round"] == t and r["algorithm"] == algo and (version is None or r["version"] == version)]
-    return max(rows, key=lambda r: (ver_key(r["version"]), r.get("generated_at") or "")) if rows else None
+    # 7183 에이전트 등록본(7183-*)이 있으면 그것이 브리핑 ④ — 앱 briefing_hit_check.kHitGroups prefer · research_set_review.AREAS 와 짝
+    return max(rows, key=lambda r: (str(r["version"]).startswith("7183"), ver_key(r["version"]), r.get("generated_at") or "")) if rows else None
 
 
 def track_record(d, algo, version):

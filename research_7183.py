@@ -1,5 +1,5 @@
 """
-7183 에이전트 (a7183-0.2) — 1단계: 서버 계산부 (세는 쪽 · 조수) · 2단계: 꿈꾸는 쪽 (제미나이, 회차당 1번)
+7183 에이전트 (a7183-1.0) — 세는 쪽 · 조수(서버 계산) + 꿈꾸는 쪽(제미나이, 회차당 1번) + 번호 5세트(브리핑 ④)
 
   사장님 구상: 법칙은 한동안 유효하다가 몇 회차 뒤 다른 법칙으로 넘어간다(생태계). 목표는 하나 — 다음 회차 당첨.
   · 법칙(7183 본체가 꿈꾸는 것): 회차마다 숫자 하나를 내는 식 = [기본 값] · [회차 사이 계산] · [마무리].
@@ -16,7 +16,11 @@
       제미나이가 실패한 날은 계산값만 저장하고(source = rule) 다음 실행에서 다시 시도. 판매 마감 뒤에는 만들지 않는다.
   · 법칙 완성: 순환이 과거 복기에서 30번 이상 예상해 우연의 1.5배 이상 맞히고(z ≥ 3), 등록 뒤 새 회차 10번 이상에서도
       우연보다 많이 맞히면 '완성' — 브리핑 알림용으로 저장한다.
-  읽기: lotto_winning_numbers (읽기 전용). 쓰기: research_results (agent_7183, 회차당 1건) — 서버(service_role)만.
+  · 번호 5세트(3단계): 월요일 공개 시점(research_release) 이후 첫 실행에서 한 번 뽑아 사전 등록 장부에 올리고 고정한다
+      (research_predictions · hypothesis_track · 7183-1.0 — 브리핑 ④ 제미나이 추천번호 자리를 대체, 회차 검증도 이 번호로 채점).
+      그때까지 제미나이가 답했으면 믿는 법칙에 힘을 더 주고, 못 했으면 계산값으로 뽑는다. 등록 뒤에는 바꾸지 않는다 —
+      제미나이가 주중에 늦게 답하면 추리 글만 더해지고, 새 순환은 다음 회차 번호부터 반영된다.
+  읽기: lotto_winning_numbers (읽기 전용). 쓰기: research_results (agent_7183, 회차당 1건) · research_predictions (위 1건) — 서버만.
   비인기 · 공식 엔진 · 가설 트랙과 무관한 별도 파일.
 
 사용: python research_7183.py [--from 1001] [--out 결과.json]     복기 표만 (저장 없음)
@@ -37,8 +41,11 @@ import numpy as np
 
 import research_review_worker as R
 
-VERSION = "a7183-0.2"
+VERSION = "a7183-1.0"
 RESULT_TYPE = "agent_7183"
+ROW_VERSION = "a7183"                     # 저장 행 키 (코드 버전이 올라가도 회차당 한 행을 유지)
+REG_ALGO, REG_VERSION = "hypothesis_track", "7183-1.0"   # 브리핑 ④ 자리 — 회차 검증 · 당첨확인이 이 버전을 먼저 고른다
+TRUST_BOOST = 2.0                         # 제미나이가 믿는다고 고른 법칙의 힘
 TEST_FROM = 1001           # 복기 시작 회차 (그 앞 회차는 기준값 계산에만 씀)
 ALIVE_P = 1e-3             # 우연히 이만큼 이어질 확률이 이보다 작아야 '살아 있다'
 MIN_RUN = 3
@@ -261,6 +268,25 @@ def pick_sets(laws, masks, sample, cand_w, past):
     return [list(c) for c in out]
 
 
+def make_sets(ctx, trusted=()):
+    """다음 회차 번호 5세트 — 살아 있는 법칙의 예상(믿는 법칙은 힘 ×2) · 조수 후보 숫자를 가장 많이 만족하는 조합"""
+    boost = {ctx["key"].get((tuple(x["f"]), x["mode"], x["next"])) for x in trusted}
+    score = np.zeros(SAMPLE)
+    for k in sorted(ctx["masks"])[:LAW_TOP]:             # id 는 우연히 맞기 어려운 순
+        w = -math.log10(max(ctx["chance"][k], 1e-4)) * (TRUST_BOOST if k in boost else 1.0)
+        score += w * ctx["masks"][k]
+    score += ctx["cand_w"][ctx["sample"]].sum(1)
+    out = []
+    for j in np.argsort(-score, kind="stable"):
+        c = tuple(int(v) for v in ctx["sample"][j])
+        if c in ctx["past"] or any(len(set(c) & set(o)) > MAX_OVERLAP for o in out):
+            continue
+        out.append(c)
+        if len(out) == N_SETS:
+            break
+    return [list(c) for c in out]
+
+
 def run(nums, rounds, start, cycles=None, reg=None):
     cycles = cycles or {c["name"]: c["digits"] for c in SEED_CYCLES}
     reg = reg or {}
@@ -334,7 +360,7 @@ def run(nums, rounds, start, cycles=None, reg=None):
             if pred >= 0:
                 mk = law_masks(T, [(name, int(i), pred, 0, 0)], F, histn, nsample)[0]
                 nxt_laws.append({"law": formula_name(F[i]), "mode": name, "run": int(runv[i]), "next": pred,
-                                 "chance": float(mk.mean()), "f": list(F[i]), "_k": mk.tobytes()})
+                                 "chance": float(mk.mean()), "f": list(F[i]), "_k": mk.tobytes(), "_m": mk})
     nxt_laws.sort(key=lambda x: (x["chance"], -x["run"]))   # 우연히 맞기 어려운 순
     uniq, seen = [], set()
     for x in nxt_laws:                                       # 같은 예상을 하는 식은 하나만 보여 줌
@@ -342,16 +368,27 @@ def run(nums, rounds, start, cycles=None, reg=None):
             seen.add(x.pop("_k"))
             uniq.append(x)
     nxt_laws = uniq
+    masks = {}
     for k, x in enumerate(nxt_laws, 1):
         x["id"] = k
+        masks[k] = x.pop("_m")
     Pn = np.vstack([P, np.zeros((1, 46), dtype=bool)])
     scout.P = Pn
     numsn = np.vstack([nums, np.zeros((1, 6), dtype=np.int32)])
     alive, gold, grid = scout.candidates(numsn, T)
     near = scout.nearest(numsn, T)
+    cand_w = np.zeros(46)
+    for _lag, _x, y in alive:
+        cand_w[y] += 1.0
+    for _g, y in grid:
+        cand_w[y] += 1.0
+    for _lag, _x, y, _h, _n in gold:
+        cand_w[y] += 100.0
+    ctx = {"sample": nsample, "masks": masks, "chance": {x["id"]: x["chance"] for x in nxt_laws}, "cand_w": cand_w,
+           "past": past, "key": {(tuple(x["f"]), x["mode"], x["next"]): x["id"] for x in nxt_laws}}
     return {"formulas": len(F), "patterns": len(F) * len(modes) + len(LAGS) * 45 * 45 + len(GAPS) * 45,
             "law_stat": law_stat, "law_since": law_since, "scout": sc, "alive_avg": float(np.mean(alive_counts)), "rows": rows,
-            "modes": len(modes), "next": {"round": rounds[-1] + 1, "laws": nxt_laws[:SHOW_ALIVE], "laws_total": len(nxt_laws),
+            "ctx": ctx, "modes": len(modes), "next": {"round": rounds[-1] + 1, "laws": nxt_laws[:SHOW_ALIVE], "laws_total": len(nxt_laws),
                      "follow": [{"lag": a, "x": b, "y": c} for a, b, c in alive], "grid": [{"gap": g, "y": int(y)} for g, y in grid],
                      "gold": [{"lag": a, "x": b, "y": c, "hits": h, "fired": n} for a, b, c, h, n in gold],
                      "nearest": [{"ratio": round(r, 2), "lag": lag, "x": x, "y": y, "hits": h, "fired": n, "streak": s}
@@ -501,18 +538,20 @@ def weekly(db, a):
     nums = np.array([sorted(w[f"num{i}"] for i in range(1, 7)) for w in wins], dtype=np.int32)
     latest, target = rounds[-1], rounds[-1] + 1
     now = datetime.now(timezone.utc)
-    dd = wins[-1].get("draw_date")
-    if dd:   # 판매 마감(토 20:00 KST) 뒤에는 만들지 않는다 — 예상은 추첨 전에 고정
-        dl = datetime.combine(date.fromisoformat(str(dd)[:10]) + timedelta(days=7), datetime.min.time(), KST) + timedelta(hours=20)
-        if now >= dl:
-            print(f"{target}회 판매 마감 지남 — 만들지 않음 (새 당첨번호 대기)")
-            return None
+    dd = wins[-1].get("draw_date") or (date(2002, 12, 7) + timedelta(days=7 * (latest - 1))).isoformat()   # 1회 추첨일에서 계산
+    # 판매 마감(토 20:00 KST) 뒤에는 만들지 않는다 — 예상은 추첨 전에 고정
+    dl = datetime.combine(date.fromisoformat(str(dd)[:10]) + timedelta(days=7), datetime.min.time(), KST) + timedelta(hours=20)
+    if now >= dl:
+        print(f"{target}회 판매 마감 지남 — 만들지 않음 (새 당첨번호 대기)")
+        return None
     got = db.get("research_results", {"select": "target_round,payload", "research_type": f"eq.{RESULT_TYPE}",
-                                      "order": "target_round.desc", "limit": "2"})
+                                      "order": "target_round.desc,created_at.desc", "limit": "6"})
     cur = next((x["payload"] for x in got if x["target_round"] == target), None)
     prev = next((x["payload"] for x in got if x["target_round"] == latest), None)
-    if cur and cur.get("source") == "gemini" and not a.force:
-        print(f"{target}회 7183 에이전트 이미 있음(제미나이) — 고정")
+    have_ai = bool(cur and cur.get("source") == "gemini") and not a.force
+    registered = bool(cur and cur.get("sets_status") == "registered")
+    if have_ai and registered:
+        print(f"{target}회 7183 에이전트 이미 있음(제미나이 · 번호 등록) — 고정")
         return cur
     carry = cur or prev or {}
     cycles = [dict(c) for c in (carry.get("cycles") or SEED_CYCLES)]
@@ -523,17 +562,24 @@ def weekly(db, a):
 
     res = count(cycles)
     hist = bases(nums)
-    rec, scored = score_trusted(prev, hist, latest) if prev and not (cur or {}).get("scored_previous") else ([0, 0, 0.0], [])
-    if cur and cur.get("scored_previous"):                      # 같은 회차를 다시 돌릴 때 두 번 세지 않게
-        record, scored = cur.get("record") or {}, cur["scored_previous"]
-    else:
-        old = ((prev or {}).get("record") or {}).get("trusted") or [0, 0, 0.0]
-        record = {"trusted": [old[0] + rec[0], old[1] + rec[1], round(old[2] + rec[2], 3)]}
+    # 지난 회차 채점 — 항상 지난 회차 기록(prev.record)에 더하므로 같은 회차를 여러 번 돌려도 값이 같다
+    rec, scored = score_trusted(prev, hist, latest) if prev else ([0, 0, 0.0], [])
+    pr = (prev or {}).get("record") or {}
+    old = pr.get("trusted") or [0, 0, 0.0]
+    win = set(int(v) for v in nums[-1])
+    pm = [len(win & set(s)) for s in ((prev or {}).get("sets") or [])] if (prev or {}).get("sets_status") == "registered" else []
+    pg = [int(y in win) for y in ((prev or {}).get("gold_numbers") or [])] if pm else []
+    os_, og = pr.get("sets") or [0, 0, 0], pr.get("gold") or [0, 0]
+    record = {"trusted": [old[0] + rec[0], old[1] + rec[1], round(old[2] + rec[2], 3)],
+              "sets": [os_[0] + len(pm), os_[1] + sum(pm), os_[2] + sum(x >= 3 for x in pm)],   # 세트 수 · 맞힌 개수 합 · 3개 이상
+              "gold": [og[0] + len(pg), og[1] + sum(pg)]}                                       # 황금 숫자 수 · 적중
     prev_done = {c["name"] for c in (carry.get("cycles") or []) if c.get("complete")}
     cyc, done_now = cycle_report(cycles, res, prev_done)
     prompt = build_prompt(res, nums, rounds, cyc, dict(prev or {}, record=record), scored)
     data = model = err = None
-    if os.environ.get("GEMINI_API_KEY"):
+    if have_ai:   # 이번 회차 꿈은 이미 받음 — 다시 부르지 않고 번호 등록만 마저 한다
+        model = cur.get("model")
+    elif os.environ.get("GEMINI_API_KEY"):
         import research_strategy_ai as S
         try:
             data, model, _ = S.ask_gemini(prompt, system=SYSTEM, sch=dream_schema())
@@ -542,7 +588,9 @@ def weekly(db, a):
     else:
         err = "GEMINI_API_KEY 없음"
     nx = res["next"]
-    if data:
+    if have_ai:
+        new, trusted = [], cur.get("trusted") or []
+    elif data:
         new = clean_cycles(data.get("cycles"), cycles, latest)
         trusted = clean_trusted(data.get("trusted"), nx["laws"])
         if new:   # 새 순환을 넣어 다시 세어, 꿈꾼 순환의 첫 성적을 함께 저장
@@ -553,27 +601,55 @@ def weekly(db, a):
             cyc, done_now = cycle_report(cycles, res, prev_done)
     else:
         new, trusted = [], [dict(x, why="우연히 맞기 가장 어려운 예상 (계산)") for x in nx["laws"][:MAX_TRUST]]
+    ai = have_ai or bool(data)
+    kept = cur if have_ai else {}
+    # 번호 5세트 — 월요일 공개 시점 이후 첫 실행에서 한 번 등록하고 고정
+    sets, sets_status, sets_by, sets_note = [], "waiting", None, None
+    gold_numbers = [c["y"] for c in nx["gold"]]
+    if registered:
+        sets, sets_status, sets_by, gold_numbers = cur["sets"], "registered", cur.get("sets_by"), cur.get("gold_numbers") or []
+    else:
+        from research_release import prediction_allowed
+        ok, sets_note, _ = prediction_allowed(db.get, target, dd, latest)
+        if ok:
+            sets, sets_by = make_sets(res["ctx"], trusted if ai else ()), ("gemini" if ai else "rule")
+            if a.dry_run:
+                sets_status = "dry-run"
+            else:
+                db.upsert("research_predictions", [{
+                    "algorithm": REG_ALGO, "version": REG_VERSION, "target_round": target, "data_end_round": latest, "sets": sets,
+                    "generated_at": now.isoformat(), "deadline_at": dl.isoformat(), "pre_deadline": True, "locked": True,
+                    "status": "pending"}], "algorithm,version,target_round", ignore=True)
+                reg = db.get("research_predictions", {"select": "sets", "algorithm": f"eq.{REG_ALGO}", "version": f"eq.{REG_VERSION}",
+                                                      "target_round": f"eq.{target}"})
+                if reg:
+                    sets, sets_status = reg[0]["sets"], "registered"
     rows = res["rows"]
     m = [x for r in rows for x in r["m"]]
     payload = {
         "version": VERSION, "target_round": target, "latest_round": latest, "generated_at": now.isoformat(),
-        "source": "gemini" if data else "rule", "model": model, "ai_error": err,
+        "source": "gemini" if ai else "rule", "model": model, "ai_error": err,
+        "sets": sets, "sets_status": sets_status, "sets_by": sets_by, "sets_note": sets_note, "gold_numbers": gold_numbers,
+        "reg_version": REG_VERSION,
         "scanned": res["patterns"], "formulas": res["formulas"], "alive_total": nx["laws_total"], "alive": nx["laws"],
         "scoreboard": {"from": rows[0]["round"], "to": rows[-1]["round"],
                        "laws": {k: [v[0], v[1], round(v[2], 1)] for k, v in res["law_stat"].items()},
                        "scout": res["scout"], "sets": {"n": len(m), "mean": round(float(np.mean(m)), 4), "ge3": int(sum(x >= 3 for x in m))}},
         "scout": {k: nx[k] for k in ("follow", "grid", "gold", "nearest")},
-        "cycles": cyc, "new_cycles": [c["name"] for c in new], "completed_now": done_now,
-        "dream": str((data or {}).get("dream") or "")[:1500], "trusted": trusted,
-        "new_parts": str((data or {}).get("new_parts") or "")[:400],
-        "notes": str((data or {}).get("notes") or (prev or {}).get("notes") or "")[:1500],
+        "cycles": cyc, "new_cycles": kept.get("new_cycles") or [c["name"] for c in new], "completed_now": done_now,
+        "dream": str(kept.get("dream") or (data or {}).get("dream") or "")[:1500], "trusted": trusted,
+        "new_parts": str(kept.get("new_parts") or (data or {}).get("new_parts") or "")[:400],
+        "notes": str(kept.get("notes") or (data or {}).get("notes") or (prev or {}).get("notes") or "")[:1500],
+        "scored_sets": pm,
         "record": record, "scored_previous": scored,
         "rule": "법칙 · 조수는 서버 계산, 꿈(추리 · 새 순환 · 믿는 법칙)은 제미나이. 채점은 다음 회차 적중 하나 — 우연 기대와 나란히",
     }
     json.dumps(payload, ensure_ascii=False)
     print(f"{target}회 7183 에이전트 ({payload['source']}{' · AI 실패: ' + err if err and not data else ''}) — "
           f"살펴본 것 {payload['scanned']:,}개 · 살아 있는 법칙 {nx['laws_total']}개 · 순환 {len(cyc)}개 (새로 {len(new)}개) · 완성 {done_now or '없음'}")
-    print(f"  지난 회차 믿은 법칙: {rec[1]}개 중 {rec[0]}개 적중 · 누적 {record['trusted']}")
+    print(f"  지난 회차 믿은 법칙: {rec[1]}개 중 {rec[0]}개 적중 · 누적 {record['trusted']} · 지난 번호 맞힌 개수 {pm or '없음'}")
+    print(f"  번호 5세트 ({sets_status}{' · ' + sets_by if sets_by else ''}{' · ' + sets_note if sets_note and not sets else ''}): {sets}")
+    print(f"  황금 숫자: {gold_numbers or '없음'}")
     for x in trusted:
         print(f"  믿는 법칙: {x['law']} [{x['mode']}] → {x['next']} — {x['why']}")
     if payload["dream"]:
@@ -582,7 +658,7 @@ def weekly(db, a):
         print(f"\n── 제미나이에게 보내는 자료 ({len(prompt)}자) ──\n{prompt}")
         print("\n드라이런 — 저장 안 함")
         return payload
-    db.upsert("research_results", [{"research_type": RESULT_TYPE, "model_version": VERSION, "training_end_round": latest,
+    db.upsert("research_results", [{"research_type": RESULT_TYPE, "model_version": ROW_VERSION, "training_end_round": latest,
                                     "target_round": target, "payload": payload}],
               "research_type,model_version,training_end_round,target_round")
     print("저장 완료")
@@ -654,6 +730,7 @@ def main():
     for c in nx["nearest"]:
         print(f"     {c['x']} 이 나오면 {c['lag']}회 뒤 {c['y']}: 과거 {c['fired']}번 중 {c['hits']}번 (우연의 {c['ratio']}배) · 최근 연속 {c['streak']}번")
     if a.out:
+        res.pop("ctx")                                   # 번호 고르기용 배열 — 파일로 남기지 않음
         with open(a.out, "w", encoding="utf-8") as f:
             json.dump(res, f, ensure_ascii=False)
 

@@ -14,6 +14,7 @@ import '../services/store_map_launcher.dart';
 import '../services/supabase_service.dart';
 import 'agent_store_evidence_widgets.dart';
 import 'briefing_store_widgets.dart';
+import 'agent7183_card.dart';
 import 'hypothesis_track_card.dart';
 import 'purchase_recommend_card.dart' show lottoBall, statusChip, popularityValidationLine;
 import 'store_map_buttons.dart';
@@ -98,8 +99,8 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
           Text('추첨 후 회차 검증은 아래 구매할 번호(①~③)와 추천 명당(④)만 같은 번호로 채점합니다.',
               style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600)),
           const SizedBox(height: 6),
-          // ⑤ 가설 트랙(제미나이) — 구매할 번호 세트보다 위
-          HypothesisTrackCard(key: ValueKey('track_${b.targetRound}'), target: b.targetRound, released: open),
+          // 제미나이 추천번호 자리 — 7183 에이전트 (예전 가설 트랙 번호를 대체, 구매할 번호 세트보다 위)
+          Agent7183Card(key: ValueKey('a7183_${b.targetRound}'), target: b.targetRound, released: open),
           BriefingDeskMemo(area: 'hypothesis', target: b.targetRound),
           const SizedBox(height: 12),
           BriefingSection(
