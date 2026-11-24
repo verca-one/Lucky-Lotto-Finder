@@ -267,6 +267,9 @@ class _SpeettoBriefingViewState extends State<SpeettoBriefingView> {
           _hero(),
           const SizedBox(height: 12),
           if (widget.admin) ...[
+            // 출고율 경고 · 당첨점 추리 — 이번 회차 브리핑 상황판에서 옮김 (같은 자료를 다시 받지 않게 _f 를 넘김)
+            SpeettoAlertCard(loader: () => _f),
+            SpeettoInferCard(loader: () => _f),
             SpeettoNearbyCard(games: b?.games ?? const [], info: _info, onMap: _showMap),
             const SizedBox(height: 12),
           ],

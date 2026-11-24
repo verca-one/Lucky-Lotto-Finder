@@ -1368,8 +1368,6 @@ class _BriefingDetailScreenState extends State<BriefingDetailScreen> {
         child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           // ── 회차 상황판 — 본 브리핑 전에 훑어보는 보고 (한 덩어리로 묶어 작게)
           _statusBoard(context, [
-            const SpeettoAlertCard(),
-            const SpeettoInferCard(),
             const PipelineAlertReport(),
             const AgentHitsReport(),
             const ManualRecommendCard(),
