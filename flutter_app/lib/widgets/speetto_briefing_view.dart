@@ -658,7 +658,7 @@ class _SpeettoInferCardState extends State<SpeettoInferCard> {
                 const SizedBox(height: 4),
                 Text('${inf['summary']}', style: const TextStyle(fontSize: 11.5, height: 1.4)),
               ],
-              for (final g in games) _game(g),
+              for (final g in games) _game(g, snap.data!.editions),
               const SizedBox(height: 4),
               Text('살 차수는 계산(남은 1등 ÷ 안 팔린 장수)입니다. 판매점 · 지역은 가설 기반이며 한 장의 확률을 바꾸지 않습니다. 매일 17시 새 당첨을 반영해 고칩니다.',
                   style: TextStyle(fontSize: 10, color: Colors.grey.shade600, height: 1.4)),
@@ -667,7 +667,7 @@ class _SpeettoInferCardState extends State<SpeettoInferCard> {
         },
       );
 
-  Widget _game(Map<String, dynamic> g) {
+  Widget _game(Map<String, dynamic> g, List<SpeettoEdition> eds) {
     final k = '${g['game']}'.replaceFirst('SP', '');
     final t = kSpeettoGameLooks[k] ?? kSpeettoGameLooks['500']!;
     final b = g['best'] is Map ? Map<String, dynamic>.from(g['best'] as Map) : null;
@@ -675,6 +675,7 @@ class _SpeettoInferCardState extends State<SpeettoInferCard> {
     final d = g['pick_edition'] == null ? null : dist['${g['pick_edition']}'];
     final sido = d is Map ? Map<String, dynamic>.from(d['sido'] as Map? ?? const {}) : const <String, dynamic>{};
     final picks = [for (final x in (g['picks'] as List? ?? const [])) Map<String, dynamic>.from(x as Map)];
+    final ship = eds.where((e) => e.game == '${g['game']}' && e.edition == g['pick_edition']).firstOrNull?.shipRate;
     return Container(
       key: ValueKey('speetto_infer_$k'),
       width: double.infinity,
@@ -682,11 +683,18 @@ class _SpeettoInferCardState extends State<SpeettoInferCard> {
       padding: const EdgeInsets.all(10),
       decoration: BoxDecoration(color: t.bg, borderRadius: BorderRadius.circular(10), border: Border.all(color: t.border)),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text('${g['label']} · ${g['pick_edition'] == null ? '살 차수 없음' : '${g['pick_edition']}회 추천'}',
-            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: t.fg)),
+        Row(crossAxisAlignment: CrossAxisAlignment.baseline, textBaseline: TextBaseline.alphabetic, children: [
+          Text('${g['label']} · ${g['pick_edition'] == null ? '살 차수 없음' : '${g['pick_edition']}회 추천'}',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: t.fg)),
+          const Spacer(),
+          // 추천 회차의 출고율 — 눈에 띄게 (출고 많을수록 남은 표가 적음)
+          if (ship != null)
+            Text('출고 ${ship.toStringAsFixed(0)}%', key: ValueKey('speetto_infer_ship_$k'),
+                style: TextStyle(fontSize: 17, fontWeight: FontWeight.w900, color: t.fg)),
+        ]),
         if (b != null)
           Text('한 장당 1등 1/${manWon((b['p1_now'] as num?)?.toInt() ?? 0)} (처음 1/${manWon((b['p1_start'] as num?)?.toInt() ?? 0)}) · '
-              '1등 남음 ${b['rnk1_left'] ?? '-'}/${b['rnk1_total'] ?? '-'} · 출고 ${b['ship_rate'] ?? '-'}%',
+              '1등 남음 ${b['rnk1_left'] ?? '-'}/${b['rnk1_total'] ?? '-'}',
               style: TextStyle(fontSize: 11, color: t.sub)),
         if ('${g['why'] ?? ''}'.isNotEmpty) Text('${g['why']}', style: TextStyle(fontSize: 11.5, color: t.fg, height: 1.4)),
         if (d is Map)
