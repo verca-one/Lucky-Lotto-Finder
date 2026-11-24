@@ -198,4 +198,19 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('${kept.month}/${kept.day} 제미나이 추리 (2일 전)'), findsOneWidget);
   });
+
+  testWidgets('스피또 출고율 대시보드 — 2000 · 1000 · 500 판매 중 회차별 출고율 (최신 회차 먼저)', (tester) async {
+    final b = SpeettoBriefing.fromPayload({'games': [], 'status': {'snap_date': '2026-11-21', 'editions': [
+      {'game': 'SP2000', 'edition': 69, 'ship_rate': 99.2}, {'game': 'SP2000', 'edition': 70, 'ship_rate': 64.0},
+      {'game': 'SP1000', 'edition': 112, 'ship_rate': 0.4},
+    ]}});
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SpeettoShipBoard(b))));
+    expect(find.text('출고율'), findsOneWidget);
+    expect(find.text('2026-11-21 기준'), findsOneWidget);
+    expect(find.text('64%'), findsOneWidget);
+    expect(find.text('99%'), findsOneWidget);
+    expect(tester.getTopLeft(find.text('70회')).dy, lessThan(tester.getTopLeft(find.text('69회')).dy));
+    expect(find.text('0%'), findsOneWidget);
+    expect(find.descendant(of: find.byKey(const ValueKey('speetto_ship_500')), matching: find.text('판매 중 회차 없음')), findsOneWidget);
+  });
 }

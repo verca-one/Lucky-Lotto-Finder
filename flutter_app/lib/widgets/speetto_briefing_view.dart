@@ -264,6 +264,7 @@ class _SpeettoBriefingViewState extends State<SpeettoBriefingView> {
       builder: (context, snap) {
         final b = snap.connectionState == ConnectionState.done && !snap.hasError ? snap.data : null;
         return ListView(padding: const EdgeInsets.all(16), children: [
+          if (widget.admin && b != null && b.editions.isNotEmpty) SpeettoShipBoard(b),
           _hero(),
           const SizedBox(height: 12),
           if (widget.admin) ...[
@@ -708,6 +709,58 @@ class _SpeettoInferCardState extends State<SpeettoInferCard> {
             padding: const EdgeInsets.only(top: 3),
             child: Text('🎯 ${x['name']} — ${x['why']}', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: t.fg, height: 1.35)),
           ),
+      ]),
+    );
+  }
+}
+
+/// 브리핑 스피또 탭 맨 위 — 2000 · 1000 · 500 판매 중 회차의 출고율 한눈에 (작은 대시보드)
+class SpeettoShipBoard extends StatelessWidget {
+  final SpeettoBriefing b;
+  const SpeettoShipBoard(this.b, {super.key});
+
+  @override
+  Widget build(BuildContext context) => Container(
+        key: const ValueKey('speetto_ship_board'),
+        margin: const EdgeInsets.only(bottom: 10),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [
+            const Icon(Icons.speed_rounded, size: 15, color: kSpeettoColor),
+            const SizedBox(width: 4),
+            const Text('출고율', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900, color: kSpeettoColor)),
+            const Spacer(),
+            if (b.statusDate != null) Text('${b.statusDate} 기준', style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
+          ]),
+          const SizedBox(height: 4),
+          IntrinsicHeight(
+            child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+              for (final k in const ['2000', '1000', '500']) ...[
+                if (k != '2000') const SizedBox(width: 6),
+                Expanded(child: _game(k)),
+              ],
+            ]),
+          ),
+        ]),
+      );
+
+  Widget _game(String k) {
+    final t = kSpeettoGameLooks[k]!;
+    final eds = b.editions.where((e) => e.game == 'SP$k').toList()..sort((x, y) => y.edition.compareTo(x.edition));
+    return Container(
+      key: ValueKey('speetto_ship_$k'),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(color: t.bg, borderRadius: BorderRadius.circular(10), border: Border.all(color: t.border)),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Text(k, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: t.fg)),
+        if (eds.isEmpty) Text('판매 중 회차 없음', style: TextStyle(fontSize: 10, color: t.sub)),
+        for (final e in eds)
+          Row(children: [
+            Text('${e.edition}회', style: TextStyle(fontSize: 10.5, color: t.sub)),
+            const Spacer(),
+            // 95% 이상은 거의 다 풀린 회차 — 빨갛게
+            Text('${(e.shipRate ?? 0).toStringAsFixed(0)}%',
+                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900, color: e.nearEnd ? const Color(0xFFE53935) : t.fg)),
+          ]),
       ]),
     );
   }
