@@ -459,6 +459,8 @@ def ask_dream(prompt):
             print(f"[7183 gemini] {label} 실패 ({time.time() - t0:.0f}초 · 첫 조각 {got['first']}초 · 받은 글자 {sum(map(len, got['text']))}): "
                   f"{type(e).__name__} — {msg}", file=sys.stderr)
             last = f"{label}: {type(e).__name__} — {msg}"
+            if not re.search(r"\b400\b|INVALID_ARGUMENT", msg):
+                break   # 설정 문제(400)일 때만 기본 설정으로 다시 — 한도 초과(무료 하루 20번) · 시간 초과는 다시 불러도 한도만 쓴다
     raise RuntimeError(last)
 
 
