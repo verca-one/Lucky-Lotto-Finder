@@ -9,8 +9,6 @@ import '../services/badge_service.dart';
 import '../services/ranking_extras_service.dart';
 import '../services/round_status_service.dart';
 import '../widgets/home_round_header.dart';
-import '../widgets/ranking_lotto_numbers.dart';
-import '../widgets/ranking_pension_numbers.dart';
 import 'round_result_screen.dart';
 import '../widgets/ranking_store_card.dart';
 import '../widgets/store_detail_popup.dart';
@@ -970,19 +968,6 @@ class _HomeRankingContentState extends State<_HomeRankingContent> with TickerPro
       updateTimes: latestUpdateTimes(_recentCrawlLogs),
       // 수동 탭으로만 이동 (헤더가 상세 화면이 닫힐 때까지 중복 탭을 막는다)
       onOpen: (card) => Navigator.of(context).push(MaterialPageRoute(builder: (_) => RoundResultScreen(card: card))),
-      // 최신 당첨번호 — 로또 · 연금 (번호 수집되면 바로 반영 · 발표 당일 회색 단계)
-      below: [
-        RankingLottoNumbers(
-          key: ValueKey('ranking_numbers_$_numbersRefresh'),
-          margin: EdgeInsets.zero,
-          onNewRound: _loadRoundCards, // 새 회차 번호가 들어오면 위 회차 카드도 다시 읽기
-        ),
-        RankingPensionNumbers(
-          key: ValueKey('ranking_pension_$_numbersRefresh'),
-          margin: EdgeInsets.zero,
-          onNewRound: _loadRoundCards,
-        ),
-      ],
     );
   }
 
