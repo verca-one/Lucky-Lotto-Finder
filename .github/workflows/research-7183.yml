@@ -1,0 +1,33 @@
+name: Research 7183 Agent
+
+# 7183 에이전트 — 법칙 생태계 (법칙이 한동안 유효하다 다른 법칙으로 넘어가는 흐름을 추적 · 목표는 다음 회차 당첨)
+#   research_7183.py : 세는 쪽(법칙 식 · 조수의 숫자 패턴 · 채점)은 서버 계산, 꿈꾸는 쪽(추리 · 새 순환 · 믿는 법칙)은 제미나이
+# 매일 한 번 시도하지만 제미나이는 회차당 1번만 부른다(이미 있으면 건너뜀). 제미나이가 실패한 날은 계산값만 저장하고 다음 날 다시.
+# 당첨번호(lotto_winning_numbers)를 읽기만 한다 — 크롤링 · 비인기 추천조합 · 공식 엔진과 무관.
+on:
+  schedule:
+    - cron: '30 9 * * *'   # 18:30 KST
+  workflow_dispatch:
+
+concurrency:
+  group: research-7183
+  cancel-in-progress: false
+
+jobs:
+  agent:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTHONUNBUFFERED: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install requests numpy scipy anthropic google-genai
+      - name: 7183 에이전트 — 법칙 세기 · 지난 꿈 채점 · 제미나이 꿈 (회차당 1번)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python research_7183.py --publish

@@ -87,6 +87,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - `research-strategy.yml` (매일 17시): AI 브리핑전담부서(`research_set_review.py`, 제미나이) → AI 전략기획부(`research_strategy_ai.py`) → 가설 공장 → 판매점 가설 → 가설 트랙 → 연금 · 스피또.
   - `research-weekly.yml` (토 08:00): 가설 공장 · 판매점 가설 · 추천번호 복기만. `research_hypothesis_track.py --final` · `research_weekly_digest.py --stage sat|preview` 는 코드만 남아 있고 호출하지 않는다.
   - `research-request-poll.yml` (10분마다): 앱 요청 테이블을 보고 engine / weekly 워크플로를 실행.
+  - `research-7183.yml` (매일 18:30, 제미나이는 회차당 1번): **7183 에이전트**(`research_7183.py`) — 사용자 구상 '법칙 생태계'. 세는 쪽(법칙 식 · 조수의 숫자 패턴 · 채점)은 서버 계산, 꿈꾸는 쪽(추리 · 새 순환 · 믿는 법칙 · 연구 노트)은 제미나이. `research_results(agent_7183)` 에 회차당 1건. 채점은 '다음 회차 적중' 하나이고 우연 기대(그 회차 상황에서 무작위 조합이 예상을 만족하는 비율)와 나란히 본다. 브리핑 ④ 제미나이 추천번호를 대체할 예정(3단계).
 - **"성공"으로 찍혀도 막힐 수 있다**: 대부분 단계가 `continue-on-error`. 당첨자 수가 비면 가설 트랙 · 비인기가 조용히 대기한다. 앱 브리핑의 '제미나이 · 연구 흐름 경고' 상자(`PipelineAlertReport`)가 이를 드러낸다.
 
 ## 반드시 짝으로 바꿔야 하는 규칙 (앱 ↔ 서버)
