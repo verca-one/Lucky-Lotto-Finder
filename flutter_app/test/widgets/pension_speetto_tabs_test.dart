@@ -189,5 +189,11 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: SpeettoInferCard(key: const ValueKey('n'), loader: () async => null))));
     await tester.pumpAndSettle();
     expect(find.byKey(const ValueKey('speetto_infer')), findsNothing);
+    // 제미나이 실패한 날 — 마지막 제미나이 추리 이어 씀 (날짜 · 며칠 전)
+    final kept = DateTime.now().subtract(const Duration(days: 2));
+    final k = SpeettoBriefing.fromPayload({'games': [], 'infer': {'source': 'gemini_kept', 'kept_from': kept.toUtc().toIso8601String(), 'games': []}});
+    await tester.pumpWidget(MaterialApp(home: Scaffold(body: SpeettoInferCard(key: const ValueKey('k'), loader: () async => k))));
+    await tester.pumpAndSettle();
+    expect(find.text('${kept.month}/${kept.day} 제미나이 추리 (2일 전)'), findsOneWidget);
   });
 }

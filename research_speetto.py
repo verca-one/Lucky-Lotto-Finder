@@ -26,7 +26,7 @@ import json
 import os
 import sys
 from collections import Counter, defaultdict
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 import research_review_worker as R
 
@@ -289,13 +289,47 @@ def public_summary(p):
             "disclaimer": "스피또 1·2등이 나온 판매점 기록과 동행복권 판매 현황을 정리한 참고용입니다. 어느 판매점에서 사도 한 장의 당첨 확률은 같습니다."}
 
 
+KEEP_AI_DAYS = 7
+
+
+def keep_last_ai(db, inf, st):
+    """제미나이가 실패한 날: 7일 안의 마지막 제미나이 추리(판매점 · 이유)를 이어 씀. 살 차수 계산 · 1등 분포는 오늘 값.
+    제미나이가 골랐던 차수가 판매 끝 · 출고 거의 끝이면 그 게임 차수는 오늘 계산값."""
+    if inf["source"] == "gemini":
+        return inf
+    try:
+        since = (datetime.now(timezone.utc) - timedelta(days=KEEP_AI_DAYS)).isoformat()
+        rows = db.get("research_results", {"select": "infer:payload->infer", "research_type": f"eq.{RESULT_TYPE}",
+                                           "payload->infer->>source": "eq.gemini",
+                                           "payload->infer->>generated_at": f"gte.{since}",
+                                           "order": "target_round.desc", "limit": "1"})
+    except Exception as e:  # 못 읽으면 오늘 계산값 그대로
+        print(f"지난 제미나이 추리 못 읽음: {e}")
+        return inf
+    old = (rows[0].get("infer") if rows else None) or {}
+    if not old:
+        return inf
+    near = {(e["game"], e["edition"]) for e in st.get("editions") or [] if e.get("near_end")}
+    prev = {g["game"]: g for g in old.get("games") or []}
+    for g in inf["games"]:
+        o = prev.get(g["game"])
+        if not o or not o.get("picks"):
+            continue
+        g["picks"] = o["picks"]
+        if o.get("pick_edition") in g["on_sale"] and (g["game"], o["pick_edition"]) not in near:
+            g["pick_edition"], g["why"] = o["pick_edition"], o.get("why") or g["why"]
+    inf.update(source="gemini_kept", summary=old.get("summary") or "", model=old.get("model"),
+               kept_from=old.get("generated_at"))
+    return inf
+
+
 def run(db, dry=False):
     now = datetime.now(timezone.utc)
     p = {"version": VERSION, "generated_at": now.isoformat(), "games": [game_block(db, lt, label) for lt, label in GAMES],
          "status": status_block(db)}
     st = p["status"]
     try:
-        p["infer"] = infer_block(db, p["games"], st)
+        p["infer"] = keep_last_ai(db, infer_block(db, p["games"], st), st)
         inf = p["infer"]
         print(f"당첨점 추리 ({inf['source']}{' · AI 실패: ' + inf['ai_error'] if inf['ai_error'] and inf['source'] == 'rule' else ''})")
         for g in inf["games"]:

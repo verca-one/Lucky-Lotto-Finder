@@ -627,7 +627,9 @@ class _SpeettoInferCardState extends State<SpeettoInferCard> {
         builder: (context, snap) {
           final inf = snap.data?.infer;
           if (inf == null) return const SizedBox.shrink();
-          final gemini = inf['source'] == 'gemini';
+          final keptAt = inf['source'] == 'gemini_kept' ? DateTime.tryParse('${inf['kept_from']}')?.toLocal() : null;
+          final gemini = inf['source'] == 'gemini' || keptAt != null;
+          final ago = keptAt == null ? 0 : DateTime.now().difference(keptAt).inDays;
           final games = [for (final g in (inf['games'] as List? ?? const [])) Map<String, dynamic>.from(g as Map)];
           return Container(
             key: const ValueKey('speetto_infer'),
@@ -647,7 +649,8 @@ class _SpeettoInferCardState extends State<SpeettoInferCard> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
                   decoration: BoxDecoration(color: (gemini ? kSpeettoColor : Colors.grey).withValues(alpha: 0.12), borderRadius: BorderRadius.circular(10)),
-                  child: Text(gemini ? '제미나이 추리' : '계산 · 과거 순위 (제미나이 실패)',
+                  child: Text(keptAt != null ? '${keptAt.month}/${keptAt.day} 제미나이 추리 (${ago == 0 ? '오늘' : '$ago일 전'})'
+                      : gemini ? '제미나이 추리' : '계산 · 과거 순위 (제미나이 실패)',
                       style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: gemini ? kSpeettoColor : Colors.grey.shade700)),
                 ),
               ]),
