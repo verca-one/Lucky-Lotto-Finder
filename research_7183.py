@@ -455,7 +455,7 @@ def ask_dream(prompt):
             print(f"[7183 gemini] {label}: 첫 조각 {got['first']}초 · 전체 {time.time() - t0:.1f}초 · {len(text)}자", file=sys.stderr)
             return json.loads(text), S.GEMINI_MODEL
         except Exception as e:
-            msg = re.sub(r"AIza[0-9A-Za-z_\-]{20,}", "AIza***", str(e))[:300]
+            msg = re.sub(r"AIza[0-9A-Za-z_\-]{20,}", "AIza***", str(e))[:1500]   # 한도 초과(429)는 어떤 한도인지가 뒤쪽에 적혀 있음
             print(f"[7183 gemini] {label} 실패 ({time.time() - t0:.0f}초 · 첫 조각 {got['first']}초 · 받은 글자 {sum(map(len, got['text']))}): "
                   f"{type(e).__name__} — {msg}", file=sys.stderr)
             last = f"{label}: {type(e).__name__} — {msg}"
@@ -620,7 +620,7 @@ def weekly(db, a):
         try:
             data, model = ask_dream(prompt)
         except Exception as e:   # 실패한 날은 계산값만 — 다음 실행에서 다시
-            err = str(e)[:300]
+            err = str(e)[:1500]
     else:
         err = "GEMINI_API_KEY 없음"
     nx = res["next"]
