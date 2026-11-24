@@ -96,6 +96,7 @@ flutter:
     - assets/app_icon3_512.png
     - assets/dra.png
     - assets/home_title_brush.png
+    - assets/app_title_brush.png
     - assets/region_title_brush.png
     - assets/favorites_title_brush.png
 
