@@ -254,7 +254,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ),
             ),
             const SizedBox(width: 2),
-            const Text('복권명당 찾기'),
+            const Image(image: AssetImage('assets/app_title_brush.png'), height: 44, semanticLabel: '복권명당 찾기'),
             if (_isAdmin) ...[
               const SizedBox(width: 8),
               Container(
