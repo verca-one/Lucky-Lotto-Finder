@@ -48,7 +48,15 @@ class _Agent7183CardState extends State<Agent7183Card> {
                   child: Text('${widget.target}회 7183 에이전트 — 제미나이 추천번호',
                       style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: k7183Color)),
                 ),
-                if (a != null) statusChip(a.byGemini ? '제미나이 참여' : '계산 · 제미나이 대기', a.byGemini ? k7183Color : Colors.grey.shade700),
+                if (a != null && a.byGemini) statusChip('제미나이 참여', k7183Color),
+                // 제미나이 답을 아직 못 받은 주 — 짙은 회색 상자로 구분
+                if (a != null && !a.byGemini)
+                  Container(
+                    key: const ValueKey('a7183_waiting'),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    decoration: BoxDecoration(color: const Color(0xFF424242), borderRadius: BorderRadius.circular(8)),
+                    child: const Text('계산 · 제미나이 대기', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white)),
+                  ),
               ]),
               const SizedBox(height: 4),
               Text('법칙이 한동안 유효하다가 다른 법칙으로 넘어가는 흐름을 쫓습니다. 법칙 · 숫자 패턴은 서버가 세고, 추리는 제미나이가 합니다. '
