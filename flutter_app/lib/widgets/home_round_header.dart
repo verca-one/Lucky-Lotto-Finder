@@ -182,14 +182,6 @@ class _HomeRoundHeaderState extends State<HomeRoundHeader> {
             boxShadow: [BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 10, offset: const Offset(0, 3))],
           ),
           child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-            // 즐겨찾기 메뉴처럼 왼쪽 · 작게
-            const Image(
-              image: AssetImage('assets/home_title_brush.png'),
-              height: 46,
-              alignment: Alignment.centerLeft,
-              semanticLabel: '최신 당첨회차',
-            ),
-            const SizedBox(height: 6),
             IntrinsicHeight(
               child: Row(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                 Expanded(child: _GameStack(type: 'lotto', pair: lotto, loading: widget.lotto == null, onOpen: _open)),
