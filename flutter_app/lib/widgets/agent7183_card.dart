@@ -31,7 +31,8 @@ class _Agent7183CardState extends State<Agent7183Card> {
         future: _f,
         builder: (context, snap) {
           final a = snap.data;
-          final waiting = a != null && !a.byGemini; // 제미나이 답을 아직 못 받은 주 — 카드 전체를 흐린 회색으로
+          final waiting = a != null && !a.byGemini; // 제미나이 답을 아직 못 받은 주 — 번호 공만 빼고 카드 전체를 회색으로
+          final accent = waiting ? Colors.grey.shade600 : k7183Color;
           return Container(
             key: const ValueKey('agent7183'),
             width: double.infinity,
@@ -43,11 +44,11 @@ class _Agent7183CardState extends State<Agent7183Card> {
             ),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
-                const Icon(Icons.auto_awesome_rounded, color: k7183Color, size: 22),
+                Icon(Icons.auto_awesome_rounded, color: accent, size: 22),
                 const SizedBox(width: 8),
                 Expanded(
                   child: Text('${widget.target}회 7183 에이전트 — 제미나이 추천번호',
-                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: k7183Color)),
+                      style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: accent)),
                 ),
                 if (a != null && a.byGemini) statusChip('제미나이 참여', k7183Color),
                 if (waiting)
@@ -82,6 +83,8 @@ class _Agent7183CardState extends State<Agent7183Card> {
 
   List<Widget> _body(Agent7183 a) {
     final rs = a.recordSets, rep = a.replay;
+    final waiting = !a.byGemini; // 대기 중: 번호 공 · 황금 상자 · 법칙 완성 알림만 색을 남긴다
+    final accent = waiting ? Colors.grey.shade600 : k7183Color;
     return [
       if (a.completedNow.isNotEmpty)
         Container(
@@ -95,11 +98,12 @@ class _Agent7183CardState extends State<Agent7183Card> {
         ),
       // ── 번호 5세트
       Row(children: [
-        const Icon(Icons.confirmation_number_rounded, size: 16, color: k7183Color),
+        Icon(Icons.confirmation_number_rounded, size: 16, color: accent),
         const SizedBox(width: 4),
         const Text('7183 번호 5세트', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900)),
         const Spacer(),
-        if (a.registered) statusChip(a.setsBy == 'gemini' ? '사전 등록 · 제미나이 참여' : '사전 등록 · 계산', Colors.green.shade700),
+        if (a.registered)
+          statusChip(a.setsBy == 'gemini' ? '사전 등록 · 제미나이 참여' : '사전 등록 · 계산', waiting ? Colors.grey.shade600 : Colors.green.shade700),
       ]),
       const SizedBox(height: 6),
       if (a.sets.isEmpty)
@@ -112,7 +116,7 @@ class _Agent7183CardState extends State<Agent7183Card> {
               id: '${a.target}:hypothesis:${e.key}',
               numbers: e.value,
               child: Row(children: [
-                SizedBox(width: 18, child: Text('${e.key + 1}', style: const TextStyle(fontWeight: FontWeight.w900, color: k7183Color))),
+                SizedBox(width: 18, child: Text('${e.key + 1}', style: TextStyle(fontWeight: FontWeight.w900, color: accent))),
                 ...e.value.map((n) => Padding(padding: const EdgeInsets.only(right: 3), child: lottoBall(n, size: 28))),
               ]),
             ),
@@ -128,7 +132,7 @@ class _Agent7183CardState extends State<Agent7183Card> {
           style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
       if (a.trusted.isNotEmpty) ...[
         const SizedBox(height: 8),
-        Text(a.byGemini ? '제미나이가 믿는 법칙' : '가장 좁게 짚는 법칙 (계산)', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: k7183Color)),
+        Text(a.byGemini ? '제미나이가 믿는 법칙' : '가장 좁게 짚는 법칙 (계산)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: accent)),
         for (final t in a.trusted) _law(t, why: true),
       ],
       if (a.dream.isNotEmpty)
@@ -147,7 +151,8 @@ class _Agent7183CardState extends State<Agent7183Card> {
       TextButton(
         key: const ValueKey('a7183_more'),
         onPressed: () => setState(() => _more = !_more),
-        child: Text(_more ? '접기' : '살아 있는 법칙 ${a.aliveTotal}개 · 순환 사전 ${a.cycles.length}개 보기', style: const TextStyle(fontSize: 12)),
+        child: Text(_more ? '접기' : '살아 있는 법칙 ${a.aliveTotal}개 · 순환 사전 ${a.cycles.length}개 보기',
+            style: TextStyle(fontSize: 12, color: waiting ? Colors.grey.shade700 : null)),
       ),
       if (_more) ...[
         for (final t in a.alive) _law(t),
