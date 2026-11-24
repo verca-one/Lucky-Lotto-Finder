@@ -23,8 +23,9 @@ class SpeettoGameLook {
 const kSpeettoGameLooks = {
   '2000': SpeettoGameLook(Colors.white, Color(0xFFD6D6D6), Color(0xFFF6F6F6), Color(0xFF212121), Color(0xFF757575),
       Color(0xFF424242), Colors.white, Color(0xFFE0E0E0)),
-  '1000': SpeettoGameLook(Color(0xFF1C1C1C), Color(0xFF3A3A3A), Color(0xFF2A2A2A), Colors.white, Color(0xFFB0B0B0),
-      Colors.white, Color(0xFF1C1C1C), Color(0xFF444444)),
+  // 1000 — 짙은 푸른색 (예전 검은색)
+  '1000': SpeettoGameLook(Color(0xFF0D3B66), Color(0xFF2A5F8F), Color(0xFF134A7C), Colors.white, Color(0xFFB3CDE6),
+      Colors.white, Color(0xFF0D3B66), Color(0xFF2A5F8F)),
   '500': SpeettoGameLook(Color(0xFFE8F5E9), Color(0xFFA5D6A7), Colors.white, Color(0xFF1B5E20), Color(0xFF558B2F),
       kSpeettoColor, Colors.white, Color(0xFFC8E6C9)),
 };
