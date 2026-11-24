@@ -17,7 +17,10 @@ class Agent7183Card extends StatefulWidget {
 
   /// 테스트용 (null = 서버 조회)
   final Future<Agent7183?> Function(int target)? loader;
-  const Agent7183Card({super.key, required this.target, this.released = true, this.loader});
+
+  /// 카드 맨 아래에 붙이는 것 (AI 브리핑전담부서 메모)
+  final Widget? footer;
+  const Agent7183Card({super.key, required this.target, this.released = true, this.loader, this.footer});
   @override
   State<Agent7183Card> createState() => _Agent7183CardState();
 }
@@ -80,6 +83,7 @@ class _Agent7183CardState extends State<Agent7183Card> {
                 _note('${widget.target}회 7183 에이전트 저장본 없음 — 서버 실행 뒤 표시됩니다.')
               else
                 ..._body(a),
+              ?widget.footer,
               ],
             ]),
           );

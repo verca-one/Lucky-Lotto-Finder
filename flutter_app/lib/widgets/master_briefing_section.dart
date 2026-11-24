@@ -100,8 +100,8 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
               style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600)),
           const SizedBox(height: 6),
           // 제미나이 추천번호 자리 — 7183 에이전트 (예전 가설 트랙 번호를 대체, 구매할 번호 세트보다 위)
-          Agent7183Card(key: ValueKey('a7183_${b.targetRound}'), target: b.targetRound, released: open),
-          BriefingDeskMemo(area: 'hypothesis', target: b.targetRound),
+          Agent7183Card(key: ValueKey('a7183_${b.targetRound}'), target: b.targetRound, released: open,
+              footer: BriefingDeskMemo(area: 'hypothesis', target: b.targetRound)),
           const SizedBox(height: 12),
           BriefingSection(
             key: const ValueKey('buy_section'),
@@ -111,22 +111,20 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
             color: const Color(0xFFD84315),
             children: [
               WeeklyCheckCard(key: ValueKey('weekly_${b.targetRound}'), target: b.targetRound),
-              _engineCard(b),
-              BriefingDeskMemo(area: 'official', target: b.targetRound),
+              _engineCard(b, footer: BriefingDeskMemo(area: 'official', target: b.targetRound)),
               const SizedBox(height: 10),
               if (!open)
                 _areaPlaceholder('2', '${b.targetRound}회 비인기 추천조합', kPopularityColor, wait)
               else if (b.popularity == null)
                 _areaPlaceholder('2', '${b.targetRound}회 비인기 추천조합', kPopularityColor, '저장본 없음 (당첨자 수 수집 후 서버가 만듭니다)')
               else
-                PopularityPicksCard(no: '2', target: b.targetRound, pop: b.popularity!),
-              BriefingDeskMemo(area: 'popularity', target: b.targetRound),
+                PopularityPicksCard(no: '2', target: b.targetRound, pop: b.popularity!,
+                    footer: BriefingDeskMemo(area: 'popularity', target: b.targetRound)),
               const SizedBox(height: 10),
               if (!open)
                 _areaPlaceholder('3', '${b.targetRound}회 구매예측 번호', const Color(0xFF00897B), wait)
               else
-                _purchaseCard(b, '3'),
-              BriefingDeskMemo(area: 'purchase', target: b.targetRound),
+                _purchaseCard(b, '3', footer: BriefingDeskMemo(area: 'purchase', target: b.targetRound)),
               const SizedBox(height: 8),
               Text('모든 조합의 1등 확률은 같습니다(1/8,145,060). 15세트 중 하나라도 5등 이상일 확률 약 30%.',
                   style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700)),
@@ -189,7 +187,7 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
         ]);
 
   // ① 엔진 추천번호 — 공식 최종 예측 5세트 (패턴 분석·추천번호 화면과 같은 스냅샷)
-  Widget _engineCard(MasterBriefing b) {
+  Widget _engineCard(MasterBriefing b, {Widget? footer}) {
     final o = b.official;
     final f = o != null && o.hasSets ? o.rec : null;
     const color = Color(0xFF1565C0);
@@ -227,6 +225,7 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
                 style: TextStyle(fontSize: 10, color: Colors.grey.shade600, height: 1.4)),
           Text('마스터, ${f.note}', style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700, height: 1.4)),
         ],
+        ?footer,
       ]),
     ));
   }
@@ -269,7 +268,7 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
   }
 
   // ② 구매예측 번호 — 검증 통과 시에만 표시 (미통과면 카드 자체를 생략)
-  Widget _purchaseCard(MasterBriefing b, String no) {
+  Widget _purchaseCard(MasterBriefing b, String no, {Widget? footer}) {
     final p = b.purchase;
     const color = Color(0xFF00897B);
     if (p == null || p.recommendations.isEmpty) {
@@ -291,6 +290,7 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
         Text('마스터, 모든 조합의 1등 확률은 같습니다(1/8,145,060). 구매예측은 확률이 아니라 "당첨 시 나눠 가질 위험"을 줄이는 선택이며, '
             '인기도 ×0.xx 는 평균 조합 대비 판매 비율 추정입니다.',
             style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700, height: 1.4)),
+        ?footer,
       ]),
     ));
   }
@@ -489,7 +489,10 @@ class PopularityPicksCard extends StatelessWidget {
   final String no;
   final int target;
   final NumberPopularity pop;
-  const PopularityPicksCard({super.key, required this.no, required this.target, required this.pop});
+
+  /// 카드 맨 아래에 붙이는 것 (AI 브리핑전담부서 메모) — 화면 배치만, 번호 · 규칙과 무관
+  final Widget? footer;
+  const PopularityPicksCard({super.key, required this.no, required this.target, required this.pop, this.footer});
 
   @override
   Widget build(BuildContext context) {
@@ -546,6 +549,7 @@ class PopularityPicksCard extends StatelessWidget {
         Text('마스터, 모든 조합의 1등 확률은 같습니다(1/8,145,060). 이 조합은 확률이 아니라 "당첨 시 나눠 가질 사람 수"를 줄이려는 선택이며, '
             '몫 +N%는 ${pop.trainingEnd}회까지 당첨자 수로 학습한 모델 추정치입니다. 선정: ${pop.pickRule}',
             style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700, height: 1.4)),
+        ?footer,
       ]),
     );
   }
