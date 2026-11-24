@@ -25,6 +25,7 @@ class Agent7183Card extends StatefulWidget {
 class _Agent7183CardState extends State<Agent7183Card> {
   late final Future<Agent7183?> _f = (widget.loader ?? Agent7183.load)(widget.target);
   bool _more = false;
+  bool _open = false; // 제미나이 대기 중이면 접어 둠 — 제목 줄을 누르면 펼침
 
   @override
   Widget build(BuildContext context) => FutureBuilder<Agent7183?>(
@@ -33,6 +34,7 @@ class _Agent7183CardState extends State<Agent7183Card> {
           final a = snap.data;
           final waiting = a != null && !a.byGemini; // 제미나이 답을 아직 못 받은 주 — 번호 공만 빼고 카드 전체를 회색으로
           final accent = waiting ? Colors.grey.shade600 : k7183Color;
+          final folded = waiting && !_open;
           return Container(
             key: const ValueKey('agent7183'),
             width: double.infinity,
@@ -43,7 +45,10 @@ class _Agent7183CardState extends State<Agent7183Card> {
               border: Border.all(color: waiting ? Colors.grey.shade400 : k7183Color.withValues(alpha: 0.35), width: 1.4),
             ),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
+              InkWell(
+                key: const ValueKey('a7183_toggle'),
+                onTap: waiting ? () => setState(() => _open = !_open) : null,
+                child: Row(children: [
                 Icon(Icons.auto_awesome_rounded, color: accent, size: 22),
                 const SizedBox(width: 8),
                 Expanded(
@@ -58,7 +63,10 @@ class _Agent7183CardState extends State<Agent7183Card> {
                     decoration: BoxDecoration(color: Colors.grey.shade500, borderRadius: BorderRadius.circular(8)),
                     child: const Text('계산 · 제미나이 대기', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white)),
                   ),
+                if (waiting) Icon(_open ? Icons.expand_less_rounded : Icons.expand_more_rounded, color: accent),
               ]),
+              ),
+              if (!folded) ...[
               const SizedBox(height: 4),
               Text('법칙이 한동안 유효하다가 다른 법칙으로 넘어가는 흐름을 쫓습니다. 법칙 · 숫자 패턴은 서버가 세고, 추리는 제미나이가 합니다. '
                   '목표는 다음 회차 당첨 — 채점은 그것 하나로 합니다.',
@@ -72,6 +80,7 @@ class _Agent7183CardState extends State<Agent7183Card> {
                 _note('${widget.target}회 7183 에이전트 저장본 없음 — 서버 실행 뒤 표시됩니다.')
               else
                 ..._body(a),
+              ],
             ]),
           );
         },

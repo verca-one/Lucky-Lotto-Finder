@@ -32,6 +32,9 @@ void main() {
   testWidgets('계산값 주 — 번호 5세트 · 계산 표시 · 황금 상자 없음 · 조수가 일한 표시 · 성적표', (t) async {
     await pump(t, Agent7183.fromPayload(payload()));
     expect(find.text('계산 · 제미나이 대기'), findsOneWidget);
+    expect(find.text('42'), findsNothing); // 제미나이 대기 중이면 접혀 있음
+    await t.tap(find.byKey(const ValueKey('a7183_toggle')));
+    await t.pumpAndSettle();
     expect(find.text('사전 등록 · 계산'), findsOneWidget);
     expect(find.text('42'), findsOneWidget);
     expect(find.byKey(const ValueKey('a7183_gold')), findsNothing);
