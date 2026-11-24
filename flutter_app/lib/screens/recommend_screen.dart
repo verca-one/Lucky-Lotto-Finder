@@ -9,11 +9,8 @@ import 'zone_balance_screen.dart';
 import 'random_recommend_content.dart';
 import 'purchase_public_content.dart';
 import '../models/lotto_winning_number.dart';
-import '../widgets/pension_briefing_view.dart';
-import '../widgets/speetto_briefing_view.dart';
 import '../widgets/winning_number_boxes.dart';
 import 'past_winning_numbers_screen.dart';
-import '../widgets/latest_round_stores_card.dart';
 import '../services/supabase_service.dart';
 
 /// 추천 탭 '번호 추천' 메뉴 항목
@@ -53,7 +50,6 @@ class RecommendScreenState extends State<RecommendScreen> {
   String? _currentSub;
 
   /// 복권 종류 탭: lotto(기존 메뉴) · pension(연금복권) · speetto(스피또)
-  String _game = 'lotto';
 
   LottoWinningNumber? _latestRound;
   DateTime?           _loadedAt;
@@ -149,49 +145,8 @@ class RecommendScreenState extends State<RecommendScreen> {
     );
   }
 
-  /// 메인 메뉴: 세금계산기 / 번호 추천
-  Widget _buildMenu() {
-    return Column(children: [
-      _gameTabs(),
-      Expanded(
-        child: switch (_game) {
-          'pension' => const PensionBriefingView(admin: false),
-          'speetto' => const SpeettoBriefingView(admin: false),
-          _ => _buildLottoMenu(),
-        },
-      ),
-    ]);
-  }
-
-  /// 로또 · 연금 · 스피또 탭
-  Widget _gameTabs() {
-    const tabs = [('lotto', '로또', Color(0xFF1565C0)), ('pension', '연금', Color(0xFFEF6C00)), ('speetto', '스피또', Color(0xFF00897B))];
-    return Container(
-      key: const ValueKey('recommend_game_tabs'),
-      margin: const EdgeInsets.fromLTRB(16, 10, 16, 6),
-      padding: const EdgeInsets.all(4),
-      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14),
-          border: Border.all(color: const Color(0xFFE8EDF5))),
-      child: Row(children: [
-        for (final (key, label, color) in tabs)
-          Expanded(
-            child: InkWell(
-              key: ValueKey('game_tab_$key'),
-              borderRadius: BorderRadius.circular(10),
-              onTap: () => setState(() => _game = key),
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 180),
-                padding: const EdgeInsets.symmetric(vertical: 10),
-                decoration: BoxDecoration(color: _game == key ? color : Colors.transparent, borderRadius: BorderRadius.circular(10)),
-                alignment: Alignment.center,
-                child: Text(label, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w900,
-                    color: _game == key ? Colors.white : const Color(0xFF555555))),
-              ),
-            ),
-          ),
-      ]),
-    );
-  }
+  /// 메인 메뉴 — 로또만 (연금 · 스피또 탭은 뺌)
+  Widget _buildMenu() => _buildLottoMenu();
 
   Widget _buildLottoMenu() {
     return Container(
@@ -219,9 +174,6 @@ class RecommendScreenState extends State<RecommendScreen> {
                   ? _buildHeaderSkeleton()
                   : _buildLatestWinningHeader(_latestRound!),
             ),
-            // 당첨번호 아래 — 최신 회차 당첨 판매점
-            if (_latestRound != null)
-              LatestRoundStoresCard(key: ValueKey('latest_stores_${_latestRound!.round}'), round: _latestRound!.round),
             // 메뉴 목록
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 20, 16, 20),
