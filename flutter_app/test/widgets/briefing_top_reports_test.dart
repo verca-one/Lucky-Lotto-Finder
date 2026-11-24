@@ -109,6 +109,14 @@ void main() {
     expect(distText(23456), '23km');
     await tester.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(child: AgentHitsReport(loader: () async => d)))));
     await tester.pumpAndSettle();
+    // 접힌 채로는 숫자만 — 누르면 목록과 다음 회차 추천점(가까운 순 버튼)이 보임
+    expect(find.text('로또 지방장 적중 · 1247회 — 1등 1곳 · 2등 0곳'), findsOneWidget);
+    expect(find.text('서울 노원구 · 스파'), findsNothing);
+    expect(find.text('다음 회차(로또 1248회) 지방장 추천점 · 2곳'), findsNothing);
+    await tester.tap(find.byKey(const ValueKey('agent_hits_toggle')));
+    await tester.pumpAndSettle();
+    expect(find.text('서울 노원구 · 스파'), findsOneWidget);
+    expect(find.text('가까운 순'), findsOneWidget);
     expect(find.text('다음 회차(로또 1248회) 지방장 추천점 · 2곳'), findsOneWidget);
     expect(find.text('서울 노원구 · 새가게'), findsNothing);
     await tester.tap(find.byKey(const ValueKey('agent_next_toggle')));

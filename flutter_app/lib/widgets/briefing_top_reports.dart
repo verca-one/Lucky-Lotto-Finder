@@ -382,7 +382,7 @@ class AgentHitsReport extends StatefulWidget {
 
 class _AgentHitsReportState extends State<AgentHitsReport> {
   late final Future<AgentDebrief?> _f = (widget.loader ?? RoundDebriefRepository.loadAgents)();
-  bool _all = false, _nextOpen = false;
+  bool _open = false, _all = false, _nextOpen = false; // _open: 접으면 숫자(1등 · 2등 몇 곳)만
   Map<String, double>? _dist; // 판매점 코드 → 내 위치에서 거리(m). null = 순위 순
   bool _locating = false;
 
@@ -519,14 +519,21 @@ class _AgentHitsReportState extends State<AgentHitsReport> {
               border: Border.all(color: kAgentColor.withValues(alpha: 0.3)),
             ),
             child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-              Row(children: [
-                const Icon(Icons.place_rounded, size: 18, color: kAgentColor),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: Text('로또 지방장 적중 · ${d.round}회 — 1등 $firsts곳 · 2등 ${hits.length - firsts}곳',
-                      style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: kAgentColor)),
-                ),
-              ]),
+              // 접힌 채로는 숫자만 — 누르면 목록 · 다음 회차 추천점(가까운 순 버튼)이 펼쳐짐
+              InkWell(
+                key: const ValueKey('agent_hits_toggle'),
+                onTap: () => setState(() => _open = !_open),
+                child: Row(children: [
+                  const Icon(Icons.place_rounded, size: 18, color: kAgentColor),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text('로또 지방장 적중 · ${d.round}회 — 1등 $firsts곳 · 2등 ${hits.length - firsts}곳',
+                        style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w900, color: kAgentColor)),
+                  ),
+                  Icon(_open ? Icons.expand_less_rounded : Icons.expand_more_rounded, color: kAgentColor),
+                ]),
+              ),
+              if (_open) ...[
               const SizedBox(height: 2),
               if (hits.isEmpty)
                 Text('${d.round}회에는 지방장 TOP5 안에서 1·2등이 나온 판매점이 없습니다.',
@@ -561,6 +568,7 @@ class _AgentHitsReportState extends State<AgentHitsReport> {
                   child: Text(_all ? '접기' : '${hits.length - 10}곳 더 보기'),
                 ),
               if (hits.isNotEmpty) _next(d),
+              ],
             ]),
           );
         },
