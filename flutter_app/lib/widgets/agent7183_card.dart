@@ -27,20 +27,21 @@ class _Agent7183CardState extends State<Agent7183Card> {
   bool _more = false;
 
   @override
-  Widget build(BuildContext context) => Container(
-        key: const ValueKey('agent7183'),
-        width: double.infinity,
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(color: k7183Color.withValues(alpha: 0.35), width: 1.4),
-        ),
-        child: FutureBuilder<Agent7183?>(
-          future: _f,
-          builder: (context, snap) {
-            final a = snap.data;
-            return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+  Widget build(BuildContext context) => FutureBuilder<Agent7183?>(
+        future: _f,
+        builder: (context, snap) {
+          final a = snap.data;
+          final waiting = a != null && !a.byGemini; // 제미나이 답을 아직 못 받은 주 — 카드 전체를 흐린 회색으로
+          return Container(
+            key: const ValueKey('agent7183'),
+            width: double.infinity,
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: waiting ? const Color(0xFFEEEEEE) : Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: waiting ? Colors.grey.shade400 : k7183Color.withValues(alpha: 0.35), width: 1.4),
+            ),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
               Row(children: [
                 const Icon(Icons.auto_awesome_rounded, color: k7183Color, size: 22),
                 const SizedBox(width: 8),
@@ -49,12 +50,11 @@ class _Agent7183CardState extends State<Agent7183Card> {
                       style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: k7183Color)),
                 ),
                 if (a != null && a.byGemini) statusChip('제미나이 참여', k7183Color),
-                // 제미나이 답을 아직 못 받은 주 — 짙은 회색 상자로 구분
-                if (a != null && !a.byGemini)
+                if (waiting)
                   Container(
                     key: const ValueKey('a7183_waiting'),
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                    decoration: BoxDecoration(color: const Color(0xFF424242), borderRadius: BorderRadius.circular(8)),
+                    decoration: BoxDecoration(color: Colors.grey.shade500, borderRadius: BorderRadius.circular(8)),
                     child: const Text('계산 · 제미나이 대기', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w800, color: Colors.white)),
                   ),
               ]),
@@ -71,9 +71,9 @@ class _Agent7183CardState extends State<Agent7183Card> {
                 _note('${widget.target}회 7183 에이전트 저장본 없음 — 서버 실행 뒤 표시됩니다.')
               else
                 ..._body(a),
-            ]);
-          },
-        ),
+            ]),
+          );
+        },
       );
 
   Widget _note(String s) => Text(s, style: TextStyle(fontSize: 12, color: Colors.orange.shade900));
