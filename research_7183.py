@@ -35,6 +35,7 @@ import math
 import os
 import re
 import sys
+import time
 from datetime import date, datetime, timedelta, timezone
 
 import numpy as np
@@ -46,6 +47,7 @@ RESULT_TYPE = "agent_7183"
 ROW_VERSION = "a7183"                     # 저장 행 키 (코드 버전이 올라가도 회차당 한 행을 유지)
 REG_ALGO, REG_VERSION = "hypothesis_track", "7183-1.0"   # 브리핑 ④ 자리 — 회차 검증 · 당첨확인이 이 버전을 먼저 고른다
 TRUST_BOOST = 2.0                         # 제미나이가 믿는다고 고른 법칙의 힘
+DREAM_DEADLINE = 300                      # 초 — 제미나이 한 번 시도에 주는 시간
 TEST_FROM = 1001           # 복기 시작 회차 (그 앞 회차는 기준값 계산에만 씀)
 ALIVE_P = 1e-3             # 우연히 이만큼 이어질 확률이 이보다 작아야 '살아 있다'
 MIN_RUN = 3
@@ -425,6 +427,41 @@ def dream_schema():
     }, "required": ["dream", "cycles", "trusted", "new_parts", "notes"], "additionalProperties": False}
 
 
+def ask_dream(prompt):
+    """제미나이에게 꿈을 묻는다 — 답을 조금씩 받는 방식(스트리밍) · 먼저 '생각 낮음'으로, 안 되면 기본 설정으로 한 번 더.
+    공용 호출(research_strategy_ai.ask_gemini)이 2,600자 자료에도 420초 안에 답을 못 받는 일이 세 번 이어져(2026-11-25)
+    7183 만 따로 부른다. 모델은 같다. 어디서 막히는지 보이게 첫 조각까지 걸린 시간 · 받은 글자 수를 로그에 남긴다."""
+    import research_strategy_ai as S
+    from google import genai
+    from google.genai import types
+    raw = os.environ["GEMINI_API_KEY"]
+    m = re.search(r"AIza[0-9A-Za-z_\-]{35}", raw)
+    client = genai.Client(api_key=m.group(0) if m else raw.strip(), http_options={"timeout": DREAM_DEADLINE * 1000})
+    base = dict(system_instruction=SYSTEM, response_mime_type="application/json", response_schema=S._strip_additional(dream_schema()))
+    last = None
+    for label, extra in (("생각 낮음", {"thinking_config": types.ThinkingConfig(thinking_level="low")}), ("기본 설정", {})):
+        t0, got = time.time(), {"first": None, "text": []}
+
+        def pull(t0=t0, got=got, extra=extra):   # 기본값으로 묶어 둠 — 시간 초과 뒤 남은 호출이 다음 시도의 값을 건드리지 않게
+            cfg = types.GenerateContentConfig(**base, **extra)
+            for ch in client.models.generate_content_stream(model=S.GEMINI_MODEL, contents=prompt, config=cfg):
+                if ch.text:
+                    if got["first"] is None:
+                        got["first"] = round(time.time() - t0, 1)
+                    got["text"].append(ch.text)
+            return "".join(got["text"])
+        try:
+            text = S._within(DREAM_DEADLINE, pull)
+            print(f"[7183 gemini] {label}: 첫 조각 {got['first']}초 · 전체 {time.time() - t0:.1f}초 · {len(text)}자", file=sys.stderr)
+            return json.loads(text), S.GEMINI_MODEL
+        except Exception as e:
+            msg = re.sub(r"AIza[0-9A-Za-z_\-]{20,}", "AIza***", str(e))[:300]
+            print(f"[7183 gemini] {label} 실패 ({time.time() - t0:.0f}초 · 첫 조각 {got['first']}초 · 받은 글자 {sum(map(len, got['text']))}): "
+                  f"{type(e).__name__} — {msg}", file=sys.stderr)
+            last = f"{label}: {type(e).__name__} — {msg}"
+    raise RuntimeError(last)
+
+
 def rotations(d):
     return {tuple(d[i:] + d[:i]) for i in range(len(d))}
 
@@ -580,9 +617,8 @@ def weekly(db, a):
     if have_ai:   # 이번 회차 꿈은 이미 받음 — 다시 부르지 않고 번호 등록만 마저 한다
         model = cur.get("model")
     elif os.environ.get("GEMINI_API_KEY"):
-        import research_strategy_ai as S
         try:
-            data, model, _ = S.ask_gemini(prompt, system=SYSTEM, sch=dream_schema())
+            data, model = ask_dream(prompt)
         except Exception as e:   # 실패한 날은 계산값만 — 다음 실행에서 다시
             err = str(e)[:300]
     else:
@@ -677,6 +713,7 @@ def selfcheck():
 
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
     ap = argparse.ArgumentParser()
     ap.add_argument("--from", dest="start", type=int, default=TEST_FROM)
     ap.add_argument("--out")
