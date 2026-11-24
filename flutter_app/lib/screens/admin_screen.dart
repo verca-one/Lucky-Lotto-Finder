@@ -113,6 +113,8 @@ class _AdminScreenState extends State<AdminScreen> {
               ),
             ),
             const SizedBox(height: 8),
+            // ── 수집 현황 (브리핑 상황판에서 옮김) ─────────────────
+            const CollectStatusReport(),
             // ── DB 사용량 (Worker 측정값, 경고 시 배너) ─────────────
             const DbUsageCard(),
             const SizedBox(height: 12),
@@ -1368,10 +1370,8 @@ class _BriefingDetailScreenState extends State<BriefingDetailScreen> {
           _statusBoard(context, [
             const SpeettoAlertCard(),
             const SpeettoInferCard(),
-            const CollectStatusReport(),
             const PipelineAlertReport(),
             const AgentHitsReport(),
-            const AgentResearchDigest(),
             const ManualRecommendCard(),
             const RoundDebriefTop(),
             const ExtraLotteryBriefingCard(),
