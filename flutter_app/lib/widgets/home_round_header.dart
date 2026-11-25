@@ -161,9 +161,16 @@ class _HomeRoundHeaderState extends State<HomeRoundHeader> {
     return Container(
       width: double.infinity,
       // 지역 탭 머리와 같은 파란 상자 — 회차 카드부터 스피또 상자까지 감쌈
+      // 파란 바탕 위에 흰 선 용 그림(assets/home_dragon_lines.png — 배경 용 dra.png 를 흰 선으로 바꾼 것)을 오른쪽에 깔음
       decoration: const BoxDecoration(
-        gradient: LinearGradient(colors: [Color(0x991565C0), Color(0x991E88E5)], begin: Alignment.topLeft, end: Alignment.bottomRight), // 60% — 배경 용이 비침
+        gradient: LinearGradient(colors: [Color(0xFF1565C0), Color(0xFF1E88E5)], begin: Alignment.topLeft, end: Alignment.bottomRight),
         borderRadius: BorderRadius.only(bottomLeft: Radius.circular(28), bottomRight: Radius.circular(28)),
+        image: DecorationImage(
+          image: AssetImage('assets/home_dragon_lines.png'),
+          fit: BoxFit.fitHeight,
+          alignment: Alignment.centerRight,
+          opacity: 0.55,
+        ),
       ),
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
