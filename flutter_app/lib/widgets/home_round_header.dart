@@ -10,9 +10,9 @@ import 'speetto_briefing_view.dart' show SpeettoBriefingView, kSpeettoColor;
 
 import '../services/round_status_service.dart';
 
-/// 뒤 배경(흰 바탕 · 옅은 회색 용 선)을 파란 바탕 · 흰 용 선으로 — out = 파랑 + (1-파랑)·k·(1-밝기)
+/// 용 그림(흰 바탕 · 회색 선)을 파란 바탕 · 흰 용 선으로 — out = 파랑 + (1-파랑)·k·(1-밝기)
 ColorFilter _dragonBlue() {
-  const k = 7.0, blue = [0x15 / 255, 0x65 / 255, 0xC0 / 255], lum = [0.2126, 0.7152, 0.0722];
+  const k = 1.75, blue = [0x15 / 255, 0x65 / 255, 0xC0 / 255], lum = [0.2126, 0.7152, 0.0722];
   final m = <double>[];
   for (final b in blue) {
     final g = (1 - b) * k;
@@ -173,13 +173,13 @@ class _HomeRoundHeaderState extends State<HomeRoundHeader> {
     final lotto = widget.lotto == null ? null : decideRoundPair(widget.lotto!, now);
     final pension = widget.pension == null ? null : decideRoundPair(widget.pension!, now);
     final speeto = widget.speetoUpdatedAt;
-    // 파란 상자 — 회차 카드부터 스피또 상자까지 감쌈. 뒤에 깔린 홈 배경(용 그림)을 그대로 가져와
-    // 옅은 회색 선은 흰 선으로, 흰 바탕은 파란색으로 바꿔 그린다 → 상자 밖 배경의 용과 이어져 보이고 스크롤해도 맞음
+    // 파란 상자 — 회차 카드부터 스피또 상자까지 감쌈. 홈 배경과 같은 용 그림(dra.png)을 같은 자리 · 크기로 그리되
+    // 흰 바탕은 파란색, 회색 선은 흰 선으로 → 상자 밖 배경의 용과 이어져 보임. (예전 BackdropFilter 는 새로고침 때 사라짐)
     return ClipRRect(
       borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(28), bottomRight: Radius.circular(28)),
-      child: BackdropFilter(
-        filter: _kDragonBlue,
-        child: Container(
+      child: Stack(children: [
+        const Positioned.fill(child: _DragonLayer()),
+        Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -223,7 +223,36 @@ class _HomeRoundHeaderState extends State<HomeRoundHeader> {
         ]),
       ]),
         ),
-      ),
+      ]),
+    );
+  }
+}
+
+/// 홈 배경 용 그림을 화면 배경과 같은 자리에 — 상자는 스크롤로 움직이니 스크롤만큼 반대로 옮김
+class _DragonLayer extends StatelessWidget {
+  const _DragonLayer();
+
+  @override
+  Widget build(BuildContext context) {
+    final pos = Scrollable.maybeOf(context)?.position;
+    Widget layer(double pixels, double h) => LayoutBuilder(
+          builder: (context, c) => OverflowBox(
+            alignment: Alignment.topLeft,
+            minWidth: c.maxWidth, maxWidth: c.maxWidth, minHeight: h, maxHeight: h,
+            child: Transform.translate(
+              offset: Offset(0, pixels),
+              child: ColorFiltered(
+                colorFilter: _kDragonBlue,
+                child: Image.asset('assets/dra.png', fit: BoxFit.cover, alignment: Alignment.centerRight),
+              ),
+            ),
+          ),
+        );
+    final fallback = MediaQuery.sizeOf(context).height;
+    if (pos == null) return layer(0, fallback);
+    return AnimatedBuilder(
+      animation: pos,
+      builder: (context, _) => layer(pos.hasPixels ? pos.pixels : 0, pos.hasViewportDimension ? pos.viewportDimension : fallback),
     );
   }
 }
