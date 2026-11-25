@@ -117,4 +117,31 @@ void main() {
     expect(l.single.id, 'z');
     expect(l.single.games, [[1, 2, 3, 4, 5, 6]]);
   });
+
+  testWidgets('구입 기록 — 번호 직접 입력 버튼: 번호판에서 고르고 모자란 칸은 자동으로 한 게임 추가', (t) async {
+    final r = PurchaseRecord(id: 'm', storeCode: 'S4', storeName: '명당', storeAddress: '경기', round: 1252, games: const [],
+        createdAt: DateTime(2026, 11, 25));
+    SharedPreferences.setMockInitialValues({});
+    await PurchaseRecords.add(r);
+    t.view.physicalSize = const Size(1080, 2340);
+    t.view.devicePixelRatio = 3;
+    addTearDown(t.view.reset);
+    await t.pumpWidget(MaterialApp(home: PurchaseRecordScreen(existing: r)));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const ValueKey('purchase_manual')));
+    await t.pumpAndSettle();
+    for (final n in [3, 17, 40]) {
+      await t.tap(find.byKey(ValueKey('manual_pick_$n')));
+      await t.pump();
+    }
+    expect(find.text('번호 직접 입력 — 3/6'), findsOneWidget);
+    await t.tap(find.byKey(const ValueKey('manual_pick_add')));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const ValueKey('purchase_save')));
+    await t.pumpAndSettle();
+    final g = (await PurchaseRecords.load()).single.games.single;
+    expect(g.length, 6);
+    expect(g.toSet().length, 6);
+    expect(g.toSet().containsAll([3, 17, 40]), isTrue);
+  });
 }

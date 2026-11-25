@@ -116,6 +116,58 @@ class _PurchaseRecordScreenState extends State<PurchaseRecordScreen> {
     setState(() => _games.add([...g]));
   }
 
+  /// 번호 직접 입력 — 1~45 번호판에서 최대 6개 고르기 (모자란 칸은 자동), 한 게임 추가
+  Future<void> _manualGame() async {
+    if (_games.length >= 5) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('한 장에 최대 5게임입니다')));
+      return;
+    }
+    final picked = <int>{};
+    final g = await showModalBottomSheet<List<int>>(
+      context: context,
+      isScrollControlled: true,
+      builder: (c) => StatefulBuilder(
+        builder: (c, set) => SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+            child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text('번호 직접 입력 — ${picked.length}/6', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w900)),
+              Text('6개를 다 안 고르면 나머지는 자동으로 채웁니다', style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+              const SizedBox(height: 12),
+              Wrap(spacing: 6, runSpacing: 6, children: [
+                for (var n = 1; n <= 45; n++)
+                  InkWell(
+                    key: ValueKey('manual_pick_$n'),
+                    customBorder: const CircleBorder(),
+                    onTap: () => set(() => picked.contains(n) ? picked.remove(n) : picked.length < 6 ? picked.add(n) : null),
+                    child: picked.contains(n)
+                        ? numberBall('$n', lottoRangeColor(n), size: 38, fontSize: 13)
+                        : Container(
+                            width: 38, height: 38, alignment: Alignment.center,
+                            decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.grey.shade300)),
+                            child: Text('$n', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.grey.shade700)),
+                          ),
+                  ),
+              ]),
+              const SizedBox(height: 14),
+              SizedBox(
+                width: double.infinity,
+                child: FilledButton(
+                  key: const ValueKey('manual_pick_add'),
+                  style: FilledButton.styleFrom(backgroundColor: kManualColor, padding: const EdgeInsets.symmetric(vertical: 13)),
+                  onPressed: () => Navigator.pop(c, autoFill([...picked])),
+                  child: Text(picked.length == 6 ? '이 번호로 추가' : picked.isEmpty ? '자동으로 한 게임 추가' : '나머지 자동으로 채워 추가',
+                      style: const TextStyle(fontWeight: FontWeight.w900)),
+                ),
+              ),
+            ]),
+          ),
+        ),
+      ),
+    );
+    if (g != null && mounted) _addGame(g);
+  }
+
   Future<void> _pickStore() async {
     final s = await showStorePicker(context);
     if (s != null && mounted) setState(() => _store = s);
@@ -295,6 +347,21 @@ class _PurchaseRecordScreenState extends State<PurchaseRecordScreen> {
               ],
               onChanged: _saved.isEmpty ? null : (i) => i == null ? null : _addGame(_saved[i].$1),
               hint: Text(_saved.isEmpty ? '저장한 번호가 없습니다' : '골라서 한 게임씩 추가'),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                key: const ValueKey('purchase_manual'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: kManualColor,
+                  side: const BorderSide(color: kManualColor),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                onPressed: _manualGame,
+                icon: const Icon(Icons.edit_rounded),
+                label: const Text('번호 직접 입력 (한 게임씩)', style: TextStyle(fontWeight: FontWeight.w900)),
+              ),
             ),
             const SizedBox(height: 10),
           ],
