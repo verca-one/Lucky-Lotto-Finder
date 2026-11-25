@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'lucky_games_screen.dart';
 
-/// 복권연구 탭 — 행운 게임 6개만 (예전 번호 추천 메뉴 · 상단 당첨번호 파란 상자는 뺌, 2026-11-25)
+/// 복권재미 탭 — 행운 게임 6개만 (예전 번호 추천 메뉴 · 상단 당첨번호 파란 상자는 뺌, 2026-11-25)
 class RecommendScreen extends StatefulWidget {
   const RecommendScreen({super.key});
 
