@@ -162,7 +162,7 @@ class _HomeRoundHeaderState extends State<HomeRoundHeader> {
       width: double.infinity,
       // 지역 탭 머리와 같은 파란 상자 — 회차 카드부터 스피또 상자까지 감쌈
       decoration: const BoxDecoration(
-        gradient: LinearGradient(colors: [Color(0xFF1565C0), Color(0xFF1E88E5)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+        gradient: LinearGradient(colors: [Color(0x991565C0), Color(0x991E88E5)], begin: Alignment.topLeft, end: Alignment.bottomRight), // 60% — 배경 용이 비침
         borderRadius: BorderRadius.only(bottomLeft: Radius.circular(28), bottomRight: Radius.circular(28)),
       ),
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
