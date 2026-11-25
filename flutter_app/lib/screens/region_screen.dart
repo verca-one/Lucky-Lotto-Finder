@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/home_round_header.dart' show DragonBlueLayer;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:geolocator/geolocator.dart';
@@ -382,7 +383,7 @@ class _RegionScreenState extends State<RegionScreen> {
       });
 
     return Container(
-      color: const Color(0xFFF2F4F8),
+      color: Colors.transparent, // 홈 배경(용 그림)이 보이게
       child: CustomScrollView(
         slivers: [
           // 헤더 (파란 그라디언트)
@@ -806,12 +807,19 @@ class _RegionScreenState extends State<RegionScreen> {
   }
 
   Widget _buildRegionHeader() {
+    // 홈과 같은 파란 상자 — 배경 용 그림이 이어지게 (파란 바탕 · 흰 용 선)
+    return ClipRRect(
+      borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(28), bottomRight: Radius.circular(28)),
+      child: Stack(children: [
+        const Positioned.fill(child: DragonBlueLayer()),
+        _regionHeaderBody(),
+      ]),
+    );
+  }
+
+  Widget _regionHeaderBody() {
     return Container(
       width: double.infinity,
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(colors: [Color(0xFF1565C0), Color(0xFF1E88E5)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-        borderRadius: BorderRadius.only(bottomLeft: Radius.circular(28), bottomRight: Radius.circular(28)),
-      ),
       padding: const EdgeInsets.fromLTRB(24, 16, 24, 22),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.center,

@@ -178,7 +178,7 @@ class _HomeRoundHeaderState extends State<HomeRoundHeader> {
     return ClipRRect(
       borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(28), bottomRight: Radius.circular(28)),
       child: Stack(children: [
-        const Positioned.fill(child: _DragonLayer()),
+        const Positioned.fill(child: DragonBlueLayer()),
         Container(
       width: double.infinity,
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
@@ -228,9 +228,11 @@ class _HomeRoundHeaderState extends State<HomeRoundHeader> {
   }
 }
 
-/// 홈 배경 용 그림을 화면 배경과 같은 자리에 — 상자는 스크롤로 움직이니 스크롤만큼 반대로 옮김
-class _DragonLayer extends StatelessWidget {
-  const _DragonLayer();
+/// 홈 배경 용 그림을 화면 배경과 같은 자리에 — 파란 바탕 · 흰 용 선 (홈 · 지역 · 즐겨찾기 파란 상자)
+///   상자가 스크롤로 움직이면 스크롤만큼 반대로 옮김. 스크롤 밖 머리는 [height] 에 화면 본문 높이를 넘김
+class DragonBlueLayer extends StatelessWidget {
+  final double? height;
+  const DragonBlueLayer({super.key, this.height});
 
   @override
   Widget build(BuildContext context) {
@@ -248,8 +250,8 @@ class _DragonLayer extends StatelessWidget {
             ),
           ),
         );
-    final fallback = MediaQuery.sizeOf(context).height;
-    if (pos == null) return layer(0, fallback);
+    final fallback = height ?? MediaQuery.sizeOf(context).height;
+    if (pos == null || height != null) return layer(0, fallback);
     return AnimatedBuilder(
       animation: pos,
       builder: (context, _) => layer(pos.hasPixels ? pos.pixels : 0, pos.hasViewportDimension ? pos.viewportDimension : fallback),

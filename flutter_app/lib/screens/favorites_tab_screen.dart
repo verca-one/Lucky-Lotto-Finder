@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../widgets/home_round_header.dart' show DragonBlueLayer;
 import 'favorites_screen.dart';
 import 'my_numbers_screen.dart';
 import 'tax_calculator_screen.dart';
@@ -28,24 +29,17 @@ class _FavoritesTabScreenState extends State<FavoritesTabScreen>
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      color: const Color(0xFFF2F4F8),
+    return LayoutBuilder(builder: (context, box) => Container(
+      color: Colors.transparent, // 홈 배경(용 그림)이 보이게
       child: Column(
         children: [
-          // 헤더
+          // 헤더 — 홈과 같은 파란 상자 · 배경 용 그림이 이어지게
+          ClipRRect(
+            borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(28), bottomRight: Radius.circular(28)),
+            child: Stack(children: [
+              Positioned.fill(child: DragonBlueLayer(height: box.maxHeight)),
           Container(
             width: double.infinity,
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                colors: [Color(0xFF1565C0), Color(0xFF1E88E5)],
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-              ),
-              borderRadius: BorderRadius.only(
-                bottomLeft: Radius.circular(28),
-                bottomRight: Radius.circular(28),
-              ),
-            ),
             padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -99,6 +93,8 @@ class _FavoritesTabScreenState extends State<FavoritesTabScreen>
               ],
             ),
           ),
+            ]),
+          ),
           Expanded(
             child: TabBarView(
               controller: _tabController,
@@ -111,6 +107,6 @@ class _FavoritesTabScreenState extends State<FavoritesTabScreen>
           ),
         ],
       ),
-    );
+    ));
   }
 }
