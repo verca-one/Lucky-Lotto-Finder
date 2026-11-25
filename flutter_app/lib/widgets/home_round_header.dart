@@ -3,11 +3,26 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'speetto_briefing_view.dart' show SpeettoBriefingView, kSpeettoColor;
 
 import '../services/round_status_service.dart';
+
+/// 뒤 배경(흰 바탕 · 옅은 회색 용 선)을 파란 바탕 · 흰 용 선으로 — out = 파랑 + (1-파랑)·k·(1-밝기)
+ColorFilter _dragonBlue() {
+  const k = 7.0, blue = [0x15 / 255, 0x65 / 255, 0xC0 / 255], lum = [0.2126, 0.7152, 0.0722];
+  final m = <double>[];
+  for (final b in blue) {
+    final g = (1 - b) * k;
+    m.addAll([-g * lum[0], -g * lum[1], -g * lum[2], 0, (b + g) * 255]);
+  }
+  m.addAll([0, 0, 0, 1, 0]);
+  return ColorFilter.matrix(m);
+}
+
+final _kDragonBlue = _dragonBlue();
 
 const _weekdays = ['월', '화', '수', '목', '금', '토', '일'];
 
@@ -158,20 +173,14 @@ class _HomeRoundHeaderState extends State<HomeRoundHeader> {
     final lotto = widget.lotto == null ? null : decideRoundPair(widget.lotto!, now);
     final pension = widget.pension == null ? null : decideRoundPair(widget.pension!, now);
     final speeto = widget.speetoUpdatedAt;
-    return Container(
+    // 파란 상자 — 회차 카드부터 스피또 상자까지 감쌈. 뒤에 깔린 홈 배경(용 그림)을 그대로 가져와
+    // 옅은 회색 선은 흰 선으로, 흰 바탕은 파란색으로 바꿔 그린다 → 상자 밖 배경의 용과 이어져 보이고 스크롤해도 맞음
+    return ClipRRect(
+      borderRadius: const BorderRadius.only(bottomLeft: Radius.circular(28), bottomRight: Radius.circular(28)),
+      child: BackdropFilter(
+        filter: _kDragonBlue,
+        child: Container(
       width: double.infinity,
-      // 지역 탭 머리와 같은 파란 상자 — 회차 카드부터 스피또 상자까지 감쌈
-      // 파란 바탕 위에 흰 선 용 그림(assets/home_dragon_lines.png — 배경 용 dra.png 를 흰 선으로 바꾼 것)을 오른쪽에 깔음
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(colors: [Color(0xFF1565C0), Color(0xFF1E88E5)], begin: Alignment.topLeft, end: Alignment.bottomRight),
-        borderRadius: BorderRadius.only(bottomLeft: Radius.circular(28), bottomRight: Radius.circular(28)),
-        image: DecorationImage(
-          image: AssetImage('assets/home_dragon_lines.png'),
-          fit: BoxFit.fitHeight,
-          alignment: Alignment.centerRight,
-          opacity: 0.55,
-        ),
-      ),
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
         // 맨 위 '최신 당첨회차' 붓글씨 (사용자 제공 그림 · 바탕 투명)
@@ -213,6 +222,8 @@ class _HomeRoundHeaderState extends State<HomeRoundHeader> {
           ),
         ]),
       ]),
+        ),
+      ),
     );
   }
 }
