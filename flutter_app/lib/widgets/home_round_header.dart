@@ -160,13 +160,10 @@ class _HomeRoundHeaderState extends State<HomeRoundHeader> {
     final speeto = widget.speetoUpdatedAt;
     return Container(
       width: double.infinity,
-      // 흰 반투명 상자 (예전 파란 상자와 같은 투명도 0x88) — 글씨는 진한 남색
+      // 지역 탭 머리와 같은 파란 상자 — 회차 카드부터 스피또 상자까지 감쌈
       decoration: const BoxDecoration(
-        color: Color(0x88FFFFFF),
-        borderRadius: BorderRadius.only(
-          bottomLeft: Radius.circular(32),
-          bottomRight: Radius.circular(32),
-        ),
+        gradient: LinearGradient(colors: [Color(0xFF1565C0), Color(0xFF1E88E5)], begin: Alignment.topLeft, end: Alignment.bottomRight),
+        borderRadius: BorderRadius.only(bottomLeft: Radius.circular(28), bottomRight: Radius.circular(28)),
       ),
       padding: const EdgeInsets.fromLTRB(16, 16, 16, 20),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
@@ -198,13 +195,13 @@ class _HomeRoundHeaderState extends State<HomeRoundHeader> {
         _SpeettoUpdateBox(updatedAt: speeto ?? widget.updateTimes['speeto'], loader: widget.speettoLoader),
         const SizedBox(height: 12),
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          Icon(Icons.info_outline_rounded, size: 13, color: _kHeaderInk.withValues(alpha: 0.7)),
+          const Icon(Icons.info_outline_rounded, size: 13, color: Colors.white70),
           const SizedBox(width: 4),
           Flexible(
             child: Text(
               '당첨을 보장하지 않으며, 당첨주기 예상은 참고 정보입니다.',
               textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 11, color: _kHeaderInk.withValues(alpha: 0.7)),
+              style: const TextStyle(fontSize: 11, color: Colors.white70),
             ),
           ),
         ]),
