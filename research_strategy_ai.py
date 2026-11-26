@@ -248,8 +248,33 @@ def _within(sec, fn):
     return box["v"]
 
 
+# 제미나이가 못 답한 주에 사람이 시켜 다른 AI 가 대신 쓴 답 (2026-11-27 사용자 지시 — 1252회 주만 Claude 대행).
+#   valid_until 이 지나면 무시한다 → 다음 주부터는 제미나이가 스케줄대로. 모델 이름에 gemini 를 넣어 '오늘 이미 제안' 판단이 그대로 동작하게 한다.
+MANUAL_ANSWERS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "research_ai_manual.json")
+
+
+def manual_answer(system, path=None, now=None):
+    """대신 쓴 답 — (답, 모델 이름) 또는 None. 어느 몫인지는 system 글로 가린다 (전략 방향 · 연금 · 스피또만)"""
+    kind = "direction" if system in (None, SYSTEM) else "pension" if system == PENSION_SYSTEM else "speetto" if system == SPEETTO_SYSTEM else None
+    if kind is None:
+        return None
+    try:
+        with open(path or MANUAL_ANSWERS, encoding="utf-8") as f:
+            d = json.load(f)
+        if (now or datetime.now(timezone.utc)) >= datetime.fromisoformat(d["valid_until"]):
+            return None
+        ans = d["answers"].get(kind)
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+    return (ans, f"{d.get('model') or d.get('by')} (gemini 대행)") if isinstance(ans, dict) else None
+
+
 def ask_gemini(prompt, system=None, sch=None):
     """Gemini Interactions API (google-genai). → (데이터, 모델, 사용량)"""
+    man = manual_answer(system)
+    if man:
+        print(f"대신 쓴 답 파일을 씀 — {man[1]}")
+        return man[0], man[1], {"manual": True}
     from google import genai
     raw = os.environ["GEMINI_API_KEY"]
     m = re.search(r"AIza[0-9A-Za-z_\-]{35}", raw)   # 붙여넣기 때 섞인 보이지 않는 문자·중복 제거

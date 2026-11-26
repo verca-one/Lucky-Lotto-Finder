@@ -1,0 +1,412 @@
+{
+ "valid_until": "2026-11-28T11:00:00+00:00",
+ "by": "claude",
+ "model": "claude-fable-5-2",
+ "note": "2026-11-27 사용자 지시 — 이번 주만 Claude 가 전략기획부 · 연금 · 스피또 몫을 대신 씀. 같은 자료 · 같은 형식 · 이미 있는 가설과 겹치지 않게 고름. 다음 주부터 제미나이가 참고해 이어 감.",
+ "answers": {
+  "direction": {
+   "directions": [
+    {
+     "title": "복기 보완 지시 시험 — 직전 회차가 높은 합 · 연속번호였을 때 다음 번호 모양",
+     "rationale": "브리핑전담부서가 1251회 복기에서 40 이상 개수 · 번호 합은 높은 쪽, 홀수 개수는 낮은 쪽을 보완하라고 했습니다. 1251회는 합 165(160 이상) · 연속번호 18-19 라서 \"직전 합 높음\" · \"직전 연속번호\" 조건이 이번 1252회에 참입니다. 그 조건에서 다음 회차 번호 모양이 실제로 달라졌는지부터 검정합니다. 추첨은 무작위라 통과하기 어렵다는 것을 알고 내는 확인용 가설입니다.",
+     "focus": "numbers",
+     "hypotheses": [
+      {
+       "condition": "prev_sum_high",
+       "condition2": "none",
+       "outcome": "win_high40",
+       "expect": "higher"
+      },
+      {
+       "condition": "prev_sum_high",
+       "condition2": "none",
+       "outcome": "win_sum",
+       "expect": "higher"
+      },
+      {
+       "condition": "prev_sum_high",
+       "condition2": "none",
+       "outcome": "win_low",
+       "expect": "lower"
+      },
+      {
+       "condition": "prev_consec",
+       "condition2": "none",
+       "outcome": "win_odd",
+       "expect": "lower"
+      },
+      {
+       "condition": "prev_consec",
+       "condition2": "none",
+       "outcome": "win_consec",
+       "expect": "higher"
+      },
+      {
+       "condition": "prev_consec",
+       "condition2": "none",
+       "outcome": "win_sum",
+       "expect": "lower"
+      },
+      {
+       "condition": "prev_consec",
+       "condition2": "prev_sum_high",
+       "outcome": "win_high40",
+       "expect": "higher"
+      },
+      {
+       "condition": "prev_consec",
+       "condition2": "prev_sum_high",
+       "outcome": "win_sum",
+       "expect": "higher"
+      },
+      {
+       "condition": "prev_consec",
+       "condition2": "prev_sum_high",
+       "outcome": "win_odd",
+       "expect": "lower"
+      }
+     ]
+    },
+    {
+     "title": "직전 회차 모양이 사람들의 선택을 바꾸나 — 당첨자 쏠림 · 수동 비율",
+     "rationale": "번호 자체는 못 맞혀도 사람의 구매 행동은 패턴이 생길 수 있습니다. 직전 회차가 고번호 · 연속번호로 나오면 수동 구매자가 그 모양을 따라 사거나 피하는지, 그래서 2~4등 당첨자 쏠림과 1등 수동 비율이 달라지는지 봅니다. 1251회 4등 쏠림은 ×0.92 였습니다.",
+     "focus": "popularity",
+     "hypotheses": [
+      {
+       "condition": "prev_sum_high",
+       "condition2": "none",
+       "outcome": "R3",
+       "expect": "higher"
+      },
+      {
+       "condition": "prev_sum_high",
+       "condition2": "none",
+       "outcome": "R2",
+       "expect": "higher"
+      },
+      {
+       "condition": "prev_sum_high",
+       "condition2": "none",
+       "outcome": "manual_share",
+       "expect": "higher"
+      },
+      {
+       "condition": "prev_consec",
+       "condition2": "none",
+       "outcome": "R4",
+       "expect": "higher"
+      },
+      {
+       "condition": "prev_consec",
+       "condition2": "none",
+       "outcome": "manual_share",
+       "expect": "higher"
+      },
+      {
+       "condition": "prev_consec",
+       "condition2": "none",
+       "outcome": "R3",
+       "expect": "lower"
+      }
+     ]
+    },
+    {
+     "title": "겨울 · 판매액 변화 — 12월 회차에서 바로 시험",
+     "rationale": "다음 주부터 12월(겨울 조건)입니다. 연말에는 판매액과 구매층이 달라지므로 당첨자 쏠림 · 수동 비율 · 수도권 1등 비율이 달라지는지 지금 등록해 두면 새 회차에서 바로 추적됩니다.",
+     "focus": "calendar",
+     "hypotheses": [
+      {
+       "condition": "winter",
+       "condition2": "none",
+       "outcome": "R4",
+       "expect": "higher"
+      },
+      {
+       "condition": "winter",
+       "condition2": "none",
+       "outcome": "manual_share",
+       "expect": "lower"
+      },
+      {
+       "condition": "winter",
+       "condition2": "none",
+       "outcome": "first_capital_share",
+       "expect": "lower"
+      },
+      {
+       "condition": "winter",
+       "condition2": "none",
+       "outcome": "R3",
+       "expect": "lower"
+      },
+      {
+       "condition": "winter",
+       "condition2": "none",
+       "outcome": "R2",
+       "expect": "lower"
+      }
+     ]
+    }
+   ],
+   "applied": [
+    {
+     "parent_code": "day_odd|win_odd|higher",
+     "condition": "day_odd",
+     "condition2": "prev_sum_high",
+     "outcome": "win_odd",
+     "expect": "higher"
+    },
+    {
+     "parent_code": "prev_rank1_many|manual_share|higher",
+     "condition": "prev_rank1_many",
+     "condition2": "prev_sum_high",
+     "outcome": "manual_share",
+     "expect": "higher"
+    },
+    {
+     "parent_code": "sales_surge|R4|higher",
+     "condition": "sales_surge",
+     "condition2": "prev_sum_high",
+     "outcome": "R4",
+     "expect": "higher"
+    },
+    {
+     "parent_code": "prev_rank1_few|manual_share|higher",
+     "condition": "prev_rank1_few",
+     "condition2": "prev_sum_high",
+     "outcome": "manual_share",
+     "expect": "higher"
+    },
+    {
+     "parent_code": "round_odd|manual_share|higher",
+     "condition": "round_odd",
+     "condition2": "prev_sum_high",
+     "outcome": "manual_share",
+     "expect": "higher"
+    },
+    {
+     "parent_code": "prev_rank1_many|manual_share|higher",
+     "condition": "prev_rank1_many",
+     "condition2": "prev_consec",
+     "outcome": "manual_share",
+     "expect": "higher"
+    },
+    {
+     "parent_code": "sales_surge|R4|higher",
+     "condition": "sales_surge",
+     "condition2": "prev_consec",
+     "outcome": "R4",
+     "expect": "higher"
+    },
+    {
+     "parent_code": "sales_drop|manual_share|lower",
+     "condition": "sales_drop",
+     "condition2": "prev_consec",
+     "outcome": "manual_share",
+     "expect": "lower"
+    },
+    {
+     "parent_code": "prev_rank1_few|manual_share|higher",
+     "condition": "prev_rank1_few",
+     "condition2": "prev_consec",
+     "outcome": "manual_share",
+     "expect": "higher"
+    },
+    {
+     "parent_code": "round_odd|manual_share|higher",
+     "condition": "round_odd",
+     "condition2": "prev_consec",
+     "outcome": "manual_share",
+     "expect": "higher"
+    }
+   ],
+   "store_direction": {
+    "title": "주변 전이 × 자기 이력 — 겹쳤을 때만 더 나오나",
+    "rationale": "유명 명당 · 최근 1등 이력은 이미 통과 · 유지 중입니다. 지방장 TOP5 가 1251회 1등 7곳을 맞혔지만 과거 빈도만 써도 7곳이라, 이력만으로 설명되지 않는 것을 찾아야 합니다. 그래서 \"주변 판매점의 최근 1등\"과 \"본인의 최근 1 · 2등\", \"같은 시 · 군 · 구의 최근 흐름\"이 겹칠 때 기대보다 더 나오는지 겹친 조건으로 냅니다.",
+    "hypotheses": [
+     {
+      "condition": "near_first_prev",
+      "condition2": "own_first_52",
+      "outcome": "first_second",
+      "expect": "higher"
+     },
+     {
+      "condition": "near_first_5",
+      "condition2": "own_first_52",
+      "outcome": "first_second",
+      "expect": "higher"
+     },
+     {
+      "condition": "own_first_52",
+      "condition2": "own_second_10",
+      "outcome": "first_second",
+      "expect": "higher"
+     },
+     {
+      "condition": "own_first_52",
+      "condition2": "region_hot_10",
+      "outcome": "first_second",
+      "expect": "higher"
+     },
+     {
+      "condition": "near_first_prev",
+      "condition2": "region_hot_10",
+      "outcome": "first",
+      "expect": "higher"
+     },
+     {
+      "condition": "near_first_5",
+      "condition2": "region_hot_10",
+      "outcome": "first",
+      "expect": "higher"
+     },
+     {
+      "condition": "own_second_10",
+      "condition2": "region_cold_26",
+      "outcome": "first",
+      "expect": "higher"
+     },
+     {
+      "condition": "near_first_prev_1km",
+      "condition2": "pension_winner",
+      "outcome": "first_second",
+      "expect": "higher"
+     },
+     {
+      "condition": "own_drought_famous",
+      "condition2": "none",
+      "outcome": "first_second",
+      "expect": "higher"
+     },
+     {
+      "condition": "near_first_prev",
+      "condition2": "own_second_10",
+      "outcome": "first_second",
+      "expect": "higher"
+     }
+    ]
+   }
+  },
+  "pension": {
+   "title": "직전 1등이 한쪽으로 치우쳤을 때 — 평균으로 돌아오나",
+   "rationale": "연금 번호는 자리마다 0~9 가 같은 확률이라, 직전 1등이 높은 조 · 높은 합 · 반복 숫자 · 홀수 쏠림이었다면 다음 회차는 평소 값으로 돌아오는 쪽이 자연스럽습니다. 가설 트랙이 \"직전이 치우쳤으니 다음도 같은 쪽\"으로 끌려가지 않도록, 치우친 직전 회차 뒤에는 낮은 쪽을 기대하는 가설을 냅니다. 겨울 조건은 다음 달부터 바로 시험됩니다. 연금 판매점 가설은 가능한 조합이 이미 모두 등록돼 있어 새로 내지 않았습니다.",
+   "hypotheses": [
+    {
+     "condition": "prev_first_high",
+     "condition2": "none",
+     "outcome": "p_high",
+     "expect": "lower"
+    },
+    {
+     "condition": "prev_group_high",
+     "condition2": "prev_sum_high",
+     "outcome": "p_group",
+     "expect": "lower"
+    },
+    {
+     "condition": "prev_odd_heavy",
+     "condition2": "prev_repeat",
+     "outcome": "p_odd",
+     "expect": "lower"
+    },
+    {
+     "condition": "prev_first_high",
+     "condition2": "prev_sum_high",
+     "outcome": "p_sum",
+     "expect": "lower"
+    },
+    {
+     "condition": "prev_repeat",
+     "condition2": "winter",
+     "outcome": "p_repeat",
+     "expect": "lower"
+    },
+    {
+     "condition": "prev_group_high",
+     "condition2": "none",
+     "outcome": "p_first",
+     "expect": "higher"
+    },
+    {
+     "condition": "prev_odd_heavy",
+     "condition2": "none",
+     "outcome": "p_last",
+     "expect": "higher"
+    },
+    {
+     "condition": "prev_repeat",
+     "condition2": "none",
+     "outcome": "p_last",
+     "expect": "lower"
+    },
+    {
+     "condition": "prev_group_high",
+     "condition2": "none",
+     "outcome": "p_last",
+     "expect": "lower"
+    },
+    {
+     "condition": "prev_sum_high",
+     "condition2": "none",
+     "outcome": "p_last",
+     "expect": "higher"
+    }
+   ],
+   "store_hypotheses": []
+  },
+  "speetto": {
+   "title": "많이 팔렸는데 1등이 남은 차수 — 다음 7일에 1등이 더 나가나",
+   "rationale": "출고율이 높은데 1등이 많이 남았다는 것은 남은 장 가운데 1등 비율이 처음보다 높다는 뜻입니다(남은 1등 지수). 이런 차수에서 다음 7일 동안 1 · 2등이 실제로 더 나가는지, 게임(500 · 1000 · 2000)별로 차이가 있는지, 새 차수 · 오래된 차수의 출고 속도가 다른지를 겹친 조건으로 시험합니다. 맞으면 \"어느 차수를 살까\" 추천의 근거가 됩니다.",
+   "hypotheses": [
+    {
+     "condition": "sp_index_high",
+     "condition2": "sp_old",
+     "outcome": "sp_rnk1_out",
+     "expect": "higher"
+    },
+    {
+     "condition": "sp_new",
+     "condition2": "sp_ship_low",
+     "outcome": "sp_rnk1_out",
+     "expect": "lower"
+    },
+    {
+     "condition": "sp_old",
+     "condition2": "sp_ship_high",
+     "outcome": "sp_ship_speed",
+     "expect": "lower"
+    },
+    {
+     "condition": "sp_left_high",
+     "condition2": "sp_old",
+     "outcome": "sp_rnk2_out",
+     "expect": "higher"
+    },
+    {
+     "condition": "sp_game_500",
+     "condition2": "sp_ship_low",
+     "outcome": "sp_ship_speed",
+     "expect": "higher"
+    },
+    {
+     "condition": "sp_index_high",
+     "condition2": "sp_left_high",
+     "outcome": "sp_rnk2_out",
+     "expect": "higher"
+    },
+    {
+     "condition": "sp_old",
+     "condition2": "none",
+     "outcome": "sp_rnk1_out",
+     "expect": "higher"
+    },
+    {
+     "condition": "sp_old",
+     "condition2": "none",
+     "outcome": "sp_rnk2_out",
+     "expect": "higher"
+    }
+   ]
+  }
+ }
+}

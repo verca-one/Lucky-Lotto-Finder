@@ -134,6 +134,14 @@ void main() {
     expect(s.week['a7183'], isTrue);
   });
 
+  test('전략기획부를 Claude 가 대신 쓴 주 — 대행이라고 표시', () {
+    final s = AiDeptStatus.fromRows(a7183: {'source': 'claude'}, review: {'source': 'gemini'}, runs: [
+      {'kind': 'ai_direction', 'status': 'success', 'model': 'claude-fable-5-2 (gemini 대행)', 'created_at': '2026-11-27T03:00:00Z'},
+    ]);
+    expect(s.items[2].detail, 'Claude 대행 (이번 주만)');
+    expect(s.items[2].ok, isTrue);
+  });
+
   test('이번 주 진척도 — 요일별 완료 · 실패 · 안 돎 · 예정', () {
     final wed = DateTime.utc(2026, 11, 25, 10); // 수 19:00 KST (수요일 몫까지 끝났어야 함)
     expect(AiDeptStatus.weekStart(wed), DateTime.utc(2026, 11, 22, 15));

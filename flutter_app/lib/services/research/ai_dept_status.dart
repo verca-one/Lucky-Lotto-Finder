@@ -188,7 +188,7 @@ class AiDeptStatus {
       } else if (r['status'] == 'failed') {
         items.add(AiDeptItem(name, false, _err(r['note'] as String?), at, part));
       } else {
-        items.add(AiDeptItem(name, true, r['status'] == 'skipped' ? '이번엔 건너뜀' : r['status'] == 'manual' ? 'Claude 대행 (이번 주만)' : '정상', at, part));
+        items.add(AiDeptItem(name, true, r['status'] == 'skipped' ? '이번엔 건너뜀' : '${r['model'] ?? ''}'.contains('claude') ? 'Claude 대행 (이번 주만)' : '정상', at, part));
       }
     }
     return AiDeptStatus(items, request == null ? null : AiRequest.fromRow(request), week: week, nextRound: nextRound,
@@ -210,7 +210,7 @@ class AiDeptStatus {
         .eq('research_type', 'agent_7183').eq('target_round', next).order('created_at', ascending: false).limit(1);
     final rv = await db.from('research_results').select('payload->>source,payload->>ai_error')
         .eq('research_type', 'set_review').eq('model_version', 'sr-1.0').eq('target_round', next).limit(1);
-    final runs = await db.from('strategy_runs').select('kind,status,note,created_at')
+    final runs = await db.from('strategy_runs').select('kind,status,note,created_at,model:stats->>model')
         .inFilter('kind', ['ai_direction', 'ai_pension', 'ai_speetto']).order('created_at', ascending: false).limit(30);
     List req = const [];
     try {
