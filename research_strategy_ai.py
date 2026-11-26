@@ -254,8 +254,8 @@ MANUAL_ANSWERS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "resea
 
 
 def manual_answer(system, path=None, now=None):
-    """대신 쓴 답 — (답, 모델 이름) 또는 None. 어느 몫인지는 system 글로 가린다 (전략 방향 · 연금 · 스피또만)"""
-    kind = "direction" if system in (None, SYSTEM) else "pension" if system == PENSION_SYSTEM else "speetto" if system == SPEETTO_SYSTEM else None
+    """대신 쓴 답 — (답, 모델 이름) 또는 None. 어느 몫인지는 system 글로 가린다 (전략 방향 · 연금 · 스피또 가설 · 스피또 당첨점 추리)"""
+    kind = "direction" if system in (None, SYSTEM) else "pension" if system == PENSION_SYSTEM else "speetto" if system == SPEETTO_SYSTEM         else "speetto_infer" if system == SP.INFER_SYSTEM else None
     if kind is None:
         return None
     try:
