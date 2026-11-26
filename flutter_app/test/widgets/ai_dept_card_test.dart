@@ -1,0 +1,83 @@
+// 연구소 AI 부서 — 상태 계산(원활/문제) · 진행 막대 · 새로고침 요청 · 브리핑 안내
+import 'package:flutter/material.dart';
+import 'package:flutter_app/services/research/ai_dept_status.dart';
+import 'package:flutter_app/widgets/ai_dept_card.dart';
+import 'package:flutter_app/widgets/briefing_top_reports.dart';
+import 'package:flutter_test/flutter_test.dart';
+
+void main() {
+  final ok = AiDeptStatus.fromRows(
+    a7183: {'source': 'gemini'},
+    review: {'source': 'gemini'},
+    runs: [
+      {'kind': 'ai_direction', 'status': 'success', 'created_at': '2026-11-25T08:30:00Z'},
+      {'kind': 'ai_pension', 'status': 'skipped', 'created_at': '2026-11-25T08:31:00Z'},
+    ],
+  );
+  final bad = AiDeptStatus.fromRows(
+    a7183: {'source': 'rule', 'quota_until': '2026-11-26T08:04:00Z'},
+    review: {'source': 'rule', 'ai_error': '429 RESOURCE_EXHAUSTED'},
+    runs: [
+      {'kind': 'ai_direction', 'status': 'failed', 'note': 'TimeoutError — 420초 안에 응답 없음', 'created_at': '2026-11-25T18:32:00Z'},
+      {'kind': 'ai_direction', 'status': 'success', 'created_at': '2026-11-20T08:30:00Z'}, // 옛 기록 — 최신만 봄
+    ],
+    request: {'id': 3, 'status': 'dispatched', 'requested_at': '2026-11-26T07:00:00Z', 'dispatched_at': '2026-11-26T07:08:00Z'},
+  );
+
+  test('상태 — 모두 정상이면 원활 · 최신 기록만 · 한도 초과 시각 KST', () {
+    expect(ok.smooth, isTrue);
+    expect(bad.smooth, isFalse);
+    expect(bad.problems.length, 3);
+    expect(bad.problems.first, contains('11/26 17:04 이후 다시'));
+    expect(bad.problems[1], contains('제미나이 하루 한도 초과'));
+    expect(bad.problems[2], contains('시간 초과'));
+    expect(bad.request!.active, isTrue);
+    expect(bad.request!.progress, 0.55);
+  });
+
+  testWidgets('접힘 · 원활 표시 → 펼치면 부서별 상태 / 실행 중이면 막대 · 새로고침 막힘', (t) async {
+    await t.pumpWidget(MaterialApp(home: Scaffold(body: AiDeptCard(loader: () async => ok))));
+    await t.pumpAndSettle();
+    expect(find.text('원활'), findsOneWidget);
+    expect(find.text('AI 전략기획부'), findsNothing); // 접힘
+    await t.tap(find.byKey(const ValueKey('ai_dept_toggle')));
+    await t.pumpAndSettle();
+    expect(find.text('AI 전략기획부'), findsOneWidget);
+    expect(find.byKey(const ValueKey('ai_dept_open_desk')), findsOneWidget);
+
+    await t.pumpWidget(MaterialApp(home: Scaffold(body: AiDeptCard(key: const ValueKey('b'), loader: () async => bad))));
+    await t.pump();
+    await t.pump();
+    expect(find.text('실행 중'), findsOneWidget);
+    expect(find.byKey(const ValueKey('ai_dept_progress')), findsOneWidget); // 접혀 있어도 막대
+    expect(t.widget<IconButton>(find.byKey(const ValueKey('ai_dept_refresh'))).onPressed, isNull);
+    await t.pumpWidget(const SizedBox()); // 30초 타이머 정리
+  });
+
+  testWidgets('문제 있고 실행 중 아님 → [새로고침] 누르면 요청', (t) async {
+    final idle = AiDeptStatus(bad.items, null);
+    var asked = 0;
+    await t.pumpWidget(MaterialApp(home: Scaffold(body: AiDeptCard(loader: () async => idle, requester: () async => asked++))));
+    await t.pumpAndSettle();
+    expect(find.text('문제 3'), findsOneWidget);
+    await t.tap(find.byKey(const ValueKey('ai_dept_refresh')));
+    await t.pumpAndSettle();
+    expect(asked, 1);
+  });
+
+  test('브리핑 경고 — 제미나이 문제 줄', () {
+    final w = pipelineWarnings(
+        const PipelineSnapshot(latestWin: 1251, prizeLatest: 1251, aiProblems: ['AI 전략기획부: 제미나이 응답 없음']),
+        DateTime.utc(2026, 11, 26));
+    expect(w.single, '제미나이 · AI 전략기획부: 제미나이 응답 없음');
+  });
+
+  testWidgets('브리핑 경고 상자 — 연구소 새로고침 안내', (t) async {
+    await t.pumpWidget(MaterialApp(home: Scaffold(body: PipelineAlertReport(
+      loader: () async => const PipelineSnapshot(latestWin: 1251, prizeLatest: 1251, aiProblems: ['7183 에이전트: 제미나이 답 없음']),
+      clock: () => DateTime.utc(2026, 11, 26),
+    ))));
+    await t.pumpAndSettle();
+    expect(find.byKey(const ValueKey('pipeline_alert_refresh_hint')), findsOneWidget);
+  });
+}

@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../screens/admin_agent_research_screen.dart';
 import '../services/research/agent_research_repository.dart';
+import '../services/research/ai_dept_status.dart';
 import '../services/research/round_debrief.dart';
 import '../services/round_status_service.dart';
 import '../services/supabase_service.dart';
@@ -129,8 +130,9 @@ class PipelineSnapshot {
   final int? prizeLatest; // 당첨자 수(research_prize_stats) 최신 회차
   final bool hasHypothesis, hasPopularity; // 다음 회차(latestWin+1) 등록 여부
   final String? reviewSource, reviewError; // 다음 회차용 추천번호 복기(sr-1.0) — null 이면 아직 없음
+  final List<String> aiProblems; // AI 부서(제미나이) 문제 — AiDeptStatus.problems
   const PipelineSnapshot({required this.latestWin, this.prizeLatest, this.hasHypothesis = true, this.hasPopularity = true,
-      this.reviewSource, this.reviewError});
+      this.reviewSource, this.reviewError, this.aiProblems = const []});
 }
 
 String _aiErrorText(String? e) {
@@ -157,6 +159,9 @@ List<String> pipelineWarnings(PipelineSnapshot s, DateTime nowUtc) {
   if (released && !s.hasPopularity) out.add('② 비인기 $next회 번호 미등록${prizeLate ? ' (당첨자 수 대기)' : ''}');
   if (s.reviewSource == 'rule') {
     out.add('추천번호 복기(${s.latestWin}회) — ${_aiErrorText(s.reviewError)}로 제미나이 대신 기본 규칙이 보완 규칙을 냈습니다. 다음 실행 때 제미나이로 다시 시도합니다.');
+  }
+  for (final x in s.aiProblems) {
+    out.add('제미나이 · $x');
   }
   return out;
 }
@@ -191,7 +196,12 @@ class _PipelineAlertReportState extends State<PipelineAlertReport> {
     final rv = await db.from('research_results').select('payload->>source,payload->>ai_error')
         .eq('research_type', 'set_review').eq('model_version', 'sr-1.0').eq('target_round', latest + 1).limit(1);
     final r = (rv as List).isEmpty ? null : rv.first;
+    var ai = const <String>[];
+    try {
+      ai = (await AiDeptStatus.load()).problems.where((x) => !x.startsWith('AI 브리핑전담부서')).toList(); // 복기는 위에서 따로 알림
+    } catch (_) {}
     return PipelineSnapshot(
+      aiProblems: ai,
       latestWin: latest,
       prizeLatest: (p as List).isEmpty ? null : (p.first['round'] as num).toInt(),
       hasHypothesis: algos.contains('hypothesis_track'),
@@ -235,6 +245,13 @@ class _PipelineAlertReportState extends State<PipelineAlertReport> {
         ]),
         for (final x in w)
           Text('• $x', style: const TextStyle(fontSize: 12, height: 1.45, fontWeight: FontWeight.w700, color: Colors.black87)),
+        if (w.any((x) => x.contains('제미나이')))
+          const Padding(
+            key: ValueKey('pipeline_alert_refresh_hint'),
+            padding: EdgeInsets.only(top: 6),
+            child: Text('👉 제미나이 문제는 연구소 › AI 부서에서 [새로고침]을 눌러 주세요. 서버가 알아서 다시 돌립니다.',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: c)),
+          ),
       ]),
     );
   }

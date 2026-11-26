@@ -2,7 +2,6 @@
 import 'package:flutter/material.dart';
 
 import 'admin_agent_replay_screen.dart';
-import 'admin_briefing_desk_screen.dart';
 import 'admin_agent_research_screen.dart';
 import 'admin_engine_review_screen.dart';
 import 'admin_lottery_extra_screens.dart';
@@ -10,7 +9,7 @@ import 'admin_pattern_analysis_screen.dart';
 import 'admin_recommend_stores_screen.dart';
 import 'admin_region_research_screen.dart';
 import 'admin_research_screen.dart';
-import 'admin_strategy_screen.dart';
+import '../widgets/ai_dept_card.dart';
 
 class ResearchLabEntry {
   final IconData icon;
@@ -22,11 +21,6 @@ class ResearchLabEntry {
 
 /// 연구소 메뉴 항목 (순서 고정)
 final List<ResearchLabEntry> kResearchLabEntries = [
-  ResearchLabEntry(Icons.support_agent_rounded, 'AI 브리핑전담부서',
-      '당첨번호 vs 지난 브리핑 추천번호 → 영역별 유지/보완 → 브리핑 메뉴 · AI 전략기획부에 전달 (제미나이 상주)',
-      const Color(0xFF4A148C), (_) => const AdminBriefingDeskScreen()),
-  ResearchLabEntry(Icons.psychology_alt_rounded, 'AI 전략기획부', 'AI 연구 방향 제시 → 가설 생성 → 비서 검증·유지·폐기 (AI는 제안만)',
-      const Color(0xFF5B2C9F), (_) => const AdminStrategyScreen()),
   ResearchLabEntry(Icons.travel_explore_rounded, '명당 가설 연구소 · 전국 지역 연구',
       '시·군·구 독립 연구 · 지역 간 전이 · 유명/신흥 명당 · 예측 난이도 · 복합 가설', const Color(0xFF0D47A1),
       (_) => const AdminRegionResearchScreen()),
@@ -66,6 +60,9 @@ class AdminResearchLabScreen extends StatelessWidget {
           Text('연구·엔진은 서버가 회차마다 자동 실행합니다. 이곳에서는 저장된 연구 결과를 봅니다.',
               style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
           const SizedBox(height: 12),
+          // AI 브리핑전담부서 · AI 전략기획부 — 한 상자(AI 부서)로 묶고 접음 · 새로고침 = 서버가 제미나이 작업 다시 실행
+          const AiDeptCard(),
+          const SizedBox(height: 10),
           for (final e in kResearchLabEntries) ...[
             Card(
               margin: EdgeInsets.zero,

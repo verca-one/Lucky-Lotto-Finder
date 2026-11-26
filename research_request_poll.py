@@ -7,6 +7,8 @@
   dispatched → 45분 지나도 성공 기록이 없으면 다시 실행 요청 (데이터 준비 대기 등)
   성공 기록이 생기면 done
 앱 [토요일 최종본 지금 반영] → research_weekly_requests → research-weekly.yml 을 바로 실행 (토요일 점검 기록이 생기면 done)
+앱 연구소 [AI 부서 새로고침] → research_ai_requests → research-strategy.yml 을 바로 실행 (7183 · 브리핑전담부서 · 전략기획부 · 연금 · 스피또)
+  pending → 실행 요청 후 dispatched(run_url) → 그 실행이 끝나면 done(conclusion) · 90분 넘게 안 끝나면 done(timeout)
 최신 회차 + 1 이 아닌 요청은 무시한다. 외부 사이트 접속 없음 (DB · GitHub API 만).
 """
 
@@ -18,6 +20,55 @@ import requests
 
 PIPELINE_VERSION = "sp-1.0"
 REDISPATCH_MIN = 45
+AI_WORKFLOW = "research-strategy.yml"
+AI_TIMEOUT_MIN = 90
+
+
+def ai_requests(get, patch, token, repo, now):
+    """연구소 [AI 부서 새로고침] 요청 처리 — 회차와 상관없이 요청마다 research-strategy 를 한 번 돌린다"""
+    try:
+        reqs = get("research_ai_requests", {"select": "*", "status": "neq.done", "order": "id"})
+    except requests.HTTPError as e:
+        print(f"research_ai_requests 없음 또는 조회 실패 — 건너뜀 ({e.response.status_code})")
+        return
+    if not reqs:
+        print("AI 부서 새로고침 요청 없음")
+        return
+    if not token or not repo:
+        print("GH_TOKEN / GITHUB_REPOSITORY 없음 — 실행 요청 불가")
+        return
+    gh = {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
+    api = f"https://api.github.com/repos/{repo}/actions/workflows/{AI_WORKFLOW}"
+
+    def ts(v):
+        return datetime.fromisoformat(v.replace("Z", "+00:00"))
+
+    for r in reqs:
+        rid = {"id": f"eq.{r['id']}"}
+        if r["status"] == "pending":
+            res = requests.post(api + "/dispatches", headers=gh, json={"ref": "main"}, timeout=30)
+            if res.status_code != 204:
+                print(f"{AI_WORKFLOW} 실행 요청 실패 {res.status_code} {res.text[:200]}")
+                patch("research_ai_requests", rid, {"status": "done", "done_at": now.isoformat(), "conclusion": "dispatch_failed"})
+                continue
+            patch("research_ai_requests", rid, {"status": "dispatched", "dispatched_at": now.isoformat()})
+            print(f"AI 부서 새로고침 #{r['id']} — {AI_WORKFLOW} 실행 요청")
+            continue
+        # dispatched — 요청 뒤에 생긴 수동 실행을 찾아 끝났는지 본다
+        since = ts(r["dispatched_at"]) - timedelta(minutes=2)
+        runs = requests.get(api + "/runs", headers=gh, params={"event": "workflow_dispatch", "per_page": 10}, timeout=30).json()
+        mine = [x for x in runs.get("workflow_runs", []) if ts(x["created_at"]) >= since]
+        run = min(mine, key=lambda x: x["created_at"]) if mine else None
+        if run and not r.get("run_url"):
+            patch("research_ai_requests", rid, {"run_url": run["html_url"]})
+        if run and run["status"] == "completed":
+            patch("research_ai_requests", rid, {"status": "done", "done_at": now.isoformat(), "conclusion": run["conclusion"] or "unknown"})
+            print(f"AI 부서 새로고침 #{r['id']} 끝 — {run['conclusion']}")
+        elif now - ts(r["dispatched_at"]) > timedelta(minutes=AI_TIMEOUT_MIN):
+            patch("research_ai_requests", rid, {"status": "done", "done_at": now.isoformat(), "conclusion": "timeout"})
+            print(f"AI 부서 새로고침 #{r['id']} — {AI_TIMEOUT_MIN}분 넘어 끝난 것으로 처리")
+        else:
+            print(f"AI 부서 새로고침 #{r['id']} 실행 중 ({run['status'] if run else '시작 대기'})")
 
 
 def main():
@@ -88,6 +139,8 @@ def main():
                 continue
             patch(table, {"target_round": f"eq.{t}"}, {"status": "dispatched", "dispatched_at": now.isoformat()})
             print(f"{t}회 {name} 실행 요청")
+
+    ai_requests(get, patch, token, repo, now)
 
 
 if __name__ == "__main__":

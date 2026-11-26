@@ -75,6 +75,12 @@ class _Agent7183CardState extends State<Agent7183Card> {
                   '목표는 다음 회차 당첨 — 채점은 그것 하나로 합니다.',
                   style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700, height: 1.4)),
               const SizedBox(height: 10),
+              if (waiting)
+                Padding(
+                  key: const ValueKey('a7183_refresh_hint'),
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: _note('제미나이가 아직 답하지 못했습니다 — 연구소 › AI 부서에서 [새로고침]을 눌러 주세요.'),
+                ),
               if (snap.connectionState != ConnectionState.done)
                 const Center(child: Padding(padding: EdgeInsets.all(8), child: CircularProgressIndicator(strokeWidth: 2)))
               else if (!widget.released)
