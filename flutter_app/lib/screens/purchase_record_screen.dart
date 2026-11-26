@@ -38,6 +38,9 @@ List<int> autoFill(List<int?> row, [Random? rnd]) {
   return (row, ok);
 }
 
+/// 게임 줄 이름 A B C … (E 뒤로도 F G …)
+String rowLabel(int i) => String.fromCharCode(65 + i);
+
 /// 구입 기록 추가 — 저장하면 true
 ///   [manual] = 번호 직접 입력 (판매점 없이 그냥 구입 번호 · 1~45 번호판)
 ///   [existing] = 이미 있는 기록에 번호 추가 (판매점 · 회차 · 번호가 채워진 채 열리고, 저장하면 그 기록을 고침)
@@ -58,7 +61,8 @@ class PurchaseRecordScreen extends StatefulWidget {
   final bool startQr; // 열자마자 QR 카메라
   final bool manual; // 번호 직접 입력 (판매점 없음)
   final PurchaseRecord? existing; // 번호 추가할 기존 기록
-  const PurchaseRecordScreen({super.key, this.store, this.startQr = false, this.manual = false, this.existing});
+  final int? round; // 처음 회차 (없으면 다음 추첨 회차를 읽어 옴 · 테스트용)
+  const PurchaseRecordScreen({super.key, this.store, this.startQr = false, this.manual = false, this.existing, this.round});
   @override
   State<PurchaseRecordScreen> createState() => _PurchaseRecordScreenState();
 }
@@ -70,9 +74,68 @@ class _PurchaseRecordScreenState extends State<PurchaseRecordScreen> {
   // 직접 입력 — A~E 다섯 줄 × 6칸 (1~45 드롭다운). 안 고른 칸은 저장할 때 자동(반자동 · 빈 줄은 자동), 줄 안 중복이면 저장 막음
   final _rows = List.generate(5, (_) => List<int?>.filled(6, null));
 
-  final _texts = List.generate(5, (_) => TextEditingController()); // 줄마다 '3 17 40 …' 입력
-  final _bad = List<bool>.filled(5, false);
+  final _texts = List.generate(5, (_) => TextEditingController()); // 줄마다 '3 17 40 …' 입력 · [줄 추가]로 늘어남
+  final _bad = List<bool>.filled(5, false, growable: true);
+
+  void _addRow() => setState(() {
+        _rows.add(List<int?>.filled(6, null));
+        _texts.add(TextEditingController());
+        _bad.add(false);
+      });
   bool get _manualBad => _bad.contains(true);
+  // 줄마다 저장 — 한 화면에서 저장한 줄은 기록 한 장(_manualId)에 모임
+  String? _manualId;
+  DateTime? _manualAt;
+  final _savedGame = <int, List<int>>{};
+  final _savedText = <int, String>{}; // 저장할 때 글자 — 바꾸면 다시 저장 가능
+  bool _rowSaved(int r) => _savedText[r] == _texts[r].text;
+  bool _rowCanSave(int r) => _round != null && _texts[r].text.trim().isNotEmpty && !_bad[r] && !_rowSaved(r);
+
+  Future<void> _writeManual() async {
+    _manualId ??= DateTime.now().microsecondsSinceEpoch.toString();
+    _manualAt ??= DateTime.now();
+    final s = _store;
+    await PurchaseRecords.remove(_manualId!);
+    await PurchaseRecords.add(PurchaseRecord(
+      id: _manualId!,
+      storeCode: s?.dhlotteryCode ?? '',
+      storeName: s?.storeName ?? '',
+      storeAddress: s?.address ?? '',
+      round: _round!,
+      games: [for (final k in _savedGame.keys.toList()..sort()) _savedGame[k]!],
+      createdAt: _manualAt!,
+    ));
+    await _favStore();
+  }
+
+  void _markSaved(int r) {
+    _savedGame[r] = autoFill(_rows[r]);
+    _savedText[r] = _texts[r].text;
+  }
+
+  Future<void> _saveRow(int r) async {
+    if (!_rowCanSave(r) || _round == null) return;
+    _markSaved(r);
+    await _writeManual();
+    if (!mounted) return;
+    setState(() {});
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        duration: const Duration(seconds: 1), content: Text('${rowLabel(r)}줄 저장 — ${_savedGame[r]!.join(' ')}')));
+  }
+
+  /// 완료 — 아직 저장 안 한 정상 줄도 저장하고 닫음
+  Future<void> _finishManual() async {
+    final rest = [for (var r = 0; r < _texts.length; r++) if (_rowCanSave(r)) r];
+    for (final r in rest) {
+      _markSaved(r);
+    }
+    if (rest.isNotEmpty && _round != null) await _writeManual();
+    if (!mounted) return;
+    if (_savedGame.isNotEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$_round회 · ${_savedGame.length}게임 기록했습니다')));
+    }
+    Navigator.pop(context, _manualId != null);
+  }
 
   void _typed(int r, String t) {
     final (row, ok) = parseNumberLine(t);
@@ -96,6 +159,7 @@ class _PurchaseRecordScreenState extends State<PurchaseRecordScreen> {
   void initState() {
     super.initState();
     _store = widget.store;
+    _round = widget.round;
     final e = widget.existing;
     if (e != null) {
       if (e.storeCode.isNotEmpty) {
@@ -219,22 +283,24 @@ class _PurchaseRecordScreenState extends State<PurchaseRecordScreen> {
         createdAt: e?.createdAt ?? DateTime.now(),
       ),
     );
-    // 판매점에서 산 번호는 즐겨찾기 판매점 카드 안에 모아 보이므로 그 판매점을 즐겨찾기에 넣음 (어느 메뉴에서 찍었든)
-    var faved = false;
-    if (s != null && s.dhlotteryCode.isNotEmpty) {
-      final prefs = await SharedPreferences.getInstance();
-      final favs = prefs.getStringList('favorite_stores') ?? <String>[];
-      if (!favs.contains(s.dhlotteryCode)) {
-        await prefs.setStringList('favorite_stores', [...favs, s.dhlotteryCode]);
-        notifyFavoritesChanged();
-        faved = true;
-      }
-    }
+    final faved = await _favStore();
     if (!mounted) return;
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text('$_round회${s == null ? '' : ' · ${s.storeName}'} · ${games.length}게임 기록했습니다${faved ? ' · 즐겨찾기에 추가' : ''}')));
     Navigator.pop(context, true);
+  }
+
+  /// 판매점에서 산 번호는 즐겨찾기 판매점 카드 안에 모아 보이므로 그 판매점을 즐겨찾기에 넣음 (어느 메뉴에서 찍었든). 새로 넣었으면 true
+  Future<bool> _favStore() async {
+    final s = _store;
+    if (s == null || s.dhlotteryCode.isEmpty) return false;
+    final prefs = await SharedPreferences.getInstance();
+    final favs = prefs.getStringList('favorite_stores') ?? <String>[];
+    if (favs.contains(s.dhlotteryCode)) return false;
+    await prefs.setStringList('favorite_stores', [...favs, s.dhlotteryCode]);
+    notifyFavoritesChanged();
+    return true;
   }
 
   Widget _section(String t, {Widget? trailing}) => Padding(
@@ -253,7 +319,13 @@ class _PurchaseRecordScreenState extends State<PurchaseRecordScreen> {
   Widget build(BuildContext context) {
     final n = widget.manual ? 5 : _games.length;
     final ok = _round != null && (widget.manual ? !_manualBad : _store != null); // + 구입 기록은 판매점만 골라도 저장(번호 없이)
-    return Scaffold(
+    // 직접 입력: 줄마다 이미 저장됐을 수 있으니 뒤로 가도 저장했으면 true (부른 화면이 목록을 다시 읽게)
+    return PopScope(
+      canPop: !widget.manual,
+      onPopInvokedWithResult: (did, _) {
+        if (!did) Navigator.pop(context, _manualId != null);
+      },
+      child: Scaffold(
       appBar: AppBar(
         title: Text(widget.manual ? (_store == null ? '번호 직접 입력' : '직접 입력 · ${_store!.storeName}') : widget.existing != null ? '번호 추가' : '구입 기록',
             style: const TextStyle(fontWeight: FontWeight.w800)),
@@ -269,10 +341,12 @@ class _PurchaseRecordScreenState extends State<PurchaseRecordScreen> {
               backgroundColor: widget.manual ? kManualColor : _c,
               padding: const EdgeInsets.symmetric(vertical: 14),
             ),
-            onPressed: ok ? _save : null,
+            onPressed: ok ? (widget.manual ? _finishManual : _save) : null,
             child: Text(
               ok
-                  ? '저장 — $_round회 ${n == 0 ? '판매점만 (번호 없이)' : '$n게임'}${widget.manual ? ' (안 고른 칸은 자동)' : ''}'
+                  ? widget.manual
+                      ? '완료 — 저장 ${_savedGame.length}게임${List.generate(_texts.length, _rowCanSave).contains(true) ? ' · 안 누른 줄도 저장' : ''}'
+                      : '저장 — $_round회 ${n == 0 ? '판매점만 (번호 없이)' : '$n게임'}'
                   : widget.manual
                   ? '빨간 줄의 번호를 고쳐 주세요 (1~45 · 6개 · 겹침 없이)'
                   : '판매점과 번호를 넣어 주세요',
@@ -328,7 +402,7 @@ class _PurchaseRecordScreenState extends State<PurchaseRecordScreen> {
           ],
           if (widget.manual) ...[
             _section('번호 쓰기 — 띄어 쓰면 번호공으로 (안 쓴 칸은 저장할 때 자동)'),
-            for (var r = 0; r < 5; r++)
+            for (var r = 0; r < _texts.length; r++)
               Container(
                 key: ValueKey('manual_row_$r'),
                 margin: const EdgeInsets.only(bottom: 6),
@@ -336,17 +410,17 @@ class _PurchaseRecordScreenState extends State<PurchaseRecordScreen> {
                 decoration: BoxDecoration(
                   color: kManualColor.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: _bad[r] ? Colors.red : Colors.transparent),
+                  border: Border.all(color: _bad[r] ? Colors.red : _rowSaved(r) ? Colors.green : Colors.transparent, width: _rowSaved(r) ? 1.6 : 1),
                 ),
                 child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
                   Row(children: [
-                    SizedBox(width: 18, child: Text('ABCDE'[r], style: const TextStyle(fontWeight: FontWeight.w900, color: kManualColor))),
+                    SizedBox(width: 18, child: Text(rowLabel(r), style: const TextStyle(fontWeight: FontWeight.w900, color: kManualColor))),
                     Expanded(
                       child: TextField(
                         key: ValueKey('manual_text_$r'),
                         controller: _texts[r],
                         keyboardType: TextInputType.text, // 숫자 자판엔 띄어쓰기가 없어서
-                        textInputAction: r < 4 ? TextInputAction.next : TextInputAction.done,
+                        textInputAction: r < _texts.length - 1 ? TextInputAction.next : TextInputAction.done,
                         style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: 1),
                         decoration: InputDecoration(
                           isDense: true,
@@ -366,6 +440,20 @@ class _PurchaseRecordScreenState extends State<PurchaseRecordScreen> {
                         _typed(r, '');
                       },
                       icon: Icon(Icons.close_rounded, size: 18, color: Colors.grey.shade500),
+                    ),
+                    // 이 줄 저장 — 오류 · 빈 줄은 막힘
+                    FilledButton(
+                      key: ValueKey('manual_save_$r'),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: _rowSaved(r) ? Colors.green : kManualColor,
+                        disabledBackgroundColor: _rowSaved(r) ? Colors.green : Colors.grey.shade300,
+                        disabledForegroundColor: Colors.white,
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 10),
+                        minimumSize: const Size(56, 36),
+                      ),
+                      onPressed: _rowCanSave(r) ? () => _saveRow(r) : null,
+                      child: Text(_rowSaved(r) ? '저장됨' : '저장', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900)),
                     ),
                   ]),
                   Padding(
@@ -387,6 +475,16 @@ class _PurchaseRecordScreenState extends State<PurchaseRecordScreen> {
                   ),
                 ]),
               ),
+            // 마지막 줄 아래 가운데 — 줄 추가
+            Center(
+              child: OutlinedButton.icon(
+                key: const ValueKey('manual_add_row'),
+                style: OutlinedButton.styleFrom(foregroundColor: kManualColor, side: const BorderSide(color: kManualColor)),
+                onPressed: _addRow,
+                icon: const Icon(Icons.add_rounded, size: 18),
+                label: Text('${rowLabel(_texts.length)}줄 추가', style: const TextStyle(fontWeight: FontWeight.w900)),
+              ),
+            ),
             const SizedBox(height: 10),
           ] else ...[
             SizedBox(
@@ -455,7 +553,7 @@ class _PurchaseRecordScreenState extends State<PurchaseRecordScreen> {
             ),
         ],
       ),
-    );
+    ));
   }
 }
 
@@ -745,7 +843,7 @@ class _PurchaseRecordsSectionState extends State<PurchaseRecordsSection> {
                   SizedBox(
                     width: 18,
                     child: Text(
-                      'ABCDE'[i],
+                      rowLabel(i),
                       style: TextStyle(fontWeight: FontWeight.w900, color: Colors.grey.shade600),
                     ),
                   ),

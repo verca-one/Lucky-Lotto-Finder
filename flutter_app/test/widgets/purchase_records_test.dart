@@ -104,7 +104,7 @@ void main() {
     t.view.physicalSize = const Size(1080, 2340);
     t.view.devicePixelRatio = 3;
     addTearDown(t.view.reset);
-    await t.pumpWidget(const MaterialApp(home: PurchaseRecordScreen(manual: true)));
+    await t.pumpWidget(const MaterialApp(home: PurchaseRecordScreen(manual: true, round: 1252)));
     await t.pumpAndSettle();
     expect(find.text('번호 직접 입력'), findsOneWidget);
     expect(find.byKey(const ValueKey('purchase_store')), findsNothing);
@@ -121,6 +121,26 @@ void main() {
     final row = t.widget<Container>(find.byKey(const ValueKey('manual_row_0')));
     expect((row.decoration as BoxDecoration).border, Border.all(color: Colors.red));
     expect(t.widget<FilledButton>(find.byKey(const ValueKey('purchase_save'))).onPressed, isNull);
+    expect(t.widget<FilledButton>(find.byKey(const ValueKey('manual_save_0'))).onPressed, isNull); // 오류 줄은 저장 안 됨
+    expect(t.widget<FilledButton>(find.byKey(const ValueKey('manual_save_1'))).onPressed, isNull); // 빈 줄도
+    // 줄마다 저장 — 한 기록에 모임
+    await t.enterText(find.byKey(const ValueKey('manual_text_0')), '1 2 3 4 5 6');
+    await t.pump();
+    await t.tap(find.byKey(const ValueKey('manual_save_0')));
+    await t.pumpAndSettle();
+    expect(find.text('저장됨'), findsOneWidget);
+    await t.enterText(find.byKey(const ValueKey('manual_text_1')), '7 8 9 10 11 12');
+    await t.pump();
+    await t.tap(find.byKey(const ValueKey('manual_save_1')));
+    await t.pumpAndSettle();
+    final l = await PurchaseRecords.load();
+    expect(l.length, 1);
+    expect(l.single.games, [[1, 2, 3, 4, 5, 6], [7, 8, 9, 10, 11, 12]]);
+    // E 아래 [F줄 추가]
+    await t.tap(find.byKey(const ValueKey('manual_add_row')));
+    await t.pumpAndSettle();
+    expect(find.byKey(const ValueKey('manual_text_5')), findsOneWidget);
+    expect(find.text('G줄 추가'), findsOneWidget);
   });
 
   testWidgets('번호 추가 — 판매점만 기록한 것을 열면 판매점 · 회차가 채워져 있고, 저장하면 같은 기록을 고침(새로 안 만듦)', (t) async {
