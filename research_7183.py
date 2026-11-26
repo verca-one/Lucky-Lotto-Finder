@@ -613,6 +613,10 @@ def build_prompt(res, nums, rounds, cyc, prev, scored):
     if rec.get("trusted"):
         h, n, e = rec["trusted"]
         L += [f"- 지금까지 내가 믿은 법칙: {n}번 중 {h}번 적중 · 우연이면 {e}번"]
+    pd = str((prev or {}).get("dream") or "").strip()
+    if pd:   # 지난 회차 추리 본문도 참고자료로 넘긴다 (2026-11-26 사용자 지시) — 대신 쓴 주는 누가 썼는지 밝힘
+        who = " — 제미나이가 답하지 못해 Claude 가 대신 씀" if (prev or {}).get("source") == "claude" else ""
+        L += ["", f"[지난 회차의 추리 (참고자료{who})]", pd]
     L += ["", "[지난주의 내가 남긴 연구 노트]", (prev or {}).get("notes") or "(없음 — 첫 주)"]
     L += ["", "[쓸 수 있는 조각]", "- 기본 값: " + ", ".join(bases(np.array([[1, 2, 3, 4, 5, 6]])).keys()),
           "- 회차 사이 계산: " + ", ".join(p[0] for p in PAIRS),
