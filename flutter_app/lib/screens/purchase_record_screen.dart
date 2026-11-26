@@ -721,7 +721,7 @@ class _PurchaseRecordsSectionState extends State<PurchaseRecordsSection> {
             const Icon(Icons.receipt_long_rounded, color: _c, size: 22),
             const SizedBox(width: 8),
             Expanded(
-              child: Text('구매번호${r == null ? '' : ' (${r.length})'}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              child: const Text('구매번호 입력', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             ),
             FilledButton.icon(
               key: const ValueKey('purchase_manual'),
@@ -740,7 +740,10 @@ class _PurchaseRecordsSectionState extends State<PurchaseRecordsSection> {
             ),
           ],
         ),
-        const SizedBox(height: 8),
+        Padding(
+          padding: const EdgeInsets.only(top: 14, bottom: 8),
+          child: Text('구매한 번호${r == null ? '' : ' (${r.length})'}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+        ),
         if (r == null)
           const Padding(
             padding: EdgeInsets.all(16),

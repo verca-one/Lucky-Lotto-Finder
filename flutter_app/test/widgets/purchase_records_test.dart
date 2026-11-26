@@ -51,7 +51,7 @@ void main() {
       onWin: (v) => won = v,
     )))));
     await t.pumpAndSettle();
-    expect(find.text('구매번호 (3)'), findsOneWidget);
+    expect(find.text('구매한 번호 (3)'), findsOneWidget);
     expect(find.text('번호 없이 판매점만 기록'), findsOneWidget); // 판매점만 골라 저장한 기록
     expect(find.text('🎉 축하합니다! 4등 당첨!'), findsOneWidget); // 1 5 18 23 맞음 · 노란 축하 표시
     expect(won, isTrue); // 최근 추첨 회차(1250) 당첨 → 즐겨찾기 탭 당첨 그림

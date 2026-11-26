@@ -7,7 +7,7 @@ import '../services/supabase_service.dart';
 import '../services/badge_service.dart';
 import '../services/favorites_notifier.dart';
 import 'my_numbers_screen.dart';
-import 'purchase_record_screen.dart' show openPurchaseRecord, kManualColor;
+import 'purchase_record_screen.dart' show openPurchaseRecord, kManualColor, PurchaseRecordsSection;
 
 class FavoritesScreen extends StatefulWidget {
   /// 즐겨찾기 탭 — 판매점 카드에 [QR] [직접 입력] · 아래에 구매번호 (관리자 브리핑에서 열 때는 false)
@@ -234,15 +234,24 @@ class _FavoritesScreenState extends State<FavoritesScreen>
       child: ListView(
         padding: EdgeInsets.zero,
         children: [
-          ..._storeItems(),
-          // 구매번호 (예전 '나의 번호' 탭) — 판매점 카드에서 넣은 번호도 여기 쌓임
-          if (widget.withNumbers)
-            MyNumbersScreen(
-              key: ValueKey('my_numbers_$_rev'),
-              onWin: (v) {
-                if (mounted && v != _myWin) setState(() => _myWin = v);
-              },
+          // 당첨 그림 — 파란 상자 바로 아래. 즐겨찾기 판매점 당첨(토~월) 또는 내 구매번호 당첨(최근 추첨 회차)
+          if (_storeWin || _myWin)
+            Image.asset('assets/vito.png', key: const ValueKey('fav_win_image'), width: double.infinity, height: 300, fit: BoxFit.cover),
+          // 순서: 구매번호 입력 · 구매한 번호 → 즐겨찾기한 판매점(판매점에서 산 번호) → 추천에서 저장한 번호
+          if (widget.withNumbers) ...[
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
+              child: PurchaseRecordsSection(
+                key: ValueKey('purchases_$_rev'),
+                onWin: (v) {
+                  if (mounted && v != _myWin) setState(() => _myWin = v);
+                },
+              ),
             ),
+            const Divider(height: 24, indent: 16, endIndent: 16),
+          ],
+          ..._storeItems(),
+          if (widget.withNumbers) MyNumbersScreen(key: ValueKey('my_numbers_$_rev')),
         ],
       ),
     );
@@ -282,15 +291,12 @@ class _FavoritesScreenState extends State<FavoritesScreen>
     );
   }
 
+  bool get _storeWin => _showWinnerBanner && _winnerStores.isNotEmpty;
+
   List<Widget> _storeItems() {
-    // 당첨 그림 — 즐겨찾기 판매점 당첨(토~월) 또는 내 구매번호 당첨(최근 추첨 회차)
-    final storeWin = _showWinnerBanner && _winnerStores.isNotEmpty;
-    final image = [
-      if (storeWin || _myWin)
-        Image.asset('assets/vito.png', key: const ValueKey('fav_win_image'), width: double.infinity, height: 300, fit: BoxFit.cover),
-    ];
+    final storeWin = _storeWin;
     if (_favorites.isEmpty) {
-      return [...image, Padding(
+      return [Padding(
         padding: const EdgeInsets.symmetric(vertical: 32),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -308,7 +314,7 @@ class _FavoritesScreenState extends State<FavoritesScreen>
     }
 
     if (_allStores.isEmpty) {
-      return [...image, Padding(
+      return [Padding(
         padding: const EdgeInsets.symmetric(vertical: 32),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -323,7 +329,6 @@ class _FavoritesScreenState extends State<FavoritesScreen>
     }
 
     return [
-          ...image,
           // 당첨 판매점 묶음 (토~월요일, 당첨 판매점 있을 때만)
           if (storeWin) ...[
             // 골드 당첨 섹션
@@ -395,7 +400,7 @@ class _FavoritesScreenState extends State<FavoritesScreen>
                 Icon(Icons.star, color: Colors.amber.shade700, size: 22),
                 const SizedBox(width: 8),
                 Text(
-                  '즐겨찾기 (${_allStores.length})',
+                  '즐겨찾기한 판매점 (${_allStores.length})',
                   style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
                 const Spacer(),

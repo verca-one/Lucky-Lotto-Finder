@@ -2,12 +2,9 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'purchase_record_screen.dart';
 
 class MyNumbersScreen extends StatefulWidget {
-  /// 내 구매번호가 최근 추첨 회차에서 당첨이면 true (즐겨찾기 탭 당첨 그림)
-  final ValueChanged<bool>? onWin;
-  const MyNumbersScreen({super.key, this.onWin});
+  const MyNumbersScreen({super.key});
 
   @override
   State<MyNumbersScreen> createState() => _MyNumbersScreenState();
@@ -67,35 +64,12 @@ class _MyNumbersScreenState extends State<MyNumbersScreen> {
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
-
-    // 맨 위: 구입 기록 (QR · 판매점 · 자동 당첨 확인 — 이 탭에만 표시), 아래: 추천 메뉴에서 저장한 번호
-    final top = [PurchaseRecordsSection(onWin: widget.onWin), const Divider(height: 32)];
-    if (_savedNumbers.isEmpty) {
-      // 즐겨찾기 탭 목록 안에 들어가므로 스스로 스크롤하지 않음
-      return Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          ...top,
-          Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.casino_outlined, size: 64, color: Colors.grey.shade400),
-                const SizedBox(height: 16),
-                Text('저장된 번호가 없습니다', style: TextStyle(fontSize: 16, color: Colors.grey.shade600)),
-                const SizedBox(height: 8),
-                Text('추천 메뉴에서 번호를 생성하고 저장해보세요', style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
-              ],
-            ),
-          ),
-        ]),
-      );
-    }
-
+    // 추천 메뉴에서 저장한 번호 — 즐겨찾기 화면 맨 아래 (없으면 칸 자체를 숨김)
+    if (_savedNumbers.isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.all(16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-        ...top,
+        const Divider(height: 24),
         _savedHeader(),
         for (var i = 1; i <= _savedNumbers.length; i++) _savedItem(i),
       ]),
