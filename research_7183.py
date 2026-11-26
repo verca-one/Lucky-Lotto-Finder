@@ -54,6 +54,27 @@ MANUAL_DREAM = os.path.join(os.path.dirname(os.path.abspath(__file__)), "researc
 AI_SOURCES = ("gemini", "claude")         # 꿈을 꾼 쪽 — 저장본 source · 번호 sets_by · 순환 by 에 그대로 적는다 (대행은 대행이라고 표시)
 
 
+# 사람이 확인해 둔 발견 — 매주 제미나이 자료 끝에 참고자료로 붙인다 (2026-11-26 사용자 지시: 뭐든지 참고해서 발전할 요소로).
+#   새 발견은 이 파일 맨 아래에 한 줄씩 더한다. '#' 줄은 보내지 않는다.
+REFERENCE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "research_7183_reference.md")
+REF_MAX = 2000
+
+
+def reference_notes(path=None):
+    """참고자료 파일 본문 ('#' 줄 · 빈 줄 제외). 길면 최근 것(아래쪽)부터 REF_MAX 자까지. 파일이 없으면 빈 문자열"""
+    try:
+        with open(path or REFERENCE, encoding="utf-8") as f:
+            lines = [x.strip() for x in f if x.strip() and not x.lstrip().startswith("#")]
+    except OSError:
+        return ""
+    keep = []
+    for x in reversed(lines):
+        if sum(len(k) + 1 for k in keep) + len(x) > REF_MAX:
+            break
+        keep.append(x)
+    return "\n".join(reversed(keep))
+
+
 def manual_dream(target, path=None):
     """대신 쓴 답 파일 — 이번 목표 회차 것이면 (답, 누가, 모델), 아니면 None"""
     try:
@@ -618,6 +639,9 @@ def build_prompt(res, nums, rounds, cyc, prev, scored):
         who = " — 제미나이가 답하지 못해 Claude 가 대신 씀" if (prev or {}).get("source") == "claude" else ""
         L += ["", f"[지난 회차의 추리 (참고자료{who})]", pd]
     L += ["", "[지난주의 내가 남긴 연구 노트]", (prev or {}).get("notes") or "(없음 — 첫 주)"]
+    ref = reference_notes()
+    if ref:
+        L += ["", "[참고자료 — 사람이 확인해 둔 발견 (추리에 참고하되 그대로 믿지 말고 성적으로 확인)]", ref]
     L += ["", "[쓸 수 있는 조각]", "- 기본 값: " + ", ".join(bases(np.array([[1, 2, 3, 4, 5, 6]])).keys()),
           "- 회차 사이 계산: " + ", ".join(p[0] for p in PAIRS),
           "- 마무리: 그대로, 자릿수 합, 2~12로 나눈 나머지 · 몫 · 나누어떨어질 때의 몫"]
@@ -798,6 +822,7 @@ def weekly(db, a):
 def selfcheck():
     """제미나이 출력 걸러내기 점검 (잘못된 순환 · 번호는 버린다)"""
     assert manual_dream(-1) is None   # 다른 회차 것이면 안 씀
+    assert reference_notes(os.devnull) == "" and len(reference_notes()) <= REF_MAX
     assert busy_error("503 UNAVAILABLE. high demand") and not busy_error("429 RESOURCE_EXHAUSTED") and not busy_error("TimeoutError")
     cl = [dict(c) for c in SEED_CYCLES]
     got = clean_cycles([{"name": "a b", "digits": [3, 8, 1, 7], "why": "돌린 7381"}, {"name": "", "digits": [1, 1], "why": ""},
