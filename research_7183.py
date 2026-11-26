@@ -153,6 +153,60 @@ def formula_name(f):
     return f"{f[0]} · {PAIRS[f[1]][0]} · {POSTS[f[2]][0]}"
 
 
+def _ranges(vals):
+    """[33, 34, 35, 38] → '33~35 · 38' (여섯 토막 넘으면 줄임)"""
+    vals, out, i = sorted(set(vals)), [], 0
+    while i < len(vals):
+        j = i
+        while j + 1 < len(vals) and vals[j + 1] == vals[j] + 1:
+            j += 1
+        out.append(str(vals[i]) if i == j else f"{vals[i]}~{vals[j]}")
+        i = j + 1
+    return (" · ".join(out[:6]) + (" …" if len(out) > 6 else "")) if out else "해당 값 없음"
+
+
+def law_ok(x, combo, hist):
+    """조합 하나가 법칙 x 의 다음 회차 예상을 만족하나 (hist = 지금까지 당첨번호의 기본 값)"""
+    f = tuple(x["f"])
+    xs = hist[f[0]]
+    return int(np.asarray(formula_value(f, bases(np.array([sorted(combo)]))[f[0]], xs[-1], xs[-2]))[0]) == x["next"]
+
+
+def explain_law(x, hist, dom):
+    """법칙을 사람 말로 — (조건, 설명). 조건 = 이번에 맞으려면 그 자리 값이 무엇이어야 하나 (예: '5번째 번호: 33~38')
+    dom = {기본 값 이름: 나올 수 있는 값들}"""
+    f = tuple(x["f"])
+    xs = hist[f[0]]
+    p1, p2 = xs[-1], xs[-2]
+    vals = [int(v) for v in dom[f[0]] if int(np.asarray(formula_value(f, np.array([v]), p1, p2))[0]) == x["next"]]
+    cond = f"{f[0]}: {_ranges(vals)}"
+    need = PAIRS[f[1]][1]
+    prev = "" if need == 0 else f" (앞 회차 값 {int(p1)})" if need == 1 else f" (앞앞 회차 값 {int(p2)})"
+    name = formula_name(f)
+    if x["mode"].startswith("주기"):
+        how = f"'{name}' 값이 {x['mode'].split()[1]} 간격으로 {x['run']}번 연속 같았습니다{prev}. 이번에도 이어지면 값이 {x['next']} 이 됩니다."
+    else:
+        how = f"'{name}' 값이 순환 {x['mode'][3:]} 의 순서를 {x['run']}번 연속 따라갔습니다{prev}. 다음 차례 값이 {x['next']} 입니다."
+    return cond, how
+
+
+def annotate(p, hist, dom):
+    """저장본에 법칙 설명(cond · how)과 번호 세트별 '만족하는 법칙 번호'를 붙인다 — 번호 · 꿈은 건드리지 않는다"""
+    laws = {}
+    for key in ("alive", "trusted"):
+        for x in p.get(key) or []:
+            if isinstance(x, dict) and x.get("f") and x.get("mode"):
+                x["cond"], x["how"] = explain_law(x, hist, dom)
+                if x.get("id") is not None:
+                    laws[x["id"]] = x
+
+    def tags(sets):
+        return [sorted(k for k, x in laws.items() if law_ok(x, s_, hist)) for s_ in sets or []]
+
+    p["sets_laws"], p["late_sets_laws"] = tags(p.get("sets")), tags(p.get("late_sets"))
+    return p
+
+
 def build_formulas(hist):
     """모든 식의 회차별 값 V (식 수 × 회차 수). 값 흐름이 똑같은 식은 하나만 남긴다."""
     T = len(next(iter(hist.values())))
@@ -812,12 +866,25 @@ def weekly(db, a):
     wait_note = f"제미나이 한도 초과 — {datetime.fromisoformat(until).astimezone(KST):%m/%d %H:%M}(KST) 이후 다시 시도" if quota_wait else None
     # --late-sets (수동 실행 때만): 월요일에 제미나이가 못 답해 계산 번호로 등록된 회차에, 제미나이 번호를 별도 기록으로 한 번 추가
     late_want = bool(getattr(a, "late_sets", False) and registered and cur.get("sets_by") == "rule" and not cur.get("late_sets"))
+    def keep(row):
+        """고정된 저장본 — 법칙 설명 · 세트별 법칙 표기가 없으면 그것만 채워 넣는다 (번호 · 꿈은 그대로)"""
+        if "sets_laws" in row or row.get("latest_round") != latest:
+            return row
+        dom = {k: np.unique(v) for k, v in bases(draw_sample(np.random.default_rng(7183))).items()}
+        annotate(row, bases(nums), dom)
+        print(f"  법칙 설명 · 세트별 법칙 표기를 채워 넣음: {row['sets_laws']} / 주중 추가 {row['late_sets_laws']}")
+        if not a.dry_run:
+            db.upsert("research_results", [{"research_type": RESULT_TYPE, "model_version": ROW_VERSION, "training_end_round": latest,
+                                            "target_round": target, "payload": row}],
+                      "research_type,model_version,training_end_round,target_round")
+        return row
+
     if have_ai and registered and not late_want:
         print(f"{target}회 7183 에이전트 이미 있음(제미나이 · 번호 등록) — 고정")
-        return cur
+        return keep(cur)
     if quota_wait and registered and not manual:
         print(f"{target}회 7183 에이전트 — {wait_note} (번호는 등록됨 · 할 일 없음)")
-        return cur
+        return keep(cur)
     carry = cur or prev or {}
     cycles = [dict(c) for c in (carry.get("cycles") or SEED_CYCLES)]
     cycles = [{k: c[k] for k in ("name", "digits", "by", "registered_round", "why") if k in c} for c in cycles]
@@ -938,6 +1005,7 @@ def weekly(db, a):
         "record": record, "scored_previous": scored,
         "rule": "법칙 · 조수는 서버 계산, 꿈(추리 · 새 순환 · 믿는 법칙)은 제미나이. 채점은 다음 회차 적중 하나 — 우연 기대와 나란히",
     }
+    annotate(payload, hist, {k: np.unique(v) for k, v in bases(res["ctx"]["sample"]).items()})   # 법칙 설명 · 세트별 법칙 표기
     json.dumps(payload, ensure_ascii=False)
     print(f"{target}회 7183 에이전트 ({payload['source']}{' · AI 실패: ' + err if err and not data else ''}) — "
           f"살펴본 것 {payload['scanned']:,}개 · 살아 있는 법칙 {nx['laws_total']}개 · 순환 {len(cyc)}개 (새로 {len(new)}개) · 완성 {done_now or '없음'}")
@@ -965,6 +1033,12 @@ def selfcheck():
     """제미나이 출력 걸러내기 점검 (잘못된 순환 · 번호는 버린다)"""
     assert manual_dream(-1) is None   # 다른 회차 것이면 안 씀
     assert evid([10, 0, 10.0]) == 0.0 and evid([5, 0, 10.0]) == 0.0 and abs(evid([40, 0, 10.0]) - 1.0) < 1e-9   # 우연 이하면 힘 0
+    assert _ranges([33, 34, 35, 38]) == "33~35 · 38" and _ranges([]) == "해당 값 없음"
+    _h = bases(np.array([[1, 5, 18, 23, 27, 28], [14, 18, 19, 29, 40, 45]]))     # 1250 · 1251회
+    _x = {"f": ["6번째 번호", 3, 26], "mode": "주기 1회", "run": 3, "next": 0}      # 앞앞 회차 + 그 회차 · 10로 나눈 나머지 → 0
+    assert POSTS[26][0] == "10로 나눈 나머지" and PAIRS[3][0] == "앞앞 회차 + 그 회차"
+    assert law_ok(_x, [7, 25, 27, 29, 37, 42], _h) and not law_ok(_x, [7, 25, 27, 29, 37, 45], _h)
+    assert explain_law(_x, _h, {"6번째 번호": np.arange(6, 46)})[0] == "6번째 번호: 12 · 22 · 32 · 42"
     # 계산이 고르는 법칙: 성적 좋은 방식 먼저 → 놀라운 연속 먼저 → 같은 자리는 하나만
     assert rule_trust([(0, "a", "6번째 번호", 5.0), (1, "b", "6번째 번호의 끝수", 9.0), (2, "a", "1번째 번호", 3.0), (3, "b", "2번째 번호", 1.0),
                        (4, "b", "3번째 번호", 0.5)], {"a": 1.0, "b": 1.2}) == [1, 3, 4]

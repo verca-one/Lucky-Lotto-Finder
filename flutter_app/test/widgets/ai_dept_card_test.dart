@@ -1,5 +1,6 @@
 // 연구소 AI 부서 — 상태 계산(원활/문제) · 진행 막대 · 새로고침 요청 · 브리핑 안내
 import 'package:flutter/material.dart';
+import 'package:flutter_app/services/research/agent7183.dart';
 import 'package:flutter_app/services/research/ai_dept_status.dart';
 import 'package:flutter_app/widgets/ai_dept_card.dart';
 import 'package:flutter_app/widgets/ai_week_progress.dart';
@@ -61,6 +62,31 @@ void main() {
     expect(find.byKey(const ValueKey('ai_dept_elapsed')), findsOneWidget); // 실행 시간
     expect(t.widget<IconButton>(find.byKey(const ValueKey('ai_dept_refresh'))).onPressed, isNull);
     await t.pumpWidget(const SizedBox()); // 30초 타이머 정리
+  });
+
+  testWidgets('펼치면 이번 회차 추천번호가 따른 법칙 풀이 — 법칙 설명 · 번호별 표기', (t) async {
+    final st = AiDeptStatus.fromRows(a7183: {'source': 'claude'}, review: {'source': 'gemini'}, nextRound: 1252);
+    final a = Agent7183.fromPayload({
+      'target_round': 1252, 'source': 'claude', 'sets_status': 'registered', 'sets_by': 'rule',
+      'sets': [[7, 25, 27, 29, 37, 42]], 'sets_laws': [[1, 2]],
+      'late_sets': [[7, 10, 15, 19, 34, 42]], 'late_sets_laws': [[1]], 'late_sets_by': 'claude',
+      'trusted': [{'id': 1, 'law': '6번째 번호 · 앞앞 회차 + 그 회차 · 10로 나눈 나머지', 'mode': '주기 1회', 'run': 3, 'next': 0, 'chance': 0.114,
+        'cond': '6번째 번호: 22 · 32 · 42', 'how': '값이 1회 간격으로 3번 연속 같았습니다.', 'why': '끝수 2에서 만남'}],
+    });
+    t.view.physicalSize = const Size(1080, 3200);
+    t.view.devicePixelRatio = 3;
+    addTearDown(t.view.reset);
+    await t.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(
+        child: AiDeptCard(loader: () async => st, lawsLoader: (_) async => a)))));
+    await t.pumpAndSettle();
+    expect(find.byKey(const ValueKey('ai_dept_laws')), findsNothing); // 접힘
+    await t.tap(find.byKey(const ValueKey('ai_dept_toggle')));
+    await t.pumpAndSettle();
+    expect(find.text('1252회 제미나이 추천번호(7183)가 따른 법칙'), findsOneWidget);
+    expect(find.text('★ 법칙 1 — 6번째 번호: 22 · 32 · 42'), findsOneWidget);
+    expect(find.text('무슨 법칙인가: 값이 1회 간격으로 3번 연속 같았습니다.'), findsOneWidget);
+    expect(find.text('1번  7 · 25 · 27 · 29 · 37 · 42  →  법칙 ★1 · 2'), findsOneWidget);
+    expect(find.text('번호별 — Claude(대행) 주중 추가'), findsOneWidget);
   });
 
   testWidgets('문제 있고 실행 중 아님 → [새로고침] 누르면 요청', (t) async {

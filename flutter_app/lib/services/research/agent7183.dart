@@ -22,6 +22,9 @@ class Agent7183 {
   /// 주중에 제미나이가 답해 추가한 번호 (별도 기록 — 월요일 등록 번호 sets 는 그대로)
   final List<List<int>> lateSets;
   final String? lateSetsAt, lateSetsBy;
+
+  /// 번호 세트별로 만족하는 법칙 번호(id) — sets · lateSets 와 같은 순서. 예전 저장본에는 없다(빈 목록)
+  final List<List<int>> setsLaws, lateSetsLaws;
   final List<int> goldNumbers;
   final int scanned, aliveTotal;
   final List<Map<String, dynamic>> alive, trusted, cycles, gold, nearest;
@@ -52,7 +55,7 @@ class Agent7183 {
 
   const Agent7183({
     required this.target, this.source = 'rule', this.setsStatus = 'waiting', this.setsBy, this.setsNote, this.aiError,
-    this.sets = const [], this.lateSets = const [], this.lateSetsAt, this.lateSetsBy, this.goldNumbers = const [], this.scanned = 0, this.aliveTotal = 0, this.alive = const [],
+    this.sets = const [], this.lateSets = const [], this.lateSetsAt, this.lateSetsBy, this.setsLaws = const [], this.lateSetsLaws = const [], this.goldNumbers = const [], this.scanned = 0, this.aliveTotal = 0, this.alive = const [],
     this.trusted = const [], this.cycles = const [], this.gold = const [], this.nearest = const [], this.completedNow = const [],
     this.dream = '', this.notes = '', this.newParts = '', this.replay = const {}, this.recordSets = const [],
     this.recordGold = const [], this.recordTrusted = const [],
@@ -88,6 +91,7 @@ class Agent7183 {
       ],
       lateSetsAt: p['late_sets_at'] as String?,
       lateSetsBy: p['late_sets_by'] as String?,
+      setsLaws: _ids(p['sets_laws']), lateSetsLaws: _ids(p['late_sets_laws']),
       goldNumbers: [for (final n in _nums(p['gold_numbers'])) n.toInt()],
       scanned: (p['scanned'] as num?)?.toInt() ?? 0,
       aliveTotal: (p['alive_total'] as num?)?.toInt() ?? 0,
@@ -107,6 +111,18 @@ class Agent7183 {
       ruleTrust: _nums(sb['rule_trust']),
     );
   }
+
+  static List<List<int>> _ids(dynamic v) => [
+        for (final s in (v as List? ?? const []))
+          if (s is List) [for (final n in s) if (n is num) n.toInt()],
+      ];
+
+  /// 믿는 법칙의 번호들
+  Set<int> get trustedIds => {for (final t in trusted) if (t['id'] is num) (t['id'] as num).toInt()};
+
+  /// 세트 옆에 적는 글 — '법칙 ★1 · ★3 · 5' (★ = 믿는 법칙) / 만족하는 법칙이 없으면 '법칙 없음'
+  String lawTag(List<int> ids) =>
+      ids.isEmpty ? '만족하는 법칙 없음' : '법칙 ${[for (final k in ids) trustedIds.contains(k) ? '★$k' : '$k'].join(' · ')}';
 
   /// 목표 회차의 최신 저장본 (없으면 null)
   static Future<Agent7183?> load(int target) async {

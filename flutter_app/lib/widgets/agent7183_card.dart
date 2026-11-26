@@ -148,9 +148,12 @@ class _Agent7183CardState extends State<Agent7183Card> {
             child: BriefingSetMarks(
               id: '${a.target}:hypothesis:${e.key}',
               numbers: e.value,
-              child: Row(children: [
-                SizedBox(width: 18, child: Text('${e.key + 1}', style: TextStyle(fontWeight: FontWeight.w900, color: accent))),
-                ...e.value.map((n) => Padding(padding: const EdgeInsets.only(right: 3), child: lottoBall(n, size: 28))),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                Row(children: [
+                  SizedBox(width: 18, child: Text('${e.key + 1}', style: TextStyle(fontWeight: FontWeight.w900, color: accent))),
+                  ...e.value.map((n) => Padding(padding: const EdgeInsets.only(right: 3), child: lottoBall(n, size: 28))),
+                ]),
+                if (e.key < a.setsLaws.length) _tag(a.lawTag(a.setsLaws[e.key]), accent),
               ]),
             ),
           ),
@@ -178,9 +181,12 @@ class _Agent7183CardState extends State<Agent7183Card> {
                 child: BriefingSetMarks(
                   id: '${a.target}:hypothesis_late:${e.key}',
                   numbers: e.value,
-                  child: Row(children: [
-                    SizedBox(width: 18, child: Text('${e.key + 1}', style: const TextStyle(fontWeight: FontWeight.w900, color: k7183Color))),
-                    ...e.value.map((n) => Padding(padding: const EdgeInsets.only(right: 3), child: lottoBall(n, size: 28))),
+                  child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                    Row(children: [
+                      SizedBox(width: 18, child: Text('${e.key + 1}', style: const TextStyle(fontWeight: FontWeight.w900, color: k7183Color))),
+                      ...e.value.map((n) => Padding(padding: const EdgeInsets.only(right: 3), child: lottoBall(n, size: 28))),
+                    ]),
+                    if (e.key < a.lateSetsLaws.length) _tag(a.lawTag(a.lateSetsLaws[e.key]), k7183Color),
                   ]),
                 ),
               ),
@@ -277,10 +283,17 @@ class _Agent7183CardState extends State<Agent7183Card> {
     return l.length < 3 ? '-' : '${_n(l[1])}번 중 ${_n(l[0])}번(우연 ${l[2].toStringAsFixed(1)})';
   }
 
+  /// 번호 세트 아래 한 줄 — 이 번호가 만족하는 법칙 (★ = 믿는 법칙, 번호는 아래 법칙 목록의 번호)
+  Widget _tag(String s, Color c) => Padding(
+        padding: const EdgeInsets.only(left: 18, top: 2),
+        child: Text(s, style: TextStyle(fontSize: 10.5, fontWeight: FontWeight.w800, color: c)),
+      );
+
   Widget _law(Map<String, dynamic> t, {bool why = false}) => Padding(
         padding: const EdgeInsets.only(top: 3),
         child: Text(
-            '· ${t['law']} [${t['mode']}] ${t['run']}번 연속 → 다음 값 ${t['next']} '
+            '· ${t['id'] == null ? '' : '법칙 ${t['id']} — '}${t['cond'] == null ? '' : '${t['cond']} | '}'
+            '${t['law']} [${t['mode']}] ${t['run']}번 연속 → 다음 값 ${t['next']} '
             '(우연히 맞을 확률 ${(((t['chance'] as num?) ?? 0) * 100).toStringAsFixed(0)}%)'
             '${why && '${t['why'] ?? ''}'.isNotEmpty ? ' — ${t['why']}' : ''}',
             style: TextStyle(fontSize: 10.5, color: Colors.grey.shade800, height: 1.4)),

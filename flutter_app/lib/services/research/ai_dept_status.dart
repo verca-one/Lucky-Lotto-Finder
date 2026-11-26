@@ -82,7 +82,9 @@ class AiDeptStatus {
   final AiRequest? request;
   /// 이번 주 몫별 결과 — true 성공 · false 실패 · null 아직 안 돎
   final Map<String, bool?> week;
-  const AiDeptStatus(this.items, this.request, {this.week = const {}});
+  /// 다음 추첨 회차 (0 = 모름) — AI 부서의 '이번 회차 추천번호가 따른 법칙' 풀이에 씀
+  final int nextRound;
+  const AiDeptStatus(this.items, this.request, {this.week = const {}, this.nextRound = 0});
 
   /// 이번 주 월요일 0시 KST
   static DateTime weekStart(DateTime now) {
@@ -133,6 +135,7 @@ class AiDeptStatus {
     List<Map<String, dynamic>> runs = const [],
     Map<String, dynamic>? request,
     DateTime? now,
+    int nextRound = 0,
   }) {
     final items = <AiDeptItem>[];
     final since = weekStart(now ?? DateTime.now());
@@ -173,7 +176,7 @@ class AiDeptStatus {
         items.add(AiDeptItem(name, true, r['status'] == 'skipped' ? '이번엔 건너뜀' : '정상', at));
       }
     }
-    return AiDeptStatus(items, request == null ? null : AiRequest.fromRow(request), week: week);
+    return AiDeptStatus(items, request == null ? null : AiRequest.fromRow(request), week: week, nextRound: nextRound);
   }
 
   static String _kst(DateTime t) {
@@ -198,6 +201,7 @@ class AiDeptStatus {
       req = await db.from('research_ai_requests').select().order('id', ascending: false).limit(1);
     } catch (_) {} // 표가 아직 없으면(SQL 미실행) 요청 없음으로
     return fromRows(
+      nextRound: next,
       a7183: (a as List).isEmpty ? null : Map<String, dynamic>.from(a.first),
       review: (rv as List).isEmpty ? null : Map<String, dynamic>.from(rv.first),
       runs: [for (final r in runs as List) Map<String, dynamic>.from(r)],

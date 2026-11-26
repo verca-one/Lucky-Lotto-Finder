@@ -106,6 +106,18 @@ void main() {
     expect(find.byKey(const ValueKey('a7183_handover')), findsNothing);
   });
 
+  testWidgets('번호마다 따른 법칙 표기 (★ = 믿는 법칙) · 법칙 줄에 번호와 조건', (t) async {
+    final p = payload(source: 'gemini');
+    p['trusted'] = [
+      {...Map<String, dynamic>.from((p['trusted'] as List).first as Map), 'id': 1, 'cond': '6번째 번호: 22 · 32 · 42', 'how': '설명'},
+    ];
+    p['sets_laws'] = [[1, 3], []];
+    await pump(t, Agent7183.fromPayload(p));
+    expect(find.text('법칙 ★1 · 3'), findsOneWidget);
+    expect(find.text('만족하는 법칙 없음'), findsOneWidget);
+    expect(find.textContaining('법칙 1 — 6번째 번호: 22 · 32 · 42 | '), findsOneWidget);
+  });
+
   testWidgets('늦은 번호 없으면 상자 없음', (t) async {
     await pump(t, Agent7183.fromPayload(payload(source: 'gemini')));
     expect(find.byKey(const ValueKey('a7183_late_sets')), findsNothing);
