@@ -26,6 +26,18 @@ List<int> autoFill(List<int?> row, [Random? rnd]) {
   return [...picked, ...rest.take(6 - picked.length)]..sort();
 }
 
+/// 한 줄 글자 → 번호 6칸 (순수 함수). 숫자 말고는 모두 띄어쓰기로 봄 ('3 17,40' 가능)
+///   ok=false: 1~45 밖 · 7개 이상 · 같은 번호 두 번
+(List<int?>, bool) parseNumberLine(String t) {
+  final nums = [for (final m in RegExp(r'\d+').allMatches(t)) int.parse(m.group(0)!)];
+  final ok = nums.length <= 6 && nums.every((n) => n >= 1 && n <= 45) && nums.toSet().length == nums.length;
+  final row = List<int?>.filled(6, null);
+  for (var i = 0; i < nums.length && i < 6; i++) {
+    row[i] = nums[i];
+  }
+  return (row, ok);
+}
+
 /// 구입 기록 추가 — 저장하면 true
 ///   [manual] = 번호 직접 입력 (판매점 없이 그냥 구입 번호 · 1~45 번호판)
 ///   [existing] = 이미 있는 기록에 번호 추가 (판매점 · 회차 · 번호가 채워진 채 열리고, 저장하면 그 기록을 고침)
@@ -58,8 +70,25 @@ class _PurchaseRecordScreenState extends State<PurchaseRecordScreen> {
   // 직접 입력 — A~E 다섯 줄 × 6칸 (1~45 드롭다운). 안 고른 칸은 저장할 때 자동(반자동 · 빈 줄은 자동), 줄 안 중복이면 저장 막음
   final _rows = List.generate(5, (_) => List<int?>.filled(6, null));
 
-  bool _dup(List<int?> r) => r.whereType<int>().length != r.whereType<int>().toSet().length;
-  bool get _manualBad => _rows.any(_dup);
+  final _texts = List.generate(5, (_) => TextEditingController()); // 줄마다 '3 17 40 …' 입력
+  final _bad = List<bool>.filled(5, false);
+  bool get _manualBad => _bad.contains(true);
+
+  void _typed(int r, String t) {
+    final (row, ok) = parseNumberLine(t);
+    setState(() {
+      _rows[r] = row;
+      _bad[r] = !ok;
+    });
+  }
+
+  @override
+  void dispose() {
+    for (final c in _texts) {
+      c.dispose();
+    }
+    super.dispose();
+  }
   List<List<int>> _manualGames() => [for (final r in _rows) autoFill(r)];
   List<(List<int>, String)> _saved = const []; // 저장한 번호 (번호, 저장 날짜)
 
@@ -245,7 +274,7 @@ class _PurchaseRecordScreenState extends State<PurchaseRecordScreen> {
               ok
                   ? '저장 — $_round회 ${n == 0 ? '판매점만 (번호 없이)' : '$n게임'}${widget.manual ? ' (안 고른 칸은 자동)' : ''}'
                   : widget.manual
-                  ? '같은 줄에 겹친 번호가 있습니다'
+                  ? '빨간 줄의 번호를 고쳐 주세요 (1~45 · 6개 · 겹침 없이)'
                   : '판매점과 번호를 넣어 주세요',
               style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w900),
             ),
@@ -298,41 +327,63 @@ class _PurchaseRecordScreenState extends State<PurchaseRecordScreen> {
             _section('어떤 번호를 샀나요 (최대 5게임)'),
           ],
           if (widget.manual) ...[
-            _section('번호 고르기 — 안 고른 칸은 저장할 때 자동'),
+            _section('번호 쓰기 — 띄어 쓰면 번호공으로 (안 쓴 칸은 저장할 때 자동)'),
             for (var r = 0; r < 5; r++)
               Container(
                 key: ValueKey('manual_row_$r'),
                 margin: const EdgeInsets.only(bottom: 6),
-                padding: const EdgeInsets.fromLTRB(8, 2, 4, 2),
+                padding: const EdgeInsets.fromLTRB(8, 4, 4, 6),
                 decoration: BoxDecoration(
                   color: kManualColor.withValues(alpha: 0.05),
                   borderRadius: BorderRadius.circular(10),
-                  border: Border.all(color: _dup(_rows[r]) ? Colors.red : Colors.transparent),
+                  border: Border.all(color: _bad[r] ? Colors.red : Colors.transparent),
                 ),
-                child: Row(children: [
-                  SizedBox(width: 18, child: Text('ABCDE'[r], style: const TextStyle(fontWeight: FontWeight.w900, color: kManualColor))),
-                  for (var k = 0; k < 6; k++)
+                child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                  Row(children: [
+                    SizedBox(width: 18, child: Text('ABCDE'[r], style: const TextStyle(fontWeight: FontWeight.w900, color: kManualColor))),
                     Expanded(
-                      child: DropdownButton<int>(
-                        key: ValueKey('manual_dd_${r}_$k'),
-                        value: _rows[r][k],
-                        isExpanded: true,
-                        isDense: true,
-                        underline: const SizedBox.shrink(),
-                        hint: const Center(child: Text('-')),
-                        menuMaxHeight: 320,
-                        items: [
-                          for (var n = 1; n <= 45; n++)
-                            DropdownMenuItem(value: n, child: Center(child: Text('$n', style: const TextStyle(fontWeight: FontWeight.w800)))),
-                        ],
-                        onChanged: (n) => setState(() => _rows[r][k] = n),
+                      child: TextField(
+                        key: ValueKey('manual_text_$r'),
+                        controller: _texts[r],
+                        keyboardType: TextInputType.text, // 숫자 자판엔 띄어쓰기가 없어서
+                        textInputAction: r < 4 ? TextInputAction.next : TextInputAction.done,
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800, letterSpacing: 1),
+                        decoration: InputDecoration(
+                          isDense: true,
+                          border: InputBorder.none,
+                          hintText: '예: 3 17 25 33 40 45',
+                          hintStyle: TextStyle(color: Colors.grey.shade400, fontWeight: FontWeight.w500),
+                          errorText: _bad[r] ? '1~45 · 6개까지 · 겹치지 않게' : null,
+                        ),
+                        onChanged: (t) => _typed(r, t),
                       ),
                     ),
-                  IconButton(
-                    visualDensity: VisualDensity.compact,
-                    tooltip: '이 줄 지우기',
-                    onPressed: _rows[r].every((n) => n == null) ? null : () => setState(() => _rows[r].fillRange(0, 6, null)),
-                    icon: Icon(Icons.close_rounded, size: 18, color: Colors.grey.shade500),
+                    IconButton(
+                      visualDensity: VisualDensity.compact,
+                      tooltip: '이 줄 지우기',
+                      onPressed: _texts[r].text.isEmpty ? null : () {
+                        _texts[r].clear();
+                        _typed(r, '');
+                      },
+                      icon: Icon(Icons.close_rounded, size: 18, color: Colors.grey.shade500),
+                    ),
+                  ]),
+                  Padding(
+                    padding: const EdgeInsets.only(left: 18),
+                    child: Row(children: [
+                      for (final n in _rows[r])
+                        Padding(
+                          padding: const EdgeInsets.only(right: 4),
+                          child: n == null
+                              ? Container(
+                                  width: 28, height: 28,
+                                  decoration: BoxDecoration(shape: BoxShape.circle, border: Border.all(color: Colors.grey.shade300)),
+                                  alignment: Alignment.center,
+                                  child: Text('자동', style: TextStyle(fontSize: 8.5, color: Colors.grey.shade400)),
+                                )
+                              : numberBall('$n', n >= 1 && n <= 45 ? lottoRangeColor(n) : Colors.red, size: 28, fontSize: 11.5),
+                        ),
+                    ]),
                   ),
                 ]),
               ),

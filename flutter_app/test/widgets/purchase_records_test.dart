@@ -90,7 +90,16 @@ void main() {
     expect(b.every((n) => n >= 1 && n <= 45), isTrue);
   });
 
-  testWidgets('번호 직접 입력 — 판매점 칸 · QR 없음 · 다섯 줄 × 드롭다운 6칸 · 줄 안 중복이면 빨간 테두리 · 저장 막힘', (t) async {
+  test('번호 쓰기 해석 — 띄어쓰기 · 쉼표 · 1~45 · 6개까지 · 겹침 없음', () {
+    expect(parseNumberLine('3 17,40').$1, [3, 17, 40, null, null, null]);
+    expect(parseNumberLine('3 17,40').$2, isTrue);
+    expect(parseNumberLine('').$1, List<int?>.filled(6, null));
+    expect(parseNumberLine('3 46').$2, isFalse);
+    expect(parseNumberLine('3 3').$2, isFalse);
+    expect(parseNumberLine('1 2 3 4 5 6 7').$2, isFalse);
+  });
+
+  testWidgets('번호 직접 입력 — 판매점 칸 · QR 없음 · 다섯 줄 글자칸 · 띄어 쓰면 번호공 · 겹치면 빨간 테두리 · 저장 막힘', (t) async {
     SharedPreferences.setMockInitialValues({});
     t.view.physicalSize = const Size(1080, 2340);
     t.view.devicePixelRatio = 3;
@@ -101,19 +110,17 @@ void main() {
     expect(find.byKey(const ValueKey('purchase_store')), findsNothing);
     expect(find.byKey(const ValueKey('purchase_qr')), findsNothing);
     for (var r = 0; r < 5; r++) {
-      expect(find.byKey(ValueKey('manual_row_$r')), findsOneWidget);
+      expect(find.byKey(ValueKey('manual_text_$r')), findsOneWidget);
     }
-    Future<void> pick(int r, int k, int n) async {
-      await t.tap(find.byKey(ValueKey('manual_dd_${r}_$k')));
-      await t.pumpAndSettle();
-      await t.scrollUntilVisible(find.text('$n').last, 40, scrollable: find.byType(Scrollable).last);
-      await t.tap(find.text('$n').last);
-      await t.pumpAndSettle();
-    }
-    await pick(0, 0, 3);
-    await pick(0, 1, 3); // 같은 줄 중복
+    await t.enterText(find.byKey(const ValueKey('manual_text_0')), '3 17 40');
+    await t.pump();
+    expect(find.descendant(of: find.byKey(const ValueKey('manual_row_0')), matching: find.text('17')), findsOneWidget); // 번호공
+    expect(find.descendant(of: find.byKey(const ValueKey('manual_row_0')), matching: find.text('자동')), findsNWidgets(3));
+    await t.enterText(find.byKey(const ValueKey('manual_text_0')), '3 3');
+    await t.pump();
     final row = t.widget<Container>(find.byKey(const ValueKey('manual_row_0')));
     expect((row.decoration as BoxDecoration).border, Border.all(color: Colors.red));
+    expect(t.widget<FilledButton>(find.byKey(const ValueKey('purchase_save'))).onPressed, isNull);
   });
 
   testWidgets('번호 추가 — 판매점만 기록한 것을 열면 판매점 · 회차가 채워져 있고, 저장하면 같은 기록을 고침(새로 안 만듦)', (t) async {
