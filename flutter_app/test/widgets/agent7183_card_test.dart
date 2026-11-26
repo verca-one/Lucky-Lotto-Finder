@@ -82,6 +82,27 @@ void main() {
     expect(find.text('Claude(대행)가 믿는 법칙'), findsOneWidget);
   });
 
+  testWidgets('번호에 실리는 힘 · 이어받기 표 (a7183-1.1 저장본)', (t) async {
+    final p = payload(source: 'gemini');
+    (p['scoreboard'] as Map)['mode_w'] = {'주기 1회': 0.0, '주기 2회': 0.0161};
+    (p['scoreboard'] as Map)['handover'] = [
+      {'dead': '앞', 'n': 157, 'born': {'앞': 1.07, '가운데': 1.01, '뒤': 0.94, '전체': 0.94}},
+      {'dead': '전체', 'n': 0, 'born': {'앞': null}},
+    ];
+    (p['scoreboard'] as Map)['last_dead'] = ['앞', '뒤'];
+    await pump(t, Agent7183.fromPayload(p));
+    expect(find.textContaining('주기 2회 0.016'), findsOneWidget);
+    expect(find.textContaining('앞에서 끊긴 뒤: 앞 1.07배'), findsOneWidget);
+    expect(find.textContaining('전체에서 끊긴 뒤'), findsNothing);
+    expect(find.text('· 지난 회차에 끊긴 자리: 앞, 뒤'), findsOneWidget);
+  });
+
+  testWidgets('예전 저장본(힘 · 이어받기 표 없음)에는 그 칸이 없음', (t) async {
+    await pump(t, Agent7183.fromPayload(payload(source: 'gemini')));
+    expect(find.byKey(const ValueKey('a7183_mode_w')), findsNothing);
+    expect(find.byKey(const ValueKey('a7183_handover')), findsNothing);
+  });
+
   testWidgets('늦은 번호 없으면 상자 없음', (t) async {
     await pump(t, Agent7183.fromPayload(payload(source: 'gemini')));
     expect(find.byKey(const ValueKey('a7183_late_sets')), findsNothing);

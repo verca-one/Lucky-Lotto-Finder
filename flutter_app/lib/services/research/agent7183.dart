@@ -40,12 +40,20 @@ class Agent7183 {
   /// 믿은 법칙 누적: 적중 · 예상 수 · 우연 기대
   final List<num> recordTrusted;
 
+  /// 방식별 번호에 실리는 힘 (성적이 우연을 넘은 만큼 · 0 = 우연 이하) — a7183-1.1 부터
+  final Map<String, num> modeW;
+
+  /// 이어받기 표 — [{dead: 자리, n: 회차 수, born: {자리: 평소의 몇 배}}] · 지난 회차에 끊긴 자리
+  final List<Map<String, dynamic>> handover;
+  final List<String> lastDead;
+
   const Agent7183({
     required this.target, this.source = 'rule', this.setsStatus = 'waiting', this.setsBy, this.setsNote, this.aiError,
     this.sets = const [], this.lateSets = const [], this.lateSetsAt, this.lateSetsBy, this.goldNumbers = const [], this.scanned = 0, this.aliveTotal = 0, this.alive = const [],
     this.trusted = const [], this.cycles = const [], this.gold = const [], this.nearest = const [], this.completedNow = const [],
     this.dream = '', this.notes = '', this.newParts = '', this.replay = const {}, this.recordSets = const [],
     this.recordGold = const [], this.recordTrusted = const [],
+    this.modeW = const {}, this.handover = const [], this.lastDead = const [],
   });
 
   bool get byGemini => source == 'gemini';
@@ -86,6 +94,13 @@ class Agent7183 {
       dream: '${p['dream'] ?? ''}', notes: '${p['notes'] ?? ''}', newParts: '${p['new_parts'] ?? ''}',
       replay: {...(sb['sets'] is Map ? Map<String, dynamic>.from(sb['sets'] as Map) : const <String, dynamic>{}), 'from': sb['from'], 'to': sb['to']},
       recordSets: _nums(rec['sets']), recordGold: _nums(rec['gold']), recordTrusted: _nums(rec['trusted']),
+      modeW: {
+        if (sb['mode_w'] is Map)
+          for (final e in (sb['mode_w'] as Map).entries)
+            if (e.value is num) '${e.key}': e.value as num,
+      },
+      handover: _maps(sb['handover']),
+      lastDead: [for (final x in (sb['last_dead'] as List? ?? const [])) '$x'],
     );
   }
 

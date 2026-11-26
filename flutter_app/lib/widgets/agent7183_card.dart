@@ -102,6 +102,14 @@ class _Agent7183CardState extends State<Agent7183Card> {
     return t == null ? '' : ' (${t.month}/${t.day})';
   }
 
+  /// '번호에 힘이 실린 방식: 주기 2회 0.016 · 나머지는 성적이 우연 이하라 힘 0'
+  static String _modeWLine(Map<String, num> w) {
+    final on = [for (final e in w.entries) if (e.value > 0) '${e.key} ${e.value.toStringAsFixed(3)}'];
+    return on.isEmpty
+        ? '번호에 실리는 힘 — 지금은 우연을 넘은 방식이 없어 믿는 법칙 · 황금 숫자만 반영 (좁게 짚는다고 힘을 주지 않음)'
+        : '번호에 실리는 힘 — ${on.join(' · ')} (성적이 우연을 넘은 만큼만 · 나머지 방식은 0)';
+  }
+
   Widget _note(String s) => Text(s, style: TextStyle(fontSize: 12, color: Colors.orange.shade900));
 
   String _n(num v) => v == v.roundToDouble() ? '${v.toInt()}' : v.toStringAsFixed(1);
@@ -187,6 +195,28 @@ class _Agent7183CardState extends State<Agent7183Card> {
           ' · 무작위면 0.80개',
           key: const ValueKey('a7183_score'),
           style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
+      // ── 번호에 실리는 힘(성적 기준) · 이어받기 표 — a7183-1.1 저장본부터
+      if (a.modeW.isNotEmpty)
+        Padding(
+          key: const ValueKey('a7183_mode_w'),
+          padding: const EdgeInsets.only(top: 6),
+          child: Text(_modeWLine(a.modeW), style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700, height: 1.4)),
+        ),
+      if (a.handover.any((h) => (h['n'] as num? ?? 0) > 0))
+        Padding(
+          key: const ValueKey('a7183_handover'),
+          padding: const EdgeInsets.only(top: 6),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('이어받기 표 — 법칙이 끊긴 다음 회차에 새 법칙이 살아난 자리 (평소의 몇 배)',
+                style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: accent)),
+            for (final h in a.handover)
+              if ((h['n'] as num? ?? 0) > 0)
+                Text('· ${h['dead']}에서 끊긴 뒤: ${[for (final e in (h['born'] as Map? ?? const {}).entries) if (e.value != null) '${e.key} ${e.value}배'].join(' · ')}',
+                    style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700, height: 1.4)),
+            if (a.lastDead.isNotEmpty)
+              Text('· 지난 회차에 끊긴 자리: ${a.lastDead.join(', ')}', style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700, height: 1.4)),
+          ]),
+        ),
       if (a.trusted.isNotEmpty) ...[
         const SizedBox(height: 8),
         Text(a.byAi ? '${a.aiName}가 믿는 법칙' : '가장 좁게 짚는 법칙 (계산)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: accent)),
