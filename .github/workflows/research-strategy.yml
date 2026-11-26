@@ -44,7 +44,7 @@ jobs:
       - name: 7183 에이전트 — 제미나이 꿈 먼저 (한도 풀린 직후 1번)
         if: ${{ !cancelled() && contains(steps.plan.outputs.parts, 'a7183') }}
         continue-on-error: true
-        timeout-minutes: 10
+        timeout-minutes: 15   # 503 재시도 대기(6분 30초) 포함
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}

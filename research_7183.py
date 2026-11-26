@@ -429,6 +429,14 @@ def dream_schema():
     }, "required": ["dream", "cycles", "trusted", "new_parts", "notes"], "additionalProperties": False}
 
 
+BUSY_WAITS = (30, 60, 120, 180)           # 초 — 제미나이 서버 붐빔(503)일 때 다시 부르기 전 기다림 (모두 6분 30초)
+
+
+def busy_error(msg):
+    """서버가 붐벼서 거절한 것(503)인가 — 한도 초과(429) · 시간 초과와 달리 잠깐 뒤 다시 부를 만하다"""
+    return bool(re.search(r"\b503\b|UNAVAILABLE|high demand|overloaded", msg or "", re.I))
+
+
 def ask_dream(prompt):
     """제미나이에게 꿈을 묻는다 — 답을 조금씩 받는 방식(스트리밍) · 먼저 '생각 낮음'으로, 안 되면 기본 설정으로 한 번 더.
     공용 호출(research_strategy_ai.ask_gemini)이 2,600자 자료에도 420초 안에 답을 못 받는 일이 세 번 이어져(2026-11-25)
@@ -441,7 +449,12 @@ def ask_dream(prompt):
     client = genai.Client(api_key=m.group(0) if m else raw.strip(), http_options={"timeout": DREAM_DEADLINE * 1000})
     base = dict(system_instruction=SYSTEM, response_mime_type="application/json", response_schema=S._strip_additional(dream_schema()))
     last = None
-    for label, extra in (("생각 낮음", {"thinking_config": types.ThinkingConfig(thinking_level="low")}), ("기본 설정", {})):
+    # 서버 붐빔(503)은 한도를 쓰지 않고 잠깐 뒤엔 되는 일이 많다 — 같은 설정으로 기다렸다 다시 (BUSY_WAITS 초)
+    plan = [("생각 낮음", {"thinking_config": types.ThinkingConfig(thinking_level="low")}), ("기본 설정", {})]
+    waits = list(BUSY_WAITS)
+    i = 0
+    while i < len(plan):
+        label, extra = plan[i]
         t0, got = time.time(), {"first": None, "text": []}
 
         def pull(t0=t0, got=got, extra=extra):   # 기본값으로 묶어 둠 — 시간 초과 뒤 남은 호출이 다음 시도의 값을 건드리지 않게
@@ -461,8 +474,14 @@ def ask_dream(prompt):
             print(f"[7183 gemini] {label} 실패 ({time.time() - t0:.0f}초 · 첫 조각 {got['first']}초 · 받은 글자 {sum(map(len, got['text']))}): "
                   f"{type(e).__name__} — {msg}", file=sys.stderr)
             last = f"{label}: {type(e).__name__} — {msg}"
+            if busy_error(msg) and waits:
+                w = waits.pop(0)
+                print(f"[7183 gemini] 서버 붐빔(503) — {w}초 뒤 다시 (남은 재시도 {len(waits)}번)", file=sys.stderr)
+                time.sleep(w)
+                continue
             if not re.search(r"\b400\b|INVALID_ARGUMENT", msg):
                 break   # 설정 문제(400)일 때만 기본 설정으로 다시 — 한도 초과(무료 하루 20번) · 시간 초과는 다시 불러도 한도만 쓴다
+            i += 1
     raise RuntimeError(last)
 
 
@@ -753,6 +772,7 @@ def weekly(db, a):
 
 def selfcheck():
     """제미나이 출력 걸러내기 점검 (잘못된 순환 · 번호는 버린다)"""
+    assert busy_error("503 UNAVAILABLE. high demand") and not busy_error("429 RESOURCE_EXHAUSTED") and not busy_error("TimeoutError")
     cl = [dict(c) for c in SEED_CYCLES]
     got = clean_cycles([{"name": "a b", "digits": [3, 8, 1, 7], "why": "돌린 7381"}, {"name": "", "digits": [1, 1], "why": ""},
                         {"name": "큰수", "digits": [5, 100], "why": ""}, {"name": "짝", "digits": [2, 4, 6], "why": "x"}, "쓰레기"], cl, 1251)
