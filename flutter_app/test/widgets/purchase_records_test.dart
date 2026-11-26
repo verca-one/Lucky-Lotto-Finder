@@ -60,6 +60,25 @@ void main() {
     expect(find.text('추첨 전 · 당첨번호 나오면 자동 확인'), findsOneWidget);
   });
 
+  testWidgets('판매점 카드 안 — 그 판매점에서 산 번호만 · 제목 버튼 없이 · 없으면 안 그림', (t) async {
+    final records = [
+      PurchaseRecord(id: 'x', storeCode: 'S1', storeName: '스파', round: 1250, games: const [[1, 2, 3, 4, 5, 6]], createdAt: DateTime(2026, 11, 14)),
+      PurchaseRecord(id: 'y', storeCode: 'S2', storeName: '행운', round: 1250, games: const [[7, 8, 9, 10, 11, 12]], createdAt: DateTime(2026, 11, 14)),
+    ];
+    Widget at(String code) => MaterialApp(home: Scaffold(body: SingleChildScrollView(child: PurchaseRecordsSection(
+      key: ValueKey(code), loader: () async => records, winLoader: (_) async => null,
+      where: (r) => r.storeCode == code, listOnly: true))));
+    await t.pumpWidget(at('S1'));
+    await t.pumpAndSettle();
+    expect(find.text('이 판매점에서 산 번호 (1)'), findsOneWidget);
+    expect(find.byKey(const ValueKey('purchase_x')), findsOneWidget);
+    expect(find.byKey(const ValueKey('purchase_y')), findsNothing);
+    expect(find.byKey(const ValueKey('purchase_manual')), findsNothing);
+    await t.pumpWidget(at('S9'));
+    await t.pumpAndSettle();
+    expect(find.textContaining('이 판매점에서 산 번호'), findsNothing);
+  });
+
   test('빈 칸 자동 — 고른 번호 유지 · 겹치지 않게 6개 · 정렬 · 모두 비면 자동', () {
     final a = autoFill([3, null, 41, null, null, null]);
     expect(a.length, 6);

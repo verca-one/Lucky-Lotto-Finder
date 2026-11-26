@@ -31,7 +31,11 @@ class _FavoritesScreenState extends State<FavoritesScreen>
   DateTime? _lastRefreshTime;
   final Set<String> _expandedCards = {};
   int _rev = 0; // 판매점 카드에서 번호를 넣으면 올려 구매번호를 다시 읽음
-  bool _myWin = false; // 내 구매번호가 최근 추첨에서 당첨
+  final _winBy = <String, bool>{}; // 구매번호 목록별(위 목록 · 판매점 카드) 최근 추첨 당첨 여부
+  bool get _myWin => _winBy.values.any((v) => v);
+  ValueChanged<bool> _onWin(String k) => (v) {
+        if (mounted && _winBy[k] != v) setState(() => _winBy[k] = v);
+      };
 
   late AnimationController _blinkController;
   late Animation<double> _blinkAnim;
@@ -242,10 +246,10 @@ class _FavoritesScreenState extends State<FavoritesScreen>
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 16, 16, 0),
               child: PurchaseRecordsSection(
-                key: ValueKey('purchases_$_rev'),
-                onWin: (v) {
-                  if (mounted && v != _myWin) setState(() => _myWin = v);
-                },
+                key: ValueKey('purchases_${_rev}_${_allStores.length}'), // 즐겨찾기가 바뀌면 다시 나눔
+                onWin: _onWin('top'),
+                // 즐겨찾기 판매점에서 산 번호는 그 판매점 카드 안에 보이므로 여기서는 뺌
+                where: (r) => !_allStores.any((s) => s.dhlotteryCode == r.storeCode),
               ),
             ),
             const Divider(height: 24, indent: 16, endIndent: 16),
@@ -655,7 +659,17 @@ class _FavoritesScreenState extends State<FavoritesScreen>
                   ),
                 ],
               ),
-              if (widget.withNumbers) _buyButtons(store),
+              if (widget.withNumbers) ...[
+                _buyButtons(store),
+                // 이 판매점에서 산 번호 — 카드 안 목록 (당첨이면 노란 축하 표시)
+                // shortcut: 카드마다 기록 · 당첨번호를 따로 읽음, 즐겨찾기가 많아 느려지면 한 번 읽어 나눠 줄 것
+                PurchaseRecordsSection(
+                  key: ValueKey('store_buys_${store.dhlotteryCode}_$_rev'),
+                  where: (r) => r.storeCode == store.dhlotteryCode,
+                  listOnly: true,
+                  onWin: _onWin(store.dhlotteryCode),
+                ),
+              ],
               if (isExpanded) ...[
                 const SizedBox(height: 10),
                 Container(

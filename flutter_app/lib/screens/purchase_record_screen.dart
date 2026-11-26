@@ -541,7 +541,9 @@ class PurchaseRecordsSection extends StatefulWidget {
   final Future<List<PurchaseRecord>> Function()? loader;
   final Future<LottoWinningNumber?> Function(int round)? winLoader;
   final ValueChanged<bool>? onWin; // 최근 추첨 회차에 당첨된 기록이 있으면 true
-  const PurchaseRecordsSection({super.key, this.loader, this.winLoader, this.onWin});
+  final bool Function(PurchaseRecord)? where; // 이 기록만 보여 줌 (즐겨찾기: 판매점별로 나눔)
+  final bool listOnly; // 판매점 카드 안 — 제목 · 버튼 없이 목록만, 없으면 아무것도 안 그림
+  const PurchaseRecordsSection({super.key, this.loader, this.winLoader, this.onWin, this.where, this.listOnly = false});
   @override
   State<PurchaseRecordsSection> createState() => _PurchaseRecordsSectionState();
 }
@@ -557,7 +559,8 @@ class _PurchaseRecordsSectionState extends State<PurchaseRecordsSection> {
   }
 
   Future<void> _load() async {
-    final r = await (widget.loader ?? PurchaseRecords.load)();
+    final all = await (widget.loader ?? PurchaseRecords.load)();
+    final r = widget.where == null ? all : all.where(widget.where!).toList();
     for (final round in {for (final x in r) x.round}) {
       if (_wins[round] != null) continue;
       try {
@@ -633,7 +636,7 @@ class _PurchaseRecordsSectionState extends State<PurchaseRecordsSection> {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  r.storeName.isEmpty ? '구입 번호' : r.storeName,
+                  widget.listOnly ? '' : r.storeName.isEmpty ? '구입 번호' : r.storeName, // 판매점 카드 안에서는 이름 생략
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(fontWeight: FontWeight.w800, color: r.storeName.isEmpty ? Colors.grey.shade600 : null),
@@ -713,6 +716,17 @@ class _PurchaseRecordsSectionState extends State<PurchaseRecordsSection> {
   @override
   Widget build(BuildContext context) {
     final r = _records;
+    if (widget.listOnly) {
+      if (r == null || r.isEmpty) return const SizedBox.shrink();
+      return Padding(
+        padding: const EdgeInsets.only(top: 8),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+          Text('이 판매점에서 산 번호 (${r.length})', style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800, color: _c)),
+          const SizedBox(height: 6),
+          ...r.map(_card),
+        ]),
+      );
+    }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
