@@ -70,6 +70,18 @@ void main() {
     expect(find.text('제미나이 번호 5세트 — 주중 추가 (11/26)'), findsOneWidget);
   });
 
+  testWidgets('Claude 대행 주 — 회색 대기 아님 · 대행 표시 · 주중 추가 번호도 대행 이름', (t) async {
+    await pump(t, Agent7183.fromPayload({
+      ...payload(source: 'gemini'), 'source': 'claude', 'sets_by': 'rule',
+      'late_sets': [[1, 2, 3, 4, 5, 6]], 'late_sets_at': '2026-11-26T12:00:00Z', 'late_sets_by': 'claude',
+    }));
+    expect(find.byKey(const ValueKey('a7183_waiting')), findsNothing);
+    expect(find.text('Claude 대행 (이번 주만)'), findsOneWidget);
+    expect(find.text('제미나이 참여'), findsNothing);
+    expect(find.text('Claude(대행) 번호 5세트 — 주중 추가 (11/26)'), findsOneWidget);
+    expect(find.text('Claude(대행)가 믿는 법칙'), findsOneWidget);
+  });
+
   testWidgets('늦은 번호 없으면 상자 없음', (t) async {
     await pump(t, Agent7183.fromPayload(payload(source: 'gemini')));
     expect(find.byKey(const ValueKey('a7183_late_sets')), findsNothing);

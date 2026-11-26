@@ -55,7 +55,7 @@ def week_done(get, now):
                                  "created_at": f"gte.{since}"})
     ok = {r["kind"] for r in runs if r["status"] in ("success", "skipped")}
     return {
-        "a7183": bool(a and a[0].get("source") == "gemini"),
+        "a7183": bool(a and a[0].get("source") in ("gemini", "claude")),   # claude = 제미나이 대신 쓴 주 (research_7183.AI_SOURCES)
         "review": bool(rv and rv[0].get("source") == "gemini"),
         **{p: KIND[p] in ok for p in KIND},
     }

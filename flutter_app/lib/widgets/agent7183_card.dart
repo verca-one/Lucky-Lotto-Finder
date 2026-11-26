@@ -35,7 +35,7 @@ class _Agent7183CardState extends State<Agent7183Card> {
         future: _f,
         builder: (context, snap) {
           final a = snap.data;
-          final waiting = a != null && !a.byGemini; // 제미나이 답을 아직 못 받은 주 — 번호 공만 빼고 카드 전체를 회색으로
+          final waiting = a != null && !a.byAi; // 제미나이 답을 아직 못 받은 주 — 번호 공만 빼고 카드 전체를 회색으로
           final accent = waiting ? Colors.grey.shade600 : k7183Color;
           final folded = waiting && !_open;
           return Container(
@@ -58,7 +58,7 @@ class _Agent7183CardState extends State<Agent7183Card> {
                   child: Text('${widget.target}회 7183 에이전트 — 제미나이 추천번호',
                       style: TextStyle(fontSize: 15, fontWeight: FontWeight.w900, color: accent)),
                 ),
-                if (a != null && a.byGemini) statusChip('제미나이 참여', k7183Color),
+                if (a != null && a.byAi) statusChip(a.byGemini ? '제미나이 참여' : 'Claude 대행 (이번 주만)', k7183Color),
                 if (waiting)
                   Container(
                     key: const ValueKey('a7183_waiting'),
@@ -108,7 +108,7 @@ class _Agent7183CardState extends State<Agent7183Card> {
 
   List<Widget> _body(Agent7183 a) {
     final rs = a.recordSets, rep = a.replay;
-    final waiting = !a.byGemini; // 대기 중: 번호 공 · 황금 상자 · 법칙 완성 알림만 색을 남긴다
+    final waiting = !a.byAi; // 대기 중: 번호 공 · 황금 상자 · 법칙 완성 알림만 색을 남긴다
     final accent = waiting ? Colors.grey.shade600 : k7183Color;
     return [
       if (a.completedNow.isNotEmpty)
@@ -128,7 +128,7 @@ class _Agent7183CardState extends State<Agent7183Card> {
         const Text('7183 번호 5세트', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w900)),
         const Spacer(),
         if (a.registered)
-          statusChip(a.setsBy == 'gemini' ? '사전 등록 · 제미나이 참여' : '사전 등록 · 계산', waiting ? Colors.grey.shade600 : Colors.green.shade700),
+          statusChip(a.setsBy == 'gemini' ? '사전 등록 · 제미나이 참여' : a.setsBy == 'claude' ? '사전 등록 · Claude 대행' : '사전 등록 · 계산', waiting ? Colors.grey.shade600 : Colors.green.shade700),
       ]),
       const SizedBox(height: 6),
       if (a.sets.isEmpty)
@@ -159,9 +159,9 @@ class _Agent7183CardState extends State<Agent7183Card> {
             border: Border.all(color: k7183Color.withValues(alpha: 0.35)),
           ),
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text('제미나이 번호 5세트 — 주중 추가${_lateDay(a.lateSetsAt)}',
+            Text('${Agent7183.aiNameOf(a.lateSetsBy)} 번호 5세트 — 주중 추가${_lateDay(a.lateSetsAt)}',
                 style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: k7183Color)),
-            Text('월요일엔 제미나이가 답하지 못해 계산 번호로 등록됐습니다. 제미나이가 답한 뒤 뽑은 번호를 따로 남깁니다 (위 번호는 그대로 · 채점은 위 번호).',
+            Text('월요일엔 제미나이가 답하지 못해 계산 번호로 등록됐습니다. ${a.lateSetsBy == 'claude' ? '이번 주만 Claude 가 대신 추리해' : '제미나이가 답한 뒤'} 뽑은 번호를 따로 남깁니다 (위 번호는 그대로 · 채점은 위 번호).',
                 style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700, height: 1.4)),
             const SizedBox(height: 6),
             for (final e in a.lateSets.asMap().entries)
@@ -189,7 +189,7 @@ class _Agent7183CardState extends State<Agent7183Card> {
           style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w700)),
       if (a.trusted.isNotEmpty) ...[
         const SizedBox(height: 8),
-        Text(a.byGemini ? '제미나이가 믿는 법칙' : '가장 좁게 짚는 법칙 (계산)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: accent)),
+        Text(a.byAi ? '${a.aiName}가 믿는 법칙' : '가장 좁게 짚는 법칙 (계산)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: accent)),
         for (final t in a.trusted) _law(t, why: true),
       ],
       if (a.dream.isNotEmpty)
@@ -217,7 +217,7 @@ class _Agent7183CardState extends State<Agent7183Card> {
         const Text('순환 사전', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900)),
         for (final c in a.cycles)
           Text(
-              '· ${c['name']}: ${(c['digits'] as List? ?? const []).join('→')} (${c['by'] == 'seed' ? '사장님' : '7183이 꿈꿈'})'
+              '· ${c['name']}: ${(c['digits'] as List? ?? const []).join('→')} (${c['by'] == 'seed' ? '사장님' : c['by'] == 'claude' ? '7183이 꿈꿈 · Claude 대행' : '7183이 꿈꿈'})'
               ' — 복기 ${_stat(c['replay'])}${c['by'] == 'seed' ? '' : ' · 등록 뒤 ${_stat(c['since'])}'}${c['complete'] == true ? ' · 완성' : ''}',
               style: TextStyle(fontSize: 10.5, color: Colors.grey.shade800, height: 1.4)),
         if (a.recordTrusted.length == 3 && a.recordTrusted[1] > 0)
@@ -225,7 +225,7 @@ class _Agent7183CardState extends State<Agent7183Card> {
               style: TextStyle(fontSize: 10.5, color: Colors.grey.shade800)),
         if (a.notes.isNotEmpty) Text('연구 노트: ${a.notes}', style: TextStyle(fontSize: 10.5, color: Colors.grey.shade800, height: 1.4)),
         if (a.newParts.isNotEmpty) Text('새 계산 제안: ${a.newParts}', style: TextStyle(fontSize: 10.5, color: Colors.grey.shade800, height: 1.4)),
-        if (!a.byGemini && (a.aiError ?? '').isNotEmpty)
+        if (!a.byAi && (a.aiError ?? '').isNotEmpty)
           Text('제미나이 대기 사유: ${a.aiError}', style: TextStyle(fontSize: 10, color: Colors.grey.shade600)),
       ],
       Text('법칙 기반 예측입니다 — 측정된 확률이 아닙니다. 복권 한 장의 1등 확률(1/8,145,060)은 어떤 번호든 같습니다.',

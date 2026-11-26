@@ -137,7 +137,7 @@ class AiDeptStatus {
     final items = <AiDeptItem>[];
     final since = weekStart(now ?? DateTime.now());
     final week = <String, bool?>{
-      'a7183': a7183 == null ? null : a7183['source'] == 'gemini',
+      'a7183': a7183 == null ? null : (a7183['source'] == 'gemini' || a7183['source'] == 'claude'),
       'review': review == null ? null : review['source'] == 'gemini',
     };
     for (final (kind, part) in [('ai_direction', 'direction'), ('ai_pension', 'pension'), ('ai_speetto', 'speetto')]) {
@@ -149,6 +149,8 @@ class AiDeptStatus {
       items.add(const AiDeptItem('7183 에이전트', true, '다음 회차 실행 전'));
     } else if (a7183['source'] == 'gemini') {
       items.add(const AiDeptItem('7183 에이전트', true, '제미나이 참여'));
+    } else if (a7183['source'] == 'claude') {
+      items.add(const AiDeptItem('7183 에이전트', true, 'Claude 대행 (제미나이가 못 답한 주)'));
     } else {
       final until = DateTime.tryParse('${a7183['quota_until']}');
       items.add(AiDeptItem('7183 에이전트', false,

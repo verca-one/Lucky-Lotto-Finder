@@ -74,6 +74,13 @@ void main() {
     expect(asked, 1);
   });
 
+  test('7183 을 Claude 가 대신 쓴 주 — 문제 아님 · 이번 주 몫 완료', () {
+    final s = AiDeptStatus.fromRows(a7183: {'source': 'claude'}, review: {'source': 'gemini'});
+    expect(s.smooth, isTrue);
+    expect(s.items.first.detail, contains('Claude 대행'));
+    expect(s.week['a7183'], isTrue);
+  });
+
   test('이번 주 진척도 — 요일별 완료 · 실패 · 안 돎 · 예정', () {
     final wed = DateTime.utc(2026, 11, 25, 10); // 수 19:00 KST (수요일 몫까지 끝났어야 함)
     expect(AiDeptStatus.weekStart(wed), DateTime.utc(2026, 11, 22, 15));

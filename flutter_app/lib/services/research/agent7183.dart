@@ -21,7 +21,7 @@ class Agent7183 {
 
   /// 주중에 제미나이가 답해 추가한 번호 (별도 기록 — 월요일 등록 번호 sets 는 그대로)
   final List<List<int>> lateSets;
-  final String? lateSetsAt;
+  final String? lateSetsAt, lateSetsBy;
   final List<int> goldNumbers;
   final int scanned, aliveTotal;
   final List<Map<String, dynamic>> alive, trusted, cycles, gold, nearest;
@@ -42,13 +42,20 @@ class Agent7183 {
 
   const Agent7183({
     required this.target, this.source = 'rule', this.setsStatus = 'waiting', this.setsBy, this.setsNote, this.aiError,
-    this.sets = const [], this.lateSets = const [], this.lateSetsAt, this.goldNumbers = const [], this.scanned = 0, this.aliveTotal = 0, this.alive = const [],
+    this.sets = const [], this.lateSets = const [], this.lateSetsAt, this.lateSetsBy, this.goldNumbers = const [], this.scanned = 0, this.aliveTotal = 0, this.alive = const [],
     this.trusted = const [], this.cycles = const [], this.gold = const [], this.nearest = const [], this.completedNow = const [],
     this.dream = '', this.notes = '', this.newParts = '', this.replay = const {}, this.recordSets = const [],
     this.recordGold = const [], this.recordTrusted = const [],
   });
 
   bool get byGemini => source == 'gemini';
+
+  /// 꿈(추리)을 AI 가 썼나 — 'claude' 는 제미나이가 못 답한 주에 대신 쓴 것 (서버 research_7183.AI_SOURCES)
+  bool get byAi => source == 'gemini' || source == 'claude';
+
+  /// 화면에 적는 이름 — 대행은 대행이라고 적는다
+  static String aiNameOf(String? src) => src == 'claude' ? 'Claude(대행)' : '제미나이';
+  String get aiName => aiNameOf(source);
   bool get registered => setsStatus == 'registered';
 
   factory Agent7183.fromPayload(Map<String, dynamic> p) {
@@ -69,6 +76,7 @@ class Agent7183 {
           if (s is List && s.length == 6) ([for (final n in s) (n as num).toInt()]..sort()),
       ],
       lateSetsAt: p['late_sets_at'] as String?,
+      lateSetsBy: p['late_sets_by'] as String?,
       goldNumbers: [for (final n in _nums(p['gold_numbers'])) n.toInt()],
       scanned: (p['scanned'] as num?)?.toInt() ?? 0,
       aliveTotal: (p['alive_total'] as num?)?.toInt() ?? 0,

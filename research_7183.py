@@ -48,6 +48,22 @@ ROW_VERSION = "a7183"                     # 저장 행 키 (코드 버전이 올
 REG_ALGO, REG_VERSION = "hypothesis_track", "7183-1.0"   # 브리핑 ④ 자리 — 회차 검증 · 당첨확인이 이 버전을 먼저 고른다
 # 늦은 제미나이 번호(--late-sets) 장부 버전 — '7183' 으로 시작하지 않게 해서 회차 검증(pick_reg) · 앱 당첨확인이 월요일 등록본을 그대로 고른다
 LATE_VERSION = "late-7183-1.0"
+# 제미나이가 못 답한 회차에 사람이 시켜 다른 AI 가 대신 쓴 답 (2026-11-26 사용자 지시 — 1252회만 Claude 대행).
+#   파일의 target_round 가 이번 목표 회차와 같을 때만 쓴다 → 다음 회차부터는 저절로 무시되고 제미나이가 스케줄대로 한다.
+MANUAL_DREAM = os.path.join(os.path.dirname(os.path.abspath(__file__)), "research_7183_manual_dream.json")
+AI_SOURCES = ("gemini", "claude")         # 꿈을 꾼 쪽 — 저장본 source · 번호 sets_by · 순환 by 에 그대로 적는다 (대행은 대행이라고 표시)
+
+
+def manual_dream(target, path=None):
+    """대신 쓴 답 파일 — 이번 목표 회차 것이면 (답, 누가, 모델), 아니면 None"""
+    try:
+        with open(path or MANUAL_DREAM, encoding="utf-8") as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return None
+    if d.get("target_round") != target or d.get("by") not in AI_SOURCES or not isinstance(d.get("answer"), dict):
+        return None
+    return d["answer"], d["by"], d.get("model")
 TRUST_BOOST = 2.0                         # 제미나이가 믿는다고 고른 법칙의 힘
 DREAM_DEADLINE = 300                      # 초 — 제미나이 한 번 시도에 주는 시간
 TEST_FROM = 1001           # 복기 시작 회차 (그 앞 회차는 기준값 계산에만 씀)
@@ -503,7 +519,7 @@ def rotations(d):
     return {tuple(d[i:] + d[:i]) for i in range(len(d))}
 
 
-def clean_cycles(raw, cycles, latest):
+def clean_cycles(raw, cycles, latest, by="gemini"):
     """제미나이가 낸 순환을 걸러 사전에 넣을 수 있는 것만 — 서로 다른 숫자 2~6개(0~99), 이미 있는 순환(돌린 것 포함) 제외"""
     have = set().union(*[rotations(c["digits"]) for c in cycles]) if cycles else set()
     names = {c["name"] for c in cycles}
@@ -522,7 +538,7 @@ def clean_cycles(raw, cycles, latest):
             continue
         have |= rotations(d)
         names.add(name)
-        out.append({"name": name, "digits": d, "by": "gemini", "registered_round": latest, "why": str(x.get("why") or "")[:200]})
+        out.append({"name": name, "digits": d, "by": by, "registered_round": latest, "why": str(x.get("why") or "")[:200]})
         if len(out) == NEW_CYCLES:
             break
     return out
@@ -622,7 +638,8 @@ def weekly(db, a):
                                       "order": "target_round.desc,created_at.desc", "limit": "6"})
     cur = next((x["payload"] for x in got if x["target_round"] == target), None)
     prev = next((x["payload"] for x in got if x["target_round"] == latest), None)
-    have_ai = bool(cur and cur.get("source") == "gemini") and not a.force
+    have_ai = bool(cur and cur.get("source") in AI_SOURCES) and not a.force
+    manual = None if have_ai else manual_dream(target)
     registered = bool(cur and cur.get("sets_status") == "registered")
     until = (cur or {}).get("quota_until")
     quota_wait = bool(until) and now < datetime.fromisoformat(until) and not a.force
@@ -632,7 +649,7 @@ def weekly(db, a):
     if have_ai and registered and not late_want:
         print(f"{target}회 7183 에이전트 이미 있음(제미나이 · 번호 등록) — 고정")
         return cur
-    if quota_wait and registered:
+    if quota_wait and registered and not manual:
         print(f"{target}회 7183 에이전트 — {wait_note} (번호는 등록됨 · 할 일 없음)")
         return cur
     carry = cur or prev or {}
@@ -659,8 +676,12 @@ def weekly(db, a):
     cyc, done_now = cycle_report(cycles, res, prev_done)
     prompt = build_prompt(res, nums, rounds, cyc, dict(prev or {}, record=record), scored)
     data = model = err = None
+    by = "gemini"
     if have_ai:   # 이번 회차 꿈은 이미 받음 — 다시 부르지 않고 번호 등록만 마저 한다
-        model = cur.get("model")
+        model, by = cur.get("model"), cur["source"]
+    elif manual:  # 대신 쓴 답 (이번 회차 것만) — 제미나이를 부르지 않는다
+        data, by, model = manual
+        print(f"  {target}회 꿈은 대신 쓴 답 파일을 씀 ({by} · {model})")
     elif quota_wait:   # 한도가 풀릴 때까지 부르지 않는다 (번호 등록만 마저 한다)
         err = wait_note
     elif os.environ.get("GEMINI_API_KEY"):
@@ -678,7 +699,7 @@ def weekly(db, a):
     if have_ai:
         new, trusted = [], cur.get("trusted") or []
     elif data:
-        new = clean_cycles(data.get("cycles"), cycles, latest)
+        new = clean_cycles(data.get("cycles"), cycles, latest, by)
         trusted = clean_trusted(data.get("trusted"), nx["laws"])
         if new:   # 새 순환을 넣어 다시 세어, 꿈꾼 순환의 첫 성적을 함께 저장
             # shortcut: 사전이 꽉 차면 오래된 순환부터 버림, 완성에 가까운 순환을 지키려면 성적순으로 바꿀 것
@@ -699,7 +720,7 @@ def weekly(db, a):
         from research_release import prediction_allowed
         ok, sets_note, _ = prediction_allowed(db.get, target, dd, latest)
         if ok:
-            sets, sets_by = make_sets(res["ctx"], trusted if ai else ()), ("gemini" if ai else "rule")
+            sets, sets_by = make_sets(res["ctx"], trusted if ai else ()), (by if ai else "rule")
             if a.dry_run:
                 sets_status = "dry-run"
             else:
@@ -712,9 +733,9 @@ def weekly(db, a):
                 if reg:
                     sets, sets_status = reg[0]["sets"], "registered"
     # 늦은 제미나이 번호 — 월요일 등록 번호(sets)는 그대로 두고 별도 버전으로만 남긴다 (덮어쓰지 않음)
-    late, late_at = (cur or {}).get("late_sets") or [], (cur or {}).get("late_sets_at")
+    late, late_at, late_by = (cur or {}).get("late_sets") or [], (cur or {}).get("late_sets_at"), (cur or {}).get("late_sets_by")
     if late_want and ai:
-        late, late_at = make_sets(res["ctx"], trusted), now.isoformat()
+        late, late_at, late_by = make_sets(res["ctx"], trusted), now.isoformat(), by
         if not a.dry_run:
             try:
                 db.upsert("research_predictions", [{
@@ -729,11 +750,11 @@ def weekly(db, a):
     m = [x for r in rows for x in r["m"]]
     payload = {
         "version": VERSION, "target_round": target, "latest_round": latest, "generated_at": now.isoformat(),
-        "source": "gemini" if ai else "rule", "model": model, "ai_error": err,
+        "source": by if ai else "rule", "model": model, "ai_error": err,
         "quota_until": None if ai else until,       # 제미나이 한도가 풀리는 시각 — 그때까지 다시 부르지 않음
         "sets": sets, "sets_status": sets_status, "sets_by": sets_by, "sets_note": sets_note, "gold_numbers": gold_numbers,
         "reg_version": REG_VERSION,
-        "late_sets": late, "late_sets_at": late_at,   # 주중에 제미나이가 답해 추가한 번호 (별도 기록 · 월요일 번호는 그대로)
+        "late_sets": late, "late_sets_at": late_at, "late_sets_by": late_by,   # 주중에 제미나이가 답해 추가한 번호 (별도 기록 · 월요일 번호는 그대로)
         "scanned": res["patterns"], "formulas": res["formulas"], "alive_total": nx["laws_total"], "alive": nx["laws"],
         "scoreboard": {"from": rows[0]["round"], "to": rows[-1]["round"],
                        "laws": {k: [v[0], v[1], round(v[2], 1)] for k, v in res["law_stat"].items()},
@@ -753,7 +774,7 @@ def weekly(db, a):
     print(f"  지난 회차 믿은 법칙: {rec[1]}개 중 {rec[0]}개 적중 · 누적 {record['trusted']} · 지난 번호 맞힌 개수 {pm or '없음'}")
     print(f"  번호 5세트 ({sets_status}{' · ' + sets_by if sets_by else ''}{' · ' + sets_note if sets_note and not sets else ''}): {sets}")
     if late:
-        print(f"  늦은 제미나이 번호 ({LATE_VERSION} · {late_at}): {late}")
+        print(f"  주중 추가 번호 ({late_by} · {LATE_VERSION} · {late_at}): {late}")
     print(f"  황금 숫자: {gold_numbers or '없음'}")
     for x in trusted:
         print(f"  믿는 법칙: {x['law']} [{x['mode']}] → {x['next']} — {x['why']}")
@@ -772,6 +793,7 @@ def weekly(db, a):
 
 def selfcheck():
     """제미나이 출력 걸러내기 점검 (잘못된 순환 · 번호는 버린다)"""
+    assert manual_dream(-1) is None   # 다른 회차 것이면 안 씀
     assert busy_error("503 UNAVAILABLE. high demand") and not busy_error("429 RESOURCE_EXHAUSTED") and not busy_error("TimeoutError")
     cl = [dict(c) for c in SEED_CYCLES]
     got = clean_cycles([{"name": "a b", "digits": [3, 8, 1, 7], "why": "돌린 7381"}, {"name": "", "digits": [1, 1], "why": ""},
