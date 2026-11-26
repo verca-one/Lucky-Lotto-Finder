@@ -165,5 +165,7 @@ void main() {
     expect(g.length, 6);
     expect(g.toSet().length, 6);
     expect(g.toSet().containsAll([3, 17, 40]), isTrue);
+    // 판매점에서 산 번호 → 그 판매점이 즐겨찾기에 들어감 (즐겨찾기 판매점 카드 안에 보이게)
+    expect((await SharedPreferences.getInstance()).getStringList('favorite_stores'), ['S4']);
   });
 }

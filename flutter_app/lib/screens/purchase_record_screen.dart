@@ -10,6 +10,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/lottery_store.dart';
 import '../models/lotto_winning_number.dart';
+import '../services/favorites_notifier.dart';
 import '../services/purchase_records.dart';
 import '../services/research/briefing_hit_check.dart' show lottoRank;
 import '../services/supabase_service.dart';
@@ -189,10 +190,21 @@ class _PurchaseRecordScreenState extends State<PurchaseRecordScreen> {
         createdAt: e?.createdAt ?? DateTime.now(),
       ),
     );
+    // 판매점에서 산 번호는 즐겨찾기 판매점 카드 안에 모아 보이므로 그 판매점을 즐겨찾기에 넣음 (어느 메뉴에서 찍었든)
+    var faved = false;
+    if (s != null && s.dhlotteryCode.isNotEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      final favs = prefs.getStringList('favorite_stores') ?? <String>[];
+      if (!favs.contains(s.dhlotteryCode)) {
+        await prefs.setStringList('favorite_stores', [...favs, s.dhlotteryCode]);
+        notifyFavoritesChanged();
+        faved = true;
+      }
+    }
     if (!mounted) return;
     ScaffoldMessenger.of(
       context,
-    ).showSnackBar(SnackBar(content: Text('$_round회${s == null ? '' : ' · ${s.storeName}'} · ${games.length}게임 기록했습니다')));
+    ).showSnackBar(SnackBar(content: Text('$_round회${s == null ? '' : ' · ${s.storeName}'} · ${games.length}게임 기록했습니다${faved ? ' · 즐겨찾기에 추가' : ''}')));
     Navigator.pop(context, true);
   }
 
