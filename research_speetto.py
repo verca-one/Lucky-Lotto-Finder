@@ -253,7 +253,10 @@ def infer_block(db, games, status):
                          f"한 장당 1등 1/{e.get('p1_now') or '?'} (처음 1/{e.get('p1_start') or '?'}) · 이번 차수 1등 {d['won']}곳 {d['sido'] or '-'}")
         lines.append(f"  과거 1등 판매점: {', '.join(top) or '-'}")
     data, model, err = None, None, None
-    if os.environ.get("GEMINI_API_KEY") and any(r["best"] for r in rows):
+    off = os.environ.get("SPEETTO_AI") == "0"   # 요일 나눠 돌리기 — 스피또 추리 날(목)이 아니면 제미나이를 부르지 않고 지난 추리를 이어 씀
+    if off:
+        err = "오늘은 스피또 추리 날이 아님 (목요일에 다시 · 지난 추리 이어 씀)"
+    elif os.environ.get("GEMINI_API_KEY") and any(r["best"] for r in rows):
         import research_strategy_ai as S
         try:
             data, model, _ = S.ask_gemini("\n".join(lines), system=INFER_SYSTEM, sch=infer_schema())
@@ -289,7 +292,7 @@ def public_summary(p):
             "disclaimer": "스피또 1·2등이 나온 판매점 기록과 동행복권 판매 현황을 정리한 참고용입니다. 어느 판매점에서 사도 한 장의 당첨 확률은 같습니다."}
 
 
-KEEP_AI_DAYS = 7
+KEEP_AI_DAYS = 9   # 추리는 주 1번(목) — 한 주 건너도 이어 쓰게 여유 2일
 
 
 def keep_last_ai(db, inf, st):

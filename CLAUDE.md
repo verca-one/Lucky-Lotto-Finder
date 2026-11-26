@@ -85,6 +85,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - `research-engine.yml` (2시간마다 gate): `research_pipeline_gate.py` 준비 판단 → Dart 엔진을 `flutter test tool/server/research_pipeline_test.dart` 로 헤드리스 실행 → publish(공식 등록 · 비인기 · 복기 · 가설 트랙 · 회차 검증 · 월요일 취합 · 공개 요약).
   - `research-worker.yml` (Crawl Lotto 직후): 당첨자 수 수집 · 지역 연구 · 지방장 238명(`research_agent_worker.py`).
   - `research-strategy.yml` (매일 17시): AI 브리핑전담부서(`research_set_review.py`, 제미나이) → AI 전략기획부(`research_strategy_ai.py`) → 가설 공장 → 판매점 가설 → 가설 트랙 → 연금 · 스피또.
+    제미나이 몫은 요일로 나눠 돈다(`research_ai_week.py` PLAN ↔ 앱 `ai_dept_status.dart` `kAiWeekPlan` — 같이 바꿀 것): 월 7183 · 복기 / 화 전략기획부 / 수 연금 / 목 스피또 / 금 실패한 것만. 17:05 KST, push 로는 안 돈다. 연구소 › AI 부서 [새로고침](`research_ai_requests` → `research_request_poll.py`)은 이번 주 실패 · 빠진 몫만 다시.
   - `research-weekly.yml` (토 08:00): 가설 공장 · 판매점 가설 · 추천번호 복기만. `research_hypothesis_track.py --final` · `research_weekly_digest.py --stage sat|preview` 는 코드만 남아 있고 호출하지 않는다.
   - `research-request-poll.yml` (10분마다): 앱 요청 테이블을 보고 engine / weekly 워크플로를 실행.
   - `research-7183.yml` (매일 18:30, 제미나이는 회차당 1번): **7183 에이전트**(`research_7183.py`) — 사용자 구상 '법칙 생태계'. 세는 쪽(법칙 식 · 조수의 숫자 패턴 · 채점)은 서버 계산, 꿈꾸는 쪽(추리 · 새 순환 · 믿는 법칙 · 연구 노트)은 제미나이. `research_results(agent_7183)` 에 회차당 1건. 채점은 '다음 회차 적중' 하나이고 우연 기대(그 회차 상황에서 무작위 조합이 예상을 만족하는 비율)와 나란히 본다. 번호 5세트는 월요일 공개 뒤 첫 실행에서 `research_predictions(hypothesis_track · 7183-1.0)` 에 한 번 등록하고 고정 — **브리핑의 제미나이 추천번호(④) 자리를 대체**한다(앱 `Agent7183Card`, 조수의 황금 숫자 상자 포함). 예전 가설 트랙(ht-1.0)은 계속 돌지만 번호는 브리핑에 나오지 않고 가설 명당 5곳만 쓴다.

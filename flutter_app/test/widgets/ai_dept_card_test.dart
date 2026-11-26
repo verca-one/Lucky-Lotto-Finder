@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_app/services/research/ai_dept_status.dart';
 import 'package:flutter_app/widgets/ai_dept_card.dart';
+import 'package:flutter_app/widgets/ai_week_progress.dart';
 import 'package:flutter_app/widgets/briefing_top_reports.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -71,6 +72,34 @@ void main() {
     await t.tap(find.byKey(const ValueKey('ai_dept_refresh')));
     await t.pumpAndSettle();
     expect(asked, 1);
+  });
+
+  test('이번 주 진척도 — 요일별 완료 · 실패 · 안 돎 · 예정', () {
+    final wed = DateTime.utc(2026, 11, 25, 10); // 수 19:00 KST (수요일 몫까지 끝났어야 함)
+    expect(AiDeptStatus.weekStart(wed), DateTime.utc(2026, 11, 22, 15));
+    final s = AiDeptStatus.fromRows(
+      now: wed,
+      a7183: {'source': 'gemini'},
+      review: {'source': 'gemini'},
+      runs: [
+        {'kind': 'ai_direction', 'status': 'failed', 'created_at': '2026-11-24T08:10:00Z'},
+        {'kind': 'ai_pension', 'status': 'success', 'created_at': '2026-11-18T08:10:00Z'}, // 지난주 — 이번 주엔 안 돎
+      ],
+    );
+    expect(s.weekStates(wed), [AiDayState.done, AiDayState.failed, AiDayState.missed, AiDayState.wait, AiDayState.wait]);
+    expect(s.weekDone(wed), 1);
+  });
+
+  testWidgets('브리핑 진척도 상자 — 1/4 · 문제 있으면 연구소 새로고침 안내', (t) async {
+    final wed = DateTime.utc(2026, 11, 25, 10);
+    final s = AiDeptStatus.fromRows(now: wed, a7183: {'source': 'gemini'}, review: {'source': 'gemini'},
+        runs: [{'kind': 'ai_direction', 'status': 'failed', 'created_at': '2026-11-24T08:10:00Z'}]);
+    await t.pumpWidget(MaterialApp(home: Scaffold(body: AiWeekProgress(loader: () async => s, clock: () => wed))));
+    await t.pumpAndSettle();
+    expect(find.text('1/4'), findsOneWidget);
+    expect(find.text('완료'), findsOneWidget);
+    expect(find.text('실패'), findsOneWidget);
+    expect(find.byKey(const ValueKey('ai_week_hint')), findsOneWidget);
   });
 
   test('브리핑 경고 — 제미나이 문제 줄', () {

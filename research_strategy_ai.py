@@ -582,20 +582,26 @@ def run_speetto(db, dry=False):
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true")
+    ap.add_argument("--parts", default="direction,pension,speetto",
+                    help="오늘 돌릴 몫 (research_ai_week.py — 요일 나눠 돌리기). 빈 값이면 아무것도 안 함")
     a = ap.parse_args()
+    parts = {x for x in a.parts.split(",") if x}
     url, key = os.environ.get("SUPABASE_URL", ""), os.environ.get("SUPABASE_KEY", "")
     if not url or not key:
         sys.exit("SUPABASE_URL / SUPABASE_KEY 환경변수 필요")
     if not a.dry_run and os.environ.get("GITHUB_ACTIONS") != "true":
         sys.exit("저장은 서버(GitHub Actions)에서만 합니다. 로컬은 --dry-run 만 허용")
     db = R.Db(url, key, dry=a.dry_run)
-    run(db, a.dry_run)
+    if "direction" in parts:
+        run(db, a.dry_run)
     try:
-        run_pension(db, a.dry_run)
+        if "pension" in parts:
+            run_pension(db, a.dry_run)
     except Exception as e:   # 연금 가설 실패가 로또 쪽을 막지 않는다
         print(f"연금 가설 실패: {type(e).__name__} {str(e)[:200]}")
     try:
-        run_speetto(db, a.dry_run)
+        if "speetto" in parts:
+            run_speetto(db, a.dry_run)
     except Exception as e:
         print(f"스피또 가설 실패: {type(e).__name__} {str(e)[:200]}")
 

@@ -65,10 +65,52 @@ class AiRequest {
       };
 }
 
+/// 제미나이 요일 나눠 돌리기 — 서버 research_ai_week.py PLAN 과 같은 표 (바꾸면 같이 바꿀 것)
+///   (요일 글자, 이름, 몫) · 금요일은 예비(이번 주 실패한 것만 다시)
+const kAiWeekPlan = <(String, String, List<String>)>[
+  ('월', '7183 · 복기', ['a7183', 'review']),
+  ('화', '전략기획부', ['direction']),
+  ('수', '연금 추리', ['pension']),
+  ('목', '스피또 추리', ['speetto']),
+  ('금', '예비 · 재시도', []),
+];
+
+enum AiDayState { done, failed, missed, wait }
+
 class AiDeptStatus {
   final List<AiDeptItem> items;
   final AiRequest? request;
-  const AiDeptStatus(this.items, this.request);
+  /// 이번 주 몫별 결과 — true 성공 · false 실패 · null 아직 안 돎
+  final Map<String, bool?> week;
+  const AiDeptStatus(this.items, this.request, {this.week = const {}});
+
+  /// 이번 주 월요일 0시 KST
+  static DateTime weekStart(DateTime now) {
+    final k = now.toUtc().add(const Duration(hours: 9));
+    return DateTime.utc(k.year, k.month, k.day).subtract(Duration(days: k.weekday - 1, hours: 9));
+  }
+
+  /// 요일별 상태 (월~금) — 실행 시각은 매일 17:05 KST, 그날 18시가 지나도 기록이 없으면 '안 돎'
+  List<AiDayState> weekStates(DateTime now) {
+    final k = now.toUtc().add(const Duration(hours: 9));
+    final passed = (k.weekday - 1) + (k.hour >= 18 ? 1 : 0); // 실행이 끝났어야 할 요일 수
+    final all = [for (final d in kAiWeekPlan) ...d.$3];
+    return [
+      for (final (i, d) in kAiWeekPlan.indexed)
+        () {
+          final parts = d.$3.isEmpty ? all : d.$3; // 금요일 = 전체가 다 됐는지
+          if (parts.every((p) => week[p] == true)) return AiDayState.done;
+          if (d.$3.isEmpty) return i < passed ? AiDayState.failed : AiDayState.wait;
+          if (parts.any((p) => week[p] == false)) return AiDayState.failed;
+          // 토 추첨 뒤 · 일요일엔 월요일 몫(7183 · 복기)이 새 회차 것으로 바뀌어 비어 보임 → '안 돎'이 아니라 예정
+          if (i == 0 && k.weekday >= 6) return AiDayState.wait;
+          return i < passed ? AiDayState.missed : AiDayState.wait;
+        }(),
+    ];
+  }
+
+  /// 이번 주 끝난 몫 수 / 전체 (월~목 4일)
+  int weekDone(DateTime now) => weekStates(now).take(4).where((e) => e == AiDayState.done).length;
 
   /// 모두 정상이면 '원활'
   bool get smooth => items.every((e) => e.ok);
@@ -90,8 +132,19 @@ class AiDeptStatus {
     Map<String, dynamic>? review,
     List<Map<String, dynamic>> runs = const [],
     Map<String, dynamic>? request,
+    DateTime? now,
   }) {
     final items = <AiDeptItem>[];
+    final since = weekStart(now ?? DateTime.now());
+    final week = <String, bool?>{
+      'a7183': a7183 == null ? null : a7183['source'] == 'gemini',
+      'review': review == null ? null : review['source'] == 'gemini',
+    };
+    for (final (kind, part) in [('ai_direction', 'direction'), ('ai_pension', 'pension'), ('ai_speetto', 'speetto')]) {
+      final mine = runs.where((x) => x['kind'] == kind && (DateTime.tryParse('${x['created_at']}')?.isBefore(since) == false));
+      // 이번 주에 한 번이라도 성공했으면 성공 (금요일 재시도 포함)
+      week[part] = mine.isEmpty ? null : mine.any((x) => x['status'] != 'failed');
+    }
     if (a7183 == null) {
       items.add(const AiDeptItem('7183 에이전트', true, '다음 회차 실행 전'));
     } else if (a7183['source'] == 'gemini') {
@@ -118,7 +171,7 @@ class AiDeptStatus {
         items.add(AiDeptItem(name, true, r['status'] == 'skipped' ? '이번엔 건너뜀' : '정상', at));
       }
     }
-    return AiDeptStatus(items, request == null ? null : AiRequest.fromRow(request));
+    return AiDeptStatus(items, request == null ? null : AiRequest.fromRow(request), week: week);
   }
 
   static String _kst(DateTime t) {

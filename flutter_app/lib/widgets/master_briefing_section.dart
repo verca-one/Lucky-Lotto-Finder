@@ -23,6 +23,7 @@ import 'briefing_set_marks.dart';
 import 'briefing_nearby_picks.dart';
 import 'weekly_check_card.dart';
 import '../services/research/set_review.dart';
+import 'ai_week_progress.dart';
 
 const _purple = Color(0xFF4527A0);
 
@@ -100,6 +101,9 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
           Text('추첨 후 회차 검증은 아래 구매할 번호(①~③)와 추천 명당(④)만 같은 번호로 채점합니다.',
               style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600)),
           const SizedBox(height: 6),
+          // 제미나이 이번 주 진척도 (월~금 나눠 돌리기) — 제미나이 추천번호 위
+          const AiWeekProgress(),
+          const SizedBox(height: 8),
           // 제미나이 추천번호 자리 — 7183 에이전트 (예전 가설 트랙 번호를 대체, 구매할 번호 세트보다 위)
           Agent7183Card(key: ValueKey('a7183_${b.targetRound}'), target: b.targetRound, released: open,
               footer: BriefingDeskMemo(area: 'hypothesis', target: b.targetRound)),

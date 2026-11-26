@@ -11,7 +11,7 @@ name: Research Strategy
 # AI 는 strategy_directions · strategy_hypotheses(제안)에만 쓴다. 엔진·번호·장부·크롤링과 무관.
 on:
   schedule:
-    - cron: '0 8 * * *'   # 17:00 KST
+    - cron: '5 8 * * *'   # 매일 17:05 KST — 제미나이 한도가 풀린 직후. 제미나이는 요일별로 나눠서 (research_ai_week.py)
   workflow_dispatch:
   # push 로는 돌리지 않음 — 푸쉬마다 제미나이 하루 한도(20번)를 써서 17시 실행 · 7183 이 밀렸음 (2026-11-26). 다시 돌리려면 연구소 › AI 부서 [새로고침]
 
@@ -31,10 +31,18 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install requests numpy scipy anthropic google-genai
+      # 제미나이 요일 나눠 돌리기 — 월 7183 · 복기 / 화 전략기획부 / 수 연금 / 목 스피또 / 금 실패한 것만. 새로고침(수동)은 이번 주 실패 · 빠진 것만
+      - name: 오늘 돌릴 제미나이 몫
+        id: plan
+        continue-on-error: true   # 못 정하면 제미나이 단계만 쉬고 나머지(가설 공장 · 연금 · 스피또 계산)는 그대로
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+        run: python research_ai_week.py ${{ github.event_name == 'workflow_dispatch' && '--manual' || '' }}
       # 7183 에이전트를 맨 먼저 — 아래 단계들이 제미나이 무료 한도(하루 20번)를 다 써서 17:10 의 7183 이 매번 한도 초과로 밀렸음
       #   7183 은 회차당 1번만 부르고 이미 꿈이 있으면 그냥 넘어감 (research-7183.yml 은 그대로 둠)
       - name: 7183 에이전트 — 제미나이 꿈 먼저 (한도 풀린 직후 1번)
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && contains(steps.plan.outputs.parts, 'a7183') }}
         continue-on-error: true
         timeout-minutes: 10
         env:
@@ -43,7 +51,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python research_7183.py --publish
       - name: AI 브리핑전담부서 — 지난 회차 추천 20세트 vs 당첨번호 → 영역별 유지/보완 · 보완 지시 (제미나이 상주 · 회차당 1번)
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && contains(steps.plan.outputs.parts, 'review') }}
         continue-on-error: true
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -58,7 +66,7 @@ jobs:
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: python research_strategy_ai.py
+        run: python research_strategy_ai.py --parts "${{ steps.plan.outputs.parts }}"
       - name: 가설 공장 — 비서 검증·유지·폐기
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -92,6 +100,7 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          SPEETTO_AI: ${{ contains(steps.plan.outputs.parts, 'speetto') && '1' || '0' }}   # 추리(제미나이)는 목요일 몫 — 다른 날은 지난 추리 이어 씀
         run: python research_speetto.py
       - name: 연금 · 스피또 지방장 — 시·군·구별 TOP5 · 최근 성적
         if: ${{ !cancelled() }}
