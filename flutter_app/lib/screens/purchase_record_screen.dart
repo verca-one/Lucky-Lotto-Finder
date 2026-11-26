@@ -214,7 +214,7 @@ class _PurchaseRecordScreenState extends State<PurchaseRecordScreen> {
     final ok = _round != null && (widget.manual ? !_manualBad : _store != null); // + 구입 기록은 판매점만 골라도 저장(번호 없이)
     return Scaffold(
       appBar: AppBar(
-        title: Text(widget.manual ? '번호 직접 입력' : widget.existing != null ? '번호 추가' : '구입 기록',
+        title: Text(widget.manual ? (_store == null ? '번호 직접 입력' : '직접 입력 · ${_store!.storeName}') : widget.existing != null ? '번호 추가' : '구입 기록',
             style: const TextStyle(fontWeight: FontWeight.w800)),
         backgroundColor: widget.manual ? kManualColor : _c,
         foregroundColor: Colors.white,
@@ -540,7 +540,8 @@ class _StorePickerState extends State<_StorePicker> {
 class PurchaseRecordsSection extends StatefulWidget {
   final Future<List<PurchaseRecord>> Function()? loader;
   final Future<LottoWinningNumber?> Function(int round)? winLoader;
-  const PurchaseRecordsSection({super.key, this.loader, this.winLoader});
+  final ValueChanged<bool>? onWin; // 최근 추첨 회차에 당첨된 기록이 있으면 true
+  const PurchaseRecordsSection({super.key, this.loader, this.winLoader, this.onWin});
   @override
   State<PurchaseRecordsSection> createState() => _PurchaseRecordsSectionState();
 }
@@ -563,7 +564,19 @@ class _PurchaseRecordsSectionState extends State<PurchaseRecordsSection> {
         _wins[round] = await (widget.winLoader ?? SupabaseService.getWinningNumbersForRound)(round);
       } catch (_) {}
     }
-    if (mounted) setState(() => _records = r);
+    if (!mounted) return;
+    setState(() => _records = r);
+    final drawn = [for (final x in r) if (_wins[x.round] != null) x.round];
+    final last = drawn.isEmpty ? null : drawn.reduce(max);
+    widget.onWin?.call(r.any((x) => x.round == last && _bestRank(x) != null));
+  }
+
+  int? _bestRank(PurchaseRecord r) {
+    final w = _wins[r.round];
+    if (w == null) return null;
+    return [for (final g in r.games) lottoRank(g, w.numbers, w.bonusNumber)]
+        .whereType<int>()
+        .fold<int?>(null, (a, b) => a == null || b < a ? b : a);
   }
 
   Future<void> _add({bool manual = false}) async {
@@ -597,15 +610,16 @@ class _PurchaseRecordsSectionState extends State<PurchaseRecordsSection> {
         ? ('추첨 전 · 당첨번호 나오면 자동 확인', Colors.blueGrey)
         : best == null
         ? ('낙첨', Colors.grey.shade600)
-        : ('$best등 당첨!', const Color(0xFFD84315));
+        : ('🎉 축하합니다! $best등 당첨!', const Color(0xFFB8860B));
     return Container(
       key: ValueKey('purchase_${r.id}'),
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
-        color: Colors.white,
+        // 당첨 — 노란 축하 표시
+        color: best != null ? const Color(0xFFFFF8E1) : Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: best != null ? const Color(0xFFFFB74D) : Colors.grey.shade200, width: best != null ? 1.6 : 1),
+        border: Border.all(color: best != null ? const Color(0xFFFFD54F) : Colors.grey.shade200, width: best != null ? 2 : 1),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -707,7 +721,7 @@ class _PurchaseRecordsSectionState extends State<PurchaseRecordsSection> {
             const Icon(Icons.receipt_long_rounded, color: _c, size: 22),
             const SizedBox(width: 8),
             Expanded(
-              child: Text('구입한 기록${r == null ? '' : ' (${r.length})'}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+              child: Text('구매번호${r == null ? '' : ' (${r.length})'}', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             ),
             FilledButton.icon(
               key: const ValueKey('purchase_manual'),

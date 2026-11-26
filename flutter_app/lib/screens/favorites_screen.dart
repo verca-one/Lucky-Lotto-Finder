@@ -6,9 +6,13 @@ import '../models/lottery_store.dart';
 import '../services/supabase_service.dart';
 import '../services/badge_service.dart';
 import '../services/favorites_notifier.dart';
+import 'my_numbers_screen.dart';
+import 'purchase_record_screen.dart' show openPurchaseRecord, kManualColor;
 
 class FavoritesScreen extends StatefulWidget {
-  const FavoritesScreen({super.key});
+  /// 즐겨찾기 탭 — 판매점 카드에 [QR] [직접 입력] · 아래에 구매번호 (관리자 브리핑에서 열 때는 false)
+  final bool withNumbers;
+  const FavoritesScreen({super.key, this.withNumbers = false});
 
   @override
   State<FavoritesScreen> createState() => _FavoritesScreenState();
@@ -26,6 +30,8 @@ class _FavoritesScreenState extends State<FavoritesScreen>
   bool _selfTriggered = false;
   DateTime? _lastRefreshTime;
   final Set<String> _expandedCards = {};
+  int _rev = 0; // 판매점 카드에서 번호를 넣으면 올려 구매번호를 다시 읽음
+  bool _myWin = false; // 내 구매번호가 최근 추첨에서 당첨
 
   late AnimationController _blinkController;
   late Animation<double> _blinkAnim;
@@ -223,9 +229,69 @@ class _FavoritesScreenState extends State<FavoritesScreen>
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }
+    return RefreshIndicator(
+      onRefresh: _refresh,
+      child: ListView(
+        padding: EdgeInsets.zero,
+        children: [
+          ..._storeItems(),
+          // 구매번호 (예전 '나의 번호' 탭) — 판매점 카드에서 넣은 번호도 여기 쌓임
+          if (widget.withNumbers)
+            MyNumbersScreen(
+              key: ValueKey('my_numbers_$_rev'),
+              onWin: (v) {
+                if (mounted && v != _myWin) setState(() => _myWin = v);
+              },
+            ),
+        ],
+      ),
+    );
+  }
 
+  /// 판매점 카드의 [QR] [직접 입력] — 이 판매점에서 산 번호 기록
+  Widget _buyButtons(LotteryStore store) {
+    Future<void> go(bool qr) async {
+      if (await openPurchaseRecord(context, store: store, startQr: qr, manual: !qr) && mounted) setState(() => _rev++);
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: OutlinedButton.icon(
+              key: ValueKey('fav_qr_${store.dhlotteryCode}'),
+              style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact),
+              onPressed: () => go(true),
+              icon: const Icon(Icons.qr_code_scanner_rounded, size: 16),
+              label: const Text('산 번호 QR', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: OutlinedButton.icon(
+              key: ValueKey('fav_manual_${store.dhlotteryCode}'),
+              style: OutlinedButton.styleFrom(visualDensity: VisualDensity.compact, foregroundColor: kManualColor),
+              onPressed: () => go(false),
+              icon: const Icon(Icons.edit_rounded, size: 16),
+              label: const Text('직접 입력', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _storeItems() {
+    // 당첨 그림 — 즐겨찾기 판매점 당첨(토~월) 또는 내 구매번호 당첨(최근 추첨 회차)
+    final storeWin = _showWinnerBanner && _winnerStores.isNotEmpty;
+    final image = [
+      if (storeWin || _myWin)
+        Image.asset('assets/vito.png', key: const ValueKey('fav_win_image'), width: double.infinity, height: 300, fit: BoxFit.cover),
+    ];
     if (_favorites.isEmpty) {
-      return Center(
+      return [...image, Padding(
+        padding: const EdgeInsets.symmetric(vertical: 32),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -238,11 +304,12 @@ class _FavoritesScreenState extends State<FavoritesScreen>
                 style: TextStyle(fontSize: 13, color: Colors.grey.shade500)),
           ],
         ),
-      );
+      )];
     }
 
     if (_allStores.isEmpty) {
-      return Center(
+      return [...image, Padding(
+        padding: const EdgeInsets.symmetric(vertical: 32),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
@@ -252,25 +319,13 @@ class _FavoritesScreenState extends State<FavoritesScreen>
                 style: TextStyle(fontSize: 14, color: Colors.grey.shade600)),
           ],
         ),
-      );
+      )];
     }
 
-    final showBanner = _showWinnerBanner && _winnerStores.isNotEmpty;
-
-    return RefreshIndicator(
-      onRefresh: _refresh,
-      child: ListView(
-        padding: EdgeInsets.zero,
-        children: [
-          // 당첨 배너 (토~월요일, 당첨 판매점 있을 때만)
-          if (showBanner) ...[
-            // vito.png
-            Image.asset(
-              'assets/vito.png',
-              width: double.infinity,
-              height: 300,
-              fit: BoxFit.cover,
-            ),
+    return [
+          ...image,
+          // 당첨 판매점 묶음 (토~월요일, 당첨 판매점 있을 때만)
+          if (storeWin) ...[
             // 골드 당첨 섹션
             Container(
               margin: const EdgeInsets.fromLTRB(12, 12, 12, 4),
@@ -373,9 +428,7 @@ class _FavoritesScreenState extends State<FavoritesScreen>
                 child: _buildStoreCard(store),
               ))),
           const SizedBox(height: 16),
-        ],
-      ),
-    );
+    ];
   }
 
   Widget _buildWinnerCard(LotteryStore store) {
@@ -526,9 +579,16 @@ class _FavoritesScreenState extends State<FavoritesScreen>
 
   Widget _buildStoreCard(LotteryStore store) {
     final isExpanded = _expandedCards.contains(store.dhlotteryCode);
+    final won = _winnerTiers[store.dhlotteryCode];
 
     return Card(
+      key: ValueKey('fav_store_${store.dhlotteryCode}'),
       margin: const EdgeInsets.only(bottom: 10),
+      // 당첨 판매점 — 노란 축하 표시
+      color: won == null ? null : const Color(0xFFFFF8E1),
+      shape: won == null
+          ? null
+          : RoundedRectangleBorder(borderRadius: BorderRadius.circular(12), side: const BorderSide(color: Color(0xFFFFD54F), width: 2)),
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
         onTap: () {
@@ -551,6 +611,10 @@ class _FavoritesScreenState extends State<FavoritesScreen>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
+                        if (won != null)
+                          Text('🎉 축하합니다! $_latestRound회 ${won == 'first' ? '1' : '2'}등 당첨 판매점',
+                              key: ValueKey('fav_store_win_${store.dhlotteryCode}'),
+                              style: const TextStyle(fontSize: 12.5, fontWeight: FontWeight.w900, color: Color(0xFFB8860B))),
                         Text(
                           store.storeName,
                           style: const TextStyle(
@@ -586,6 +650,7 @@ class _FavoritesScreenState extends State<FavoritesScreen>
                   ),
                 ],
               ),
+              if (widget.withNumbers) _buyButtons(store),
               if (isExpanded) ...[
                 const SizedBox(height: 10),
                 Container(

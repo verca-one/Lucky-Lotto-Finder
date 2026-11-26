@@ -34,6 +34,7 @@ void main() {
   });
 
   testWidgets('구입 기록 목록 — 당첨번호 있으면 자동으로 등수 · 없으면 추첨 전', (t) async {
+    bool? won;
     final records = [
       PurchaseRecord(id: 'x', storeCode: 'S1', storeName: '스파', round: 1250,
           games: const [[1, 5, 18, 23, 40, 41], [2, 3, 4, 6, 7, 9]], createdAt: DateTime(2026, 11, 14)),
@@ -47,11 +48,13 @@ void main() {
       winLoader: (r) async => r == 1250
           ? LottoWinningNumber(drawDate: '2026-11-14', round: 1250, numbers: const [1, 5, 18, 23, 27, 28], bonusNumber: 8)
           : null,
+      onWin: (v) => won = v,
     )))));
     await t.pumpAndSettle();
-    expect(find.text('구입한 기록 (3)'), findsOneWidget);
+    expect(find.text('구매번호 (3)'), findsOneWidget);
     expect(find.text('번호 없이 판매점만 기록'), findsOneWidget); // 판매점만 골라 저장한 기록
-    expect(find.text('4등 당첨!'), findsOneWidget); // 1 5 18 23 맞음
+    expect(find.text('🎉 축하합니다! 4등 당첨!'), findsOneWidget); // 1 5 18 23 맞음 · 노란 축하 표시
+    expect(won, isTrue); // 최근 추첨 회차(1250) 당첨 → 즐겨찾기 탭 당첨 그림
     expect(find.text('4등'), findsOneWidget);
     expect(find.text('0개'), findsOneWidget);
     expect(find.text('추첨 전 · 당첨번호 나오면 자동 확인'), findsOneWidget);

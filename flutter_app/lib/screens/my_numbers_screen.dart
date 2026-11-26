@@ -5,7 +5,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'purchase_record_screen.dart';
 
 class MyNumbersScreen extends StatefulWidget {
-  const MyNumbersScreen({super.key});
+  /// 내 구매번호가 최근 추첨 회차에서 당첨이면 true (즐겨찾기 탭 당첨 그림)
+  final ValueChanged<bool>? onWin;
+  const MyNumbersScreen({super.key, this.onWin});
 
   @override
   State<MyNumbersScreen> createState() => _MyNumbersScreenState();
@@ -67,11 +69,12 @@ class _MyNumbersScreenState extends State<MyNumbersScreen> {
     }
 
     // 맨 위: 구입 기록 (QR · 판매점 · 자동 당첨 확인 — 이 탭에만 표시), 아래: 추천 메뉴에서 저장한 번호
-    final top = [const PurchaseRecordsSection(), const Divider(height: 32)];
+    final top = [PurchaseRecordsSection(onWin: widget.onWin), const Divider(height: 32)];
     if (_savedNumbers.isEmpty) {
-      return ListView(
+      // 즐겨찾기 탭 목록 안에 들어가므로 스스로 스크롤하지 않음
+      return Padding(
         padding: const EdgeInsets.all(16),
-        children: [
+        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
           ...top,
           Center(
             child: Column(
@@ -85,19 +88,17 @@ class _MyNumbersScreenState extends State<MyNumbersScreen> {
               ],
             ),
           ),
-        ],
+        ]),
       );
     }
 
-    return ListView.builder(
+    return Padding(
       padding: const EdgeInsets.all(16),
-      itemCount: _savedNumbers.length + 1,
-      itemBuilder: (context, index) {
-        if (index == 0) {
-          return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [...top, _savedHeader()]);
-        }
-        return _savedItem(index);
-      },
+      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+        ...top,
+        _savedHeader(),
+        for (var i = 1; i <= _savedNumbers.length; i++) _savedItem(i),
+      ]),
     );
   }
 
