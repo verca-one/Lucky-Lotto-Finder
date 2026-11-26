@@ -303,11 +303,30 @@ def zone(base):
     return "전체"
 
 
-def evid(stat):
-    """방식의 힘 = 지금까지 우연보다 더 맞은 만큼 (우연 이하면 0). 좁게 짚는다는 이유로는 힘을 주지 않는다.
-    기록이 적을 때는 EVID_PRIOR 만큼 '우연과 같음' 쪽으로 당긴다. stat = [적중, 예상 횟수, 우연 기대]"""
+def lift(stat):
+    """성적 비율 = 적중 ÷ 우연 기대 (1 = 우연과 같음). 기록이 적을 때는 EVID_PRIOR 만큼 1 쪽으로 당긴다. stat = [적중, 예상 횟수, 우연 기대]"""
     h, _n, e = stat
-    return max(0.0, (h + EVID_PRIOR) / (e + EVID_PRIOR) - 1.0)
+    return (h + EVID_PRIOR) / (e + EVID_PRIOR)
+
+
+def evid(stat):
+    """방식의 힘 = 지금까지 우연보다 더 맞은 만큼 (우연 이하면 0). 좁게 짚는다는 이유로는 힘을 주지 않는다."""
+    return max(0.0, lift(stat) - 1.0)
+
+
+def rule_trust(cands, mode_lift):
+    """꿈(제미나이)이 못 답한 주에 계산이 대신 고르는 '믿는 법칙' — 번호가 무작위가 되지 않게 근거를 세운다 (2026-11-26 사용자 지시).
+    성적이 좋은 방식부터 → 그 연속이 우연히 나오기 가장 어려운 것부터 → 서로 다른 자리로 최대 MAX_TRUST 개.
+    cands: [(순번, 방식, 기본 값 이름, 놀라움)] → 고른 순번 목록"""
+    out, fams = [], set()
+    for k, mode, base, _sur in sorted(cands, key=lambda x: (-round(mode_lift.get(x[1], 1.0), 6), -x[3], x[0])):
+        if family(base) in fams:
+            continue
+        fams.add(family(base))
+        out.append(k)
+        if len(out) == MAX_TRUST:
+            break
+    return out
 
 
 def rep_laws(laws, F):
@@ -347,11 +366,12 @@ def top_sets(score, sample, past):
     return [list(c) for c in out]
 
 
-def pick_sets(laws, masks, sample, cand_w, past, F, mode_w):
-    """복기용 번호 5세트 — 성적이 우연을 넘은 방식의 법칙만 힘을 갖는다 (힘이 모두 0 이면 무작위 조합과 같다)"""
+def pick_sets(laws, masks, sample, cand_w, past, F, mode_w, boost=()):
+    """복기용 번호 5세트 — 성적이 우연을 넘은 방식의 법칙(힘 = 성적) + 계산이 고른 법칙(boost, 힘 W_TRUST)"""
     score = np.zeros(SAMPLE)
     ws = spread_weights([(name, F[i][0], mk) for (name, i, _p, _w, _r), mk in zip(laws, masks)], mode_w)
-    for w, mk in zip(ws, masks):
+    for k, (w, mk) in enumerate(zip(ws, masks)):
+        w = W_TRUST if k in boost else w
         if w:
             score += w * mk
     if cand_w.any():
@@ -396,9 +416,14 @@ def run(nums, rounds, start, cycles=None, reg=None):
     law_since = {name: [0, 0, 0.0] for name in modes}           # 순환을 등록한 뒤의 새 회차만 (대표 하나만)
     law_raw = {name: [0, 0, 0.0] for name in modes}             # 겹쳐 센 예전 방식 — 비교용
 
-    def mode_weights():
+    def mode_lifts():
         # 주기 법칙은 미리 정해 둔 것이라 복기 성적을, 순환은 데이터를 보고 꿈꾼 것이라 등록 뒤 성적만 믿는다
-        return {name: evid(law_since[name] if name.startswith("순환 ") else law_stat[name]) for name in modes}
+        return {name: lift(law_since[name] if name.startswith("순환 ") else law_stat[name]) for name in modes}
+
+    def mode_weights():
+        return {name: max(0.0, v - 1.0) for name, v in mode_lifts().items()}
+
+    rule_stat = [0, 0, 0.0]                                     # 계산이 고른 법칙(rule_trust)의 적중 · 예상 횟수 · 우연 기대
 
     hand = {"cond": {z: {b: 0 for b in ZONES} for z in ZONES}, "cond_n": {z: 0 for z in ZONES}, "base": {b: 0 for b in ZONES}, "base_n": 0}
     prev_dead = None
@@ -411,6 +436,9 @@ def run(nums, rounds, start, cycles=None, reg=None):
         sample = draw_sample(rng)
         masks = law_masks(t, laws, F, hist, sample)
         mode_w = mode_weights()                      # 이 회차를 보기 전까지의 성적으로 정한 힘 (앞을 미리 보지 않음)
+        picks = rule_trust([(k, name, F[i][0], w) for k, (name, i, _p, w, _r) in enumerate(laws)], mode_lifts())
+        for k in picks:                              # 제미나이 없는 주의 규칙을 복기에도 그대로 적용해 성적을 잰다
+            rule_stat[0] += int(V[laws[k][1], t] == laws[k][2]); rule_stat[1] += 1; rule_stat[2] += float(masks[k].mean())
         wf, wg = evid([sc["follow"][0], 0, sc["follow"][1] * BASE_P]), evid([sc["grid"][0], 0, sc["grid"][1] * BASE_P])
         rep = rep_laws(laws, F)
         born = {b: 0 for b in ZONES}                 # 이 회차를 처음 예상하는(막 살아난) 대표 법칙의 자리
@@ -451,7 +479,7 @@ def run(nums, rounds, start, cycles=None, reg=None):
         for _lag, _x, y, _h, _n in gold:
             cand_w[y] += 100.0                                   # 황금 숫자는 반드시 들어가게
             sc["gold"][0] += int(P[t, y]); sc["gold"][1] += 1
-        sets = pick_sets(laws, masks, sample, cand_w, past, F, mode_w)
+        sets = pick_sets(laws, masks, sample, cand_w, past, F, mode_w, set(picks))
         win = set(int(v) for v in nums[t])
         rand = [sorted(int(v) for v in rnd.choice(np.arange(1, 46), 6, replace=False)) for _ in range(N_SETS)]
         rows.append({"round": rounds[t], "sets": sets, "m": [len(win & set(s)) for s in sets],
@@ -474,7 +502,8 @@ def run(nums, rounds, start, cycles=None, reg=None):
             if pred >= 0:
                 mk = law_masks(T, [(name, int(i), pred, 0, 0)], F, histn, nsample)[0]
                 nxt_laws.append({"law": formula_name(F[i]), "mode": name, "run": int(runv[i]), "next": pred,
-                                 "chance": float(mk.mean()), "f": list(F[i]), "_k": mk.tobytes(), "_m": mk})
+                                 "chance": float(mk.mean()), "f": list(F[i]), "_k": mk.tobytes(), "_m": mk,
+                                 "_sur": float(-math.log10(m["q"][i]) * runv[i])})
     nxt_laws.sort(key=lambda x: (x["chance"], -x["run"]))   # 우연히 맞기 어려운 순
     uniq, seen = [], set()
     for x in nxt_laws:                                       # 같은 예상을 하는 식은 하나만 보여 줌
@@ -489,6 +518,15 @@ def run(nums, rounds, start, cycles=None, reg=None):
         x["id"] = k
         x["family"], x["w"] = family(x["f"][0]), round(float(w), 4)   # 자리 묶음 · 번호 뽑기에 실리는 힘 (0 = 성적이 우연 이하)
         masks[k] = x.pop("_m")
+    lifts = mode_lifts()
+    order = sorted(lifts, key=lambda n_: -lifts[n_])
+    src = {n_: (law_since[n_] if n_.startswith("순환 ") else law_stat[n_]) for n_ in modes}
+    rule_pick = []
+    for k in rule_trust([(x["id"], x["mode"], x["f"][0], x.pop("_sur")) for x in nxt_laws], lifts):
+        x = next(v for v in nxt_laws if v["id"] == k)
+        h, n, e = src[x["mode"]]
+        rule_pick.append(dict(x, why=f"계산이 고름 — [{x['mode']}] 방식 성적 {n}번 중 {h}번(우연 {e:.1f}번 · 방식 {len(order)}가지 중 {order.index(x['mode']) + 1}위) · "
+                                     f"{x['run']}번 연속이 우연히 나오기 가장 어려운 것 · 다른 자리와 겹치지 않게"))
     handover = []
     base_mean = {b: hand["base"][b] / hand["base_n"] if hand["base_n"] else 0.0 for b in ZONES}
     for d in ZONES:
@@ -514,6 +552,7 @@ def run(nums, rounds, start, cycles=None, reg=None):
     return {"formulas": len(F), "patterns": len(F) * len(modes) + len(LAGS) * 45 * 45 + len(GAPS) * 45,
             "law_raw": law_raw, "mode_w": {k: round(v, 4) for k, v in mode_w.items()}, "scout_w": [round(wf, 4), round(wg, 4)],
             "handover": handover, "last_dead": sorted(prev_dead or [], key=ZONES.index),
+            "rule_trust": rule_pick, "rule_stat": [rule_stat[0], rule_stat[1], round(rule_stat[2], 1)],
             "law_stat": law_stat, "law_since": law_since, "scout": sc, "alive_avg": float(np.mean(alive_counts)), "rows": rows,
             "ctx": ctx, "modes": len(modes), "next": {"round": rounds[-1] + 1, "laws": nxt_laws[:SHOW_ALIVE], "laws_total": len(nxt_laws),
                      "follow": [{"lag": a, "x": b, "y": c} for a, b, c in alive], "grid": [{"gap": g, "y": int(y)} for g, y in grid],
@@ -708,6 +747,9 @@ def build_prompt(res, nums, rounds, cyc, prev, scored):
               "(같은 회차 · 같은 자리의 법칙은 대표 하나만 셈)]"]
     L += [f"- {name}: {n}번 중 {h}번 적중 · 우연이면 {e:.1f}번 · 번호에 실리는 힘 {res['mode_w'].get(name, 0)}"
           for name, (h, n, e) in res["law_stat"].items()]
+    rs = res["rule_stat"]
+    L += [f"- 계산이 고른 법칙(당신이 답하지 못한 주에 대신 쓰는 규칙: 성적 좋은 방식 → 놀라운 연속 → 서로 다른 자리): "
+          f"{rs[1]}번 중 {rs[0]}번 적중 · 우연이면 {rs[2]}번"]
     L += ["", "[이어받기 표 — 법칙이 끊긴 다음 회차에 어느 자리에서 새 법칙이 살아났나 (평소의 몇 배)]"]
     L += [f"- {h['dead']}에서 끊긴 뒤 ({h['n']}회): " + " · ".join(f"{b} {v}배" for b, v in h["born"].items() if v is not None)
           for h in res["handover"] if h["n"]] or ["- (기록 없음)"]
@@ -832,7 +874,7 @@ def weekly(db, a):
             res = count(cycles)
             cyc, done_now = cycle_report(cycles, res, prev_done)
     else:
-        new, trusted = [], [dict(x, why="우연히 맞기 가장 어려운 예상 (계산)") for x in nx["laws"][:MAX_TRUST]]
+        new, trusted = [], res["rule_trust"]   # 계산이 고른 법칙 (성적 좋은 방식 → 놀라운 연속 → 서로 다른 자리) — 번호에도 그대로 실린다
     ai = have_ai or bool(data)
     kept = cur if have_ai else {}
     # 번호 5세트 — 월요일 공개 시점 이후 첫 실행에서 한 번 등록하고 고정
@@ -844,7 +886,7 @@ def weekly(db, a):
         from research_release import prediction_allowed
         ok, sets_note, _ = prediction_allowed(db.get, target, dd, latest)
         if ok:
-            sets, sets_by = make_sets(res["ctx"], trusted if ai else ()), (by if ai else "rule")
+            sets, sets_by = make_sets(res["ctx"], trusted), (by if ai else "rule")
             if a.dry_run:
                 sets_status = "dry-run"
             else:
@@ -885,6 +927,7 @@ def weekly(db, a):
                        "laws_raw": {k: [v[0], v[1], round(v[2], 1)] for k, v in res["law_raw"].items()},   # 겹쳐 센 예전 방식 (비교용)
                        "mode_w": res["mode_w"], "scout_w": res["scout_w"],                                # 번호에 실리는 힘
                        "handover": res["handover"], "last_dead": res["last_dead"],                       # 이어받기 표
+                       "rule_trust": res["rule_stat"],                                                    # 계산이 고른 법칙의 복기 성적
                        "scout": res["scout"], "sets": {"n": len(m), "mean": round(float(np.mean(m)), 4), "ge3": int(sum(x >= 3 for x in m))}},
         "scout": {k: nx[k] for k in ("follow", "grid", "gold", "nearest")},
         "cycles": cyc, "new_cycles": kept.get("new_cycles") or [c["name"] for c in new], "completed_now": done_now,
@@ -922,6 +965,9 @@ def selfcheck():
     """제미나이 출력 걸러내기 점검 (잘못된 순환 · 번호는 버린다)"""
     assert manual_dream(-1) is None   # 다른 회차 것이면 안 씀
     assert evid([10, 0, 10.0]) == 0.0 and evid([5, 0, 10.0]) == 0.0 and abs(evid([40, 0, 10.0]) - 1.0) < 1e-9   # 우연 이하면 힘 0
+    # 계산이 고르는 법칙: 성적 좋은 방식 먼저 → 놀라운 연속 먼저 → 같은 자리는 하나만
+    assert rule_trust([(0, "a", "6번째 번호", 5.0), (1, "b", "6번째 번호의 끝수", 9.0), (2, "a", "1번째 번호", 3.0), (3, "b", "2번째 번호", 1.0),
+                       (4, "b", "3번째 번호", 0.5)], {"a": 1.0, "b": 1.2}) == [1, 3, 4]
     assert family("6번째 번호의 끝수") == "6번째 번호" and zone("6번째 번호의 끝수") == "뒤" and zone("6개 합") == "전체"
     _m1, _m2 = np.array([True, False, True]), np.array([True, True, False])
     # 같은 자리 둘은 힘을 나눠 갖고 · 같은 예상은 한 번만 · 힘 0 인 방식은 빠진다

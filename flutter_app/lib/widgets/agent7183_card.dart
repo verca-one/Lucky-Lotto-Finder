@@ -106,7 +106,7 @@ class _Agent7183CardState extends State<Agent7183Card> {
   static String _modeWLine(Map<String, num> w) {
     final on = [for (final e in w.entries) if (e.value > 0) '${e.key} ${e.value.toStringAsFixed(3)}'];
     return on.isEmpty
-        ? '번호에 실리는 힘 — 지금은 우연을 넘은 방식이 없어 믿는 법칙 · 황금 숫자만 반영 (좁게 짚는다고 힘을 주지 않음)'
+        ? '번호에 실리는 힘 — 지금은 우연을 넘은 방식이 없어 아래 고른 법칙 · 황금 숫자만 반영 (좁게 짚는다고 힘을 주지 않음)'
         : '번호에 실리는 힘 — ${on.join(' · ')} (성적이 우연을 넘은 만큼만 · 나머지 방식은 0)';
   }
 
@@ -202,6 +202,15 @@ class _Agent7183CardState extends State<Agent7183Card> {
           padding: const EdgeInsets.only(top: 6),
           child: Text(_modeWLine(a.modeW), style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700, height: 1.4)),
         ),
+      if (a.ruleTrust.length == 3 && a.ruleTrust[1] > 0)
+        Padding(
+          key: const ValueKey('a7183_rule_trust'),
+          padding: const EdgeInsets.only(top: 4),
+          child: Text(
+              '제미나이가 못 답한 주의 근거 — 계산이 고른 법칙(성적 좋은 방식 → 놀라운 연속 → 서로 다른 자리 3개): '
+              '복기 ${_n(a.ruleTrust[1])}번 중 ${_n(a.ruleTrust[0])}번 적중 · 우연이면 ${a.ruleTrust[2].toStringAsFixed(1)}번',
+              style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700, height: 1.4)),
+        ),
       if (a.handover.any((h) => (h['n'] as num? ?? 0) > 0))
         Padding(
           key: const ValueKey('a7183_handover'),
@@ -219,7 +228,7 @@ class _Agent7183CardState extends State<Agent7183Card> {
         ),
       if (a.trusted.isNotEmpty) ...[
         const SizedBox(height: 8),
-        Text(a.byAi ? '${a.aiName}가 믿는 법칙' : '가장 좁게 짚는 법칙 (계산)', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: accent)),
+        Text(a.byAi ? '${a.aiName}가 믿는 법칙' : '계산이 고른 법칙 — 번호의 근거', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: accent)),
         for (final t in a.trusted) _law(t, why: true),
       ],
       if (a.dream.isNotEmpty)

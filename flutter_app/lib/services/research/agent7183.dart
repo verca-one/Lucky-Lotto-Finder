@@ -47,13 +47,16 @@ class Agent7183 {
   final List<Map<String, dynamic>> handover;
   final List<String> lastDead;
 
+  /// 계산이 고른 법칙(제미나이가 못 답한 주의 규칙)의 복기 성적: 적중 · 예상 수 · 우연 기대
+  final List<num> ruleTrust;
+
   const Agent7183({
     required this.target, this.source = 'rule', this.setsStatus = 'waiting', this.setsBy, this.setsNote, this.aiError,
     this.sets = const [], this.lateSets = const [], this.lateSetsAt, this.lateSetsBy, this.goldNumbers = const [], this.scanned = 0, this.aliveTotal = 0, this.alive = const [],
     this.trusted = const [], this.cycles = const [], this.gold = const [], this.nearest = const [], this.completedNow = const [],
     this.dream = '', this.notes = '', this.newParts = '', this.replay = const {}, this.recordSets = const [],
     this.recordGold = const [], this.recordTrusted = const [],
-    this.modeW = const {}, this.handover = const [], this.lastDead = const [],
+    this.modeW = const {}, this.handover = const [], this.lastDead = const [], this.ruleTrust = const [],
   });
 
   bool get byGemini => source == 'gemini';
@@ -101,6 +104,7 @@ class Agent7183 {
       },
       handover: _maps(sb['handover']),
       lastDead: [for (final x in (sb['last_dead'] as List? ?? const [])) '$x'],
+      ruleTrust: _nums(sb['rule_trust']),
     );
   }
 

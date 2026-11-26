@@ -90,16 +90,19 @@ void main() {
       {'dead': '전체', 'n': 0, 'born': {'앞': null}},
     ];
     (p['scoreboard'] as Map)['last_dead'] = ['앞', '뒤'];
+    (p['scoreboard'] as Map)['rule_trust'] = [247, 714, 242.8];
     await pump(t, Agent7183.fromPayload(p));
     expect(find.textContaining('주기 2회 0.016'), findsOneWidget);
     expect(find.textContaining('앞에서 끊긴 뒤: 앞 1.07배'), findsOneWidget);
     expect(find.textContaining('전체에서 끊긴 뒤'), findsNothing);
     expect(find.text('· 지난 회차에 끊긴 자리: 앞, 뒤'), findsOneWidget);
+    expect(find.textContaining('복기 714번 중 247번 적중 · 우연이면 242.8번'), findsOneWidget); // 제미나이 없는 주의 근거
   });
 
   testWidgets('예전 저장본(힘 · 이어받기 표 없음)에는 그 칸이 없음', (t) async {
     await pump(t, Agent7183.fromPayload(payload(source: 'gemini')));
     expect(find.byKey(const ValueKey('a7183_mode_w')), findsNothing);
+    expect(find.byKey(const ValueKey('a7183_rule_trust')), findsNothing);
     expect(find.byKey(const ValueKey('a7183_handover')), findsNothing);
   });
 
