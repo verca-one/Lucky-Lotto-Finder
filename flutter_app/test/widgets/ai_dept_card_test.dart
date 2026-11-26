@@ -33,6 +33,13 @@ void main() {
     expect(bad.problems[2], contains('시간 초과'));
     expect(bad.request!.active, isTrue);
     expect(bad.request!.progress, 0.55);
+    // 실행 시간 — 실행 중이면 서버 요청부터 지금까지 · 끝나면 실제 시작~끝
+    expect(bad.request!.elapsed(DateTime.utc(2026, 11, 26, 7, 20, 30)), const Duration(minutes: 12, seconds: 30));
+    final done = AiRequest.fromRow({'id': 4, 'status': 'done', 'conclusion': 'success', 'requested_at': '2026-11-26T07:00:00Z',
+      'dispatched_at': '2026-11-26T07:08:00Z', 'done_at': '2026-11-26T08:00:00Z',
+      'run_started_at': '2026-11-26T07:09:00Z', 'run_ended_at': '2026-11-26T07:43:10Z'});
+    expect(AiRequest.fmt(done.elapsed(DateTime.utc(2026, 11, 27))), '34분 10초');
+    expect(AiRequest.fmt(const Duration(hours: 1, minutes: 5)), '1시간 5분');
   });
 
   testWidgets('접힘 · 원활 표시 → 펼치면 부서별 상태 / 실행 중이면 막대 · 새로고침 막힘', (t) async {
@@ -50,6 +57,7 @@ void main() {
     await t.pump();
     expect(find.text('실행 중'), findsOneWidget);
     expect(find.byKey(const ValueKey('ai_dept_progress')), findsOneWidget); // 접혀 있어도 막대
+    expect(find.byKey(const ValueKey('ai_dept_elapsed')), findsOneWidget); // 실행 시간
     expect(t.widget<IconButton>(find.byKey(const ValueKey('ai_dept_refresh'))).onPressed, isNull);
     await t.pumpWidget(const SizedBox()); // 30초 타이머 정리
   });

@@ -59,10 +59,12 @@ def ai_requests(get, patch, token, repo, now):
         runs = requests.get(api + "/runs", headers=gh, params={"event": "workflow_dispatch", "per_page": 10}, timeout=30).json()
         mine = [x for x in runs.get("workflow_runs", []) if ts(x["created_at"]) >= since]
         run = min(mine, key=lambda x: x["created_at"]) if mine else None
-        if run and not r.get("run_url"):
-            patch("research_ai_requests", rid, {"run_url": run["html_url"]})
+        started = run and (run.get("run_started_at") or run["created_at"])
+        if run and (not r.get("run_url") or not r.get("run_started_at")):
+            patch("research_ai_requests", rid, {"run_url": run["html_url"], "run_started_at": started})
         if run and run["status"] == "completed":
-            patch("research_ai_requests", rid, {"status": "done", "done_at": now.isoformat(), "conclusion": run["conclusion"] or "unknown"})
+            patch("research_ai_requests", rid, {"status": "done", "done_at": now.isoformat(), "conclusion": run["conclusion"] or "unknown",
+                                                "run_started_at": started, "run_ended_at": run["updated_at"]})
             print(f"AI 부서 새로고침 #{r['id']} 끝 — {run['conclusion']}")
         elif now - ts(r["dispatched_at"]) > timedelta(minutes=AI_TIMEOUT_MIN):
             patch("research_ai_requests", rid, {"status": "done", "done_at": now.isoformat(), "conclusion": "timeout"})

@@ -25,7 +25,7 @@ class _AiDeptCardState extends State<AiDeptCard> {
   AiDeptStatus? _s;
   Object? _err;
   bool _open = false, _sending = false;
-  Timer? _poll;
+  Timer? _poll, _tick;
 
   @override
   void initState() {
@@ -36,6 +36,7 @@ class _AiDeptCardState extends State<AiDeptCard> {
   @override
   void dispose() {
     _poll?.cancel();
+    _tick?.cancel();
     super.dispose();
   }
 
@@ -49,7 +50,13 @@ class _AiDeptCardState extends State<AiDeptCard> {
       });
       // 실행 중이면 30초마다 다시 읽어 막대를 움직임 (화면을 떠나면 멈춤)
       _poll?.cancel();
-      if (s.request?.active ?? false) _poll = Timer(const Duration(seconds: 30), _load);
+      _tick?.cancel();
+      if (s.request?.active ?? false) {
+        _poll = Timer(const Duration(seconds: 30), _load);
+        _tick = Timer.periodic(const Duration(seconds: 1), (_) {
+          if (mounted) setState(() {});
+        });
+      }
     } catch (e) {
       if (mounted) setState(() => _err = e);
     }
@@ -143,7 +150,12 @@ class _AiDeptCardState extends State<AiDeptCard> {
               ),
             ),
             const SizedBox(height: 4),
-            Text(req.stage, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+            Row(children: [
+              Expanded(child: Text(req.stage, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700))),
+              Text('${running ? '실행 중' : '실행 시간'} ${AiRequest.fmt(req.elapsed(DateTime.now().toUtc()))}',
+                  key: const ValueKey('ai_dept_elapsed'),
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w900, color: running ? const Color(0xFF1565C0) : Colors.black87)),
+            ]),
             Text(
               [
                 '요청 ${AiDeptStatus.kst(req.requestedAt)}',

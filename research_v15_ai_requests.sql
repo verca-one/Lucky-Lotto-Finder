@@ -14,8 +14,13 @@ CREATE TABLE IF NOT EXISTS research_ai_requests (
   dispatched_at timestamptz,
   done_at       timestamptz,
   conclusion    text,                                     -- success | failure | cancelled | timeout | dispatch_failed
-  run_url       text
+  run_url       text,
+  run_started_at timestamptz,                             -- GitHub 실행이 실제로 시작 · 끝난 시각 (실행 시간 표시)
+  run_ended_at   timestamptz
 );
+-- 이미 표를 만든 뒤라면 칸만 추가
+ALTER TABLE research_ai_requests ADD COLUMN IF NOT EXISTS run_started_at timestamptz;
+ALTER TABLE research_ai_requests ADD COLUMN IF NOT EXISTS run_ended_at timestamptz;
 
 ALTER TABLE research_ai_requests ENABLE ROW LEVEL SECURITY;
 
@@ -29,6 +34,7 @@ CREATE POLICY "ai_requests_insert" ON research_ai_requests
   WITH CHECK (
     status = 'pending' AND source = 'app_manual'
     AND dispatched_at IS NULL AND done_at IS NULL AND conclusion IS NULL AND run_url IS NULL
+    AND run_started_at IS NULL AND run_ended_at IS NULL
     AND NOT EXISTS (
       SELECT 1 FROM research_ai_requests r
       WHERE r.status <> 'done' OR r.requested_at > now() - interval '20 minutes'

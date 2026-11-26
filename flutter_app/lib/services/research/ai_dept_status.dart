@@ -16,9 +16,10 @@ class AiRequest {
   final int id;
   final String status; // pending | dispatched | done
   final DateTime requestedAt;
-  final DateTime? dispatchedAt, doneAt;
+  final DateTime? dispatchedAt, doneAt, runStartedAt, runEndedAt;
   final String? conclusion;
-  const AiRequest(this.id, this.status, this.requestedAt, {this.dispatchedAt, this.doneAt, this.conclusion});
+  const AiRequest(this.id, this.status, this.requestedAt,
+      {this.dispatchedAt, this.doneAt, this.conclusion, this.runStartedAt, this.runEndedAt});
 
   factory AiRequest.fromRow(Map<String, dynamic> r) => AiRequest(
         (r['id'] as num).toInt(),
@@ -27,7 +28,24 @@ class AiRequest {
         dispatchedAt: DateTime.tryParse('${r['dispatched_at']}'),
         doneAt: DateTime.tryParse('${r['done_at']}'),
         conclusion: r['conclusion'] as String?,
+        runStartedAt: DateTime.tryParse('${r['run_started_at']}'),
+        runEndedAt: DateTime.tryParse('${r['run_ended_at']}'),
       );
+
+  /// 실행 시간 — 실제 시작(없으면 서버 요청 · 접수 시각)부터 끝(실행 중이면 지금)까지
+  Duration elapsed(DateTime now) {
+    final from = runStartedAt ?? dispatchedAt ?? requestedAt;
+    final to = runEndedAt ?? (active ? now : (doneAt ?? now));
+    final d = to.difference(from);
+    return d.isNegative ? Duration.zero : d;
+  }
+
+  /// '12분 30초' · '1시간 5분'
+  static String fmt(Duration d) => d.inHours > 0
+      ? '${d.inHours}시간 ${d.inMinutes % 60}분'
+      : d.inMinutes > 0
+          ? '${d.inMinutes}분 ${d.inSeconds % 60}초'
+          : '${d.inSeconds}초';
 
   bool get active => status != 'done';
   bool get failed => status == 'done' && conclusion != 'success';
