@@ -35,6 +35,7 @@ class MasterBriefingSection extends StatefulWidget {
 
 class _MasterBriefingSectionState extends State<MasterBriefingSection> {
   late Future<MasterBriefing> _future;
+  int _gen = 0; // 새로고침마다 올림 — 안쪽 카드(7183 · 비인기 · 복기 메모 …)도 새로 만들어 다시 읽게
 
   @override
   void initState() {
@@ -51,7 +52,7 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
 
   void _reload() {
     SetReview.clearCache();
-    if (mounted) setState(() { _future = MasterBriefingService.instance.load(force: true); });
+    if (mounted) setState(() { _gen++; _future = MasterBriefingService.instance.load(force: true); });
   }
 
   @override
@@ -82,7 +83,7 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
         // 회차 검증도 같은 번호로 같은 세트를 채점한다 (뒤에서 따로 채점하는 영역 없음)
         final open = b.numbersReleased;
         final wait = '${b.targetRound}회 번호는 ${b.release?.releaseLabel ?? '월요일 0시'}에 공개됩니다 (수동 추천으로 먼저 받을 수 있음).';
-        return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        return KeyedSubtree(key: ValueKey('briefing_gen_$_gen'), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Row(children: [
             Container(width: 4, height: 20, decoration: BoxDecoration(color: _purple, borderRadius: BorderRadius.circular(2))),
             const SizedBox(width: 8),
@@ -93,7 +94,7 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
             IconButton(
               visualDensity: VisualDensity.compact, iconSize: 18, tooltip: '새로고침',
               icon: const Icon(Icons.refresh, color: _purple),
-              onPressed: () => setState(() { _future = MasterBriefingService.instance.load(force: true); }),
+              onPressed: _reload,
             ),
           ]),
           Text('추첨 후 회차 검증은 아래 구매할 번호(①~③)와 추천 명당(④)만 같은 번호로 채점합니다.',
@@ -132,7 +133,7 @@ class _MasterBriefingSectionState extends State<MasterBriefingSection> {
           ),
           const SizedBox(height: 12),
           _storeCard(b, '4'),
-        ]);
+        ]));
       },
     );
   }

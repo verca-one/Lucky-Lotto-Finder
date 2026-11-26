@@ -43,6 +43,17 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install requests numpy scipy anthropic google-genai
+      # 7183 에이전트를 맨 먼저 — 아래 단계들이 제미나이 무료 한도(하루 20번)를 다 써서 17:10 의 7183 이 매번 한도 초과로 밀렸음
+      #   7183 은 회차당 1번만 부르고 이미 꿈이 있으면 그냥 넘어감 (research-7183.yml 은 그대로 둠)
+      - name: 7183 에이전트 — 제미나이 꿈 먼저 (한도 풀린 직후 1번)
+        if: ${{ !cancelled() }}
+        continue-on-error: true
+        timeout-minutes: 10
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python research_7183.py --publish
       - name: AI 브리핑전담부서 — 지난 회차 추천 20세트 vs 당첨번호 → 영역별 유지/보완 · 보완 지시 (제미나이 상주 · 회차당 1번)
         if: ${{ !cancelled() }}
         continue-on-error: true
