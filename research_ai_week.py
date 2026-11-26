@@ -1,7 +1,9 @@
 """
 제미나이 요일 나눠 돌리기 (research-strategy.yml 첫 단계) — 서버 전용 · 읽기만
 
-제미나이 무료 한도(하루 20번 · 17:00 KST 에 풀림)를 한 번에 다 쓰지 않게, 매일 17:05 KST 에 그날 몫만 돌린다.
+제미나이 무료 한도(하루 20번 · 17:00 KST 에 풀림)를 한 번에 다 쓰지 않게, 그날 몫만 돌린다.
+월~목 17:05 부터 2시간마다 다음 날 05:05 까지(하루 7번 — 2026-11-27 사용자 지시) 본다: 이미 됐으면 아무것도 안 하고,
+전날 몫이 안 됐으면 밀린 날 것부터 한 번에 하루치씩 차례로 시도한다. 17:05~다음 날 06:30 은 시작한 날의 창으로 친다.
   월: 7183 에이전트 · AI 브리핑전담부서(복기)   화: AI 전략기획부   수: 연금 추리   목: 스피또 추리
   금 · 토 · 일: 자동으로는 돌지 않는다 (2026-11-27 사용자 지시 — 금요일 자동 재시도 대신 수동으로 고름)
 연구소 › AI 부서: 단계별 [재시도] = 그 몫만 (--parts) · 위쪽 [새로고침] = 이번 주에 실패 · 빠진 것 모두(없으면 오늘 몫)
@@ -31,13 +33,25 @@ def week_start(now):
     return (k - timedelta(days=k.weekday())).replace(hour=0, minute=0, second=0, microsecond=0).astimezone(timezone.utc)
 
 
+def plan_day(now):
+    """계획 요일(월=0) — 새벽 재시도(다음 날 06:30 전)는 전날 저녁에 시작한 창이라 전날로 친다"""
+    return (now.astimezone(KST) - timedelta(hours=6, minutes=30)).weekday()
+
+
 def parts_for(now, done, manual=False):
-    """오늘 돌릴 몫 (순수 함수 — selfcheck 대상). done: 몫 → 이번 주 성공 여부"""
-    wd = now.astimezone(KST).weekday()
+    """이번 실행에서 돌릴 몫 (순수 함수 — selfcheck 대상). done: 몫 → 이번 주 성공 여부
+    자동: 밀린 날 것부터 차례로, 한 번에 하루치만 (이미 된 것은 건너뜀). 금 · 토 · 일 창은 자동 실행 없음"""
+    wd = plan_day(now)
     missed = [p for p in ALL if DAY_OF[p] <= min(wd, 4) and not done.get(p)]
     if manual:
         return missed or PLAN.get(wd, [])
-    return PLAN.get(wd, [])   # 금 · 토 · 일은 계획이 없어 빈 목록
+    if wd not in PLAN:
+        return []
+    for d in range(wd + 1):
+        todo = [p for p in PLAN[d] if not done.get(p)]
+        if todo:
+            return todo
+    return []
 
 
 def chosen(explicit, now, done):
@@ -71,7 +85,13 @@ def selfcheck():
     mon = datetime(2026, 11, 23, 8, 5, tzinfo=timezone.utc)  # 월 17:05 KST
     assert week_start(mon) == datetime(2026, 11, 22, 15, 0, tzinfo=timezone.utc)
     assert parts_for(mon, {}) == ["a7183", "review"]
-    assert parts_for(mon + timedelta(days=1), {}) == ["direction"]
+    ok_mon = {"a7183": True, "review": True}
+    assert parts_for(mon + timedelta(days=1), ok_mon) == ["direction"]
+    assert parts_for(mon + timedelta(days=1), {}) == ["a7183", "review"]                    # 화요일인데 월요일 몫이 밀림 → 밀린 것부터
+    assert parts_for(mon + timedelta(days=1), {"a7183": True}) == ["review"]                # 된 것은 건너뜀
+    assert parts_for(mon + timedelta(days=1), dict(ok_mon, direction=True)) == []           # 다 됐으면 아무것도 안 함
+    assert parts_for(mon + timedelta(hours=12), {}) == ["a7183", "review"]                  # 화 05:05 = 월요일 창의 마지막 시도
+    assert parts_for(mon + timedelta(days=3, hours=12), dict(ok_mon, direction=True, pension=True)) == ["speetto"]   # 금 05:05 = 목요일 창
     fri = mon + timedelta(days=4)
     assert parts_for(fri, {"a7183": True, "review": True, "direction": False, "pension": True, "speetto": True}) == []   # 금요일 자동 재시도 없음
     assert parts_for(fri, {"direction": False, "a7183": True, "review": True, "pension": True, "speetto": True}, manual=True) == ["direction"]

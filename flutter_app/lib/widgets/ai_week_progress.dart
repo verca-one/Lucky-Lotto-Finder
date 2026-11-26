@@ -84,7 +84,7 @@ class _AiWeekProgressState extends State<AiWeekProgress> {
             ),
         ]),
         const SizedBox(height: 6),
-        Text('월~목 17:05 에 그날 몫만 돕니다 (하루 한도를 나눠 씀). 실패한 단계는 연구소 › AI 부서에서 단계별 [재시도].',
+        Text('월~목 17:05 부터 2시간마다 다음 날 05:05 까지 그날 몫을 시도합니다 (밀린 것부터 차례로). 그래도 안 되면 연구소 › AI 부서에서 단계별 [재시도].',
             style: TextStyle(fontSize: 10.5, color: Colors.grey.shade600)),
         if (trouble && !running)
           const Padding(

@@ -11,7 +11,10 @@ name: Research Strategy
 # AI 는 strategy_directions · strategy_hypotheses(제안)에만 쓴다. 엔진·번호·장부·크롤링과 무관.
 on:
   schedule:
-    - cron: '5 8 * * *'   # 매일 17:05 KST — 제미나이 한도가 풀린 직후. 제미나이는 요일별로 나눠서 (research_ai_week.py)
+    - cron: '5 8 * * *'   # 매일 17:05 KST — 제미나이 한도가 풀린 직후. 제미나이는 요일별로 나눠서 (research_ai_week.py) · 전체 단계 실행
+    # 제미나이 재시도 — 월~목 19:05 · 21:05 · 23:05 · 다음 날 01:05 · 03:05 · 05:05 KST (2시간마다, 06시 전까지).
+    #   그날 몫이 이미 됐으면 바로 끝나고, 안 됐거나 전날 것이 밀렸으면 밀린 것부터 한 번에 하루치씩. 제미나이 단계만 돈다(나머지는 17:05 에만).
+    - cron: '5 10,12,14,16,18,20 * * 1-4'
   workflow_dispatch:
     inputs:
       parts:
@@ -29,6 +32,8 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PYTHONUNBUFFERED: '1'   # 취소돼도 어디서 멈췄는지 기록이 남게
+      # 17:05 실행과 수동 실행만 전체 단계 — 2시간마다 재시도는 제미나이 단계만
+      FULL: ${{ (github.event_name != 'schedule' || github.event.schedule == '5 8 * * *') && '1' || '0' }}
     timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
@@ -64,6 +69,7 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python research_set_review.py
       - name: AI 전략기획부 — 방향 제시 (Claude · Gemini, 키 있는 것만)
+        if: ${{ !cancelled() && (contains(steps.plan.outputs.parts, 'direction') || contains(steps.plan.outputs.parts, 'pension') || contains(steps.plan.outputs.parts, 'speetto')) }}
         continue-on-error: true
         timeout-minutes: 25   # 제미나이 로또 · 연금 · 스피또 각 7분까지 — 넘으면 뒤 단계로
         env:
@@ -73,33 +79,34 @@ jobs:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python research_strategy_ai.py --parts "${{ steps.plan.outputs.parts }}"
       - name: 가설 공장 — 비서 검증·유지·폐기
+        if: ${{ env.FULL == '1' }}
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: python research_hypothesis_factory.py
       - name: 판매점 가설 적용 — 적중 예측 순위 (지방장 확률 × 검증 가설 배수)
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && env.FULL == '1' }}
         continue-on-error: true
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: python research_store_hypothesis_apply.py
       - name: 가설 트랙 — 제미나이 가설 바로 실전 (번호 5세트 · 명당 5곳, 공개 후 · 마감 전 사전 등록)
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && env.FULL == '1' }}
         continue-on-error: true
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: python research_hypothesis_track.py
       - name: 연금복권 — 명당 · 번호 엔진 · 연금 가설 트랙 (목 18시 KST 이후 고정)
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && env.FULL == '1' }}
         continue-on-error: true
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
         run: python research_pension.py
       - name: 스피또 — 게임별 1등 판매점 · 당첨점 추리(제미나이) (예전 잘못된 기록이면 공개 안 함)
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && (env.FULL == '1' || contains(steps.plan.outputs.parts, 'speetto')) }}
         continue-on-error: true
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
@@ -108,7 +115,7 @@ jobs:
           SPEETTO_AI: ${{ contains(steps.plan.outputs.parts, 'speetto') && '1' || '0' }}   # 추리(제미나이)는 목요일 몫 — 다른 날은 지난 추리 이어 씀
         run: python research_speetto.py
       - name: 연금 · 스피또 지방장 — 시·군·구별 TOP5 · 최근 성적
-        if: ${{ !cancelled() }}
+        if: ${{ !cancelled() && env.FULL == '1' }}
         continue-on-error: true
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}

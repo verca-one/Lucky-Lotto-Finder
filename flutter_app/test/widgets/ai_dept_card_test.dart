@@ -143,7 +143,7 @@ void main() {
   });
 
   test('이번 주 진척도 — 요일별 완료 · 실패 · 안 돎 · 예정', () {
-    final wed = DateTime.utc(2026, 11, 25, 10); // 수 19:00 KST (수요일 몫까지 끝났어야 함)
+    final wed = DateTime.utc(2026, 11, 25, 22); // 목 07:00 KST — 수요일 창(다음 날 05:05 까지 재시도)이 끝난 뒤
     expect(AiDeptStatus.weekStart(wed), DateTime.utc(2026, 11, 22, 15));
     final s = AiDeptStatus.fromRows(
       now: wed,

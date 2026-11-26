@@ -101,10 +101,10 @@ class AiDeptStatus {
     return DateTime.utc(k.year, k.month, k.day).subtract(Duration(days: k.weekday - 1, hours: 9));
   }
 
-  /// 요일별 상태 (월~금) — 실행 시각은 매일 17:05 KST, 그날 18시가 지나도 기록이 없으면 '안 돎'
+  /// 요일별 상태 (월~금) — 17:05 부터 2시간마다 다음 날 05:05 까지 시도하므로, 다음 날 06:30 이 지나도 기록이 없으면 '안 돎'
   List<AiDayState> weekStates(DateTime now) {
     final k = now.toUtc().add(const Duration(hours: 9));
-    final passed = (k.weekday - 1) + (k.hour >= 18 ? 1 : 0); // 실행이 끝났어야 할 요일 수
+    final passed = k.subtract(const Duration(hours: 6, minutes: 30)).weekday - 1; // 재시도 창까지 끝난 요일 수 (서버 plan_day 와 같은 기준)
     final all = [for (final d in kAiWeekPlan) ...d.$3];
     return [
       for (final (i, d) in kAiWeekPlan.indexed)
