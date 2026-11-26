@@ -46,6 +46,8 @@ VERSION = "a7183-1.0"
 RESULT_TYPE = "agent_7183"
 ROW_VERSION = "a7183"                     # 저장 행 키 (코드 버전이 올라가도 회차당 한 행을 유지)
 REG_ALGO, REG_VERSION = "hypothesis_track", "7183-1.0"   # 브리핑 ④ 자리 — 회차 검증 · 당첨확인이 이 버전을 먼저 고른다
+# 늦은 제미나이 번호(--late-sets) 장부 버전 — '7183' 으로 시작하지 않게 해서 회차 검증(pick_reg) · 앱 당첨확인이 월요일 등록본을 그대로 고른다
+LATE_VERSION = "late-7183-1.0"
 TRUST_BOOST = 2.0                         # 제미나이가 믿는다고 고른 법칙의 힘
 DREAM_DEADLINE = 300                      # 초 — 제미나이 한 번 시도에 주는 시간
 TEST_FROM = 1001           # 복기 시작 회차 (그 앞 회차는 기준값 계산에만 씀)
@@ -606,7 +608,9 @@ def weekly(db, a):
     until = (cur or {}).get("quota_until")
     quota_wait = bool(until) and now < datetime.fromisoformat(until) and not a.force
     wait_note = f"제미나이 한도 초과 — {datetime.fromisoformat(until).astimezone(KST):%m/%d %H:%M}(KST) 이후 다시 시도" if quota_wait else None
-    if have_ai and registered:
+    # --late-sets (수동 실행 때만): 월요일에 제미나이가 못 답해 계산 번호로 등록된 회차에, 제미나이 번호를 별도 기록으로 한 번 추가
+    late_want = bool(getattr(a, "late_sets", False) and registered and cur.get("sets_by") == "rule" and not cur.get("late_sets"))
+    if have_ai and registered and not late_want:
         print(f"{target}회 7183 에이전트 이미 있음(제미나이 · 번호 등록) — 고정")
         return cur
     if quota_wait and registered:
@@ -688,6 +692,20 @@ def weekly(db, a):
                                                       "target_round": f"eq.{target}"})
                 if reg:
                     sets, sets_status = reg[0]["sets"], "registered"
+    # 늦은 제미나이 번호 — 월요일 등록 번호(sets)는 그대로 두고 별도 버전으로만 남긴다 (덮어쓰지 않음)
+    late, late_at = (cur or {}).get("late_sets") or [], (cur or {}).get("late_sets_at")
+    if late_want and ai:
+        late, late_at = make_sets(res["ctx"], trusted), now.isoformat()
+        if not a.dry_run:
+            try:
+                db.upsert("research_predictions", [{
+                    "algorithm": REG_ALGO, "version": LATE_VERSION, "target_round": target, "data_end_round": latest, "sets": late,
+                    "generated_at": late_at, "deadline_at": dl.isoformat(), "pre_deadline": True, "locked": True,
+                    "status": "pending"}], "algorithm,version,target_round", ignore=True)
+            except Exception as e:   # 장부에 못 남겨도 저장본에는 남긴다
+                print(f"  늦은 제미나이 번호 장부 등록 실패 — 저장본에만 남김: {str(e)[:200]}")
+    elif late_want:
+        print("  --late-sets: 제미나이가 답하지 못해 늦은 번호를 만들지 않음")
     rows = res["rows"]
     m = [x for r in rows for x in r["m"]]
     payload = {
@@ -696,6 +714,7 @@ def weekly(db, a):
         "quota_until": None if ai else until,       # 제미나이 한도가 풀리는 시각 — 그때까지 다시 부르지 않음
         "sets": sets, "sets_status": sets_status, "sets_by": sets_by, "sets_note": sets_note, "gold_numbers": gold_numbers,
         "reg_version": REG_VERSION,
+        "late_sets": late, "late_sets_at": late_at,   # 주중에 제미나이가 답해 추가한 번호 (별도 기록 · 월요일 번호는 그대로)
         "scanned": res["patterns"], "formulas": res["formulas"], "alive_total": nx["laws_total"], "alive": nx["laws"],
         "scoreboard": {"from": rows[0]["round"], "to": rows[-1]["round"],
                        "laws": {k: [v[0], v[1], round(v[2], 1)] for k, v in res["law_stat"].items()},
@@ -714,6 +733,8 @@ def weekly(db, a):
           f"살펴본 것 {payload['scanned']:,}개 · 살아 있는 법칙 {nx['laws_total']}개 · 순환 {len(cyc)}개 (새로 {len(new)}개) · 완성 {done_now or '없음'}")
     print(f"  지난 회차 믿은 법칙: {rec[1]}개 중 {rec[0]}개 적중 · 누적 {record['trusted']} · 지난 번호 맞힌 개수 {pm or '없음'}")
     print(f"  번호 5세트 ({sets_status}{' · ' + sets_by if sets_by else ''}{' · ' + sets_note if sets_note and not sets else ''}): {sets}")
+    if late:
+        print(f"  늦은 제미나이 번호 ({LATE_VERSION} · {late_at}): {late}")
     print(f"  황금 숫자: {gold_numbers or '없음'}")
     for x in trusted:
         print(f"  믿는 법칙: {x['law']} [{x['mode']}] → {x['next']} — {x['why']}")
@@ -754,6 +775,8 @@ def main():
     ap.add_argument("--dry-run", action="store_true", help="이번 회차 흐름 전체 (저장 없음)")
     ap.add_argument("--publish", action="store_true", help="서버 전용 — research_results 에 저장")
     ap.add_argument("--force", action="store_true", help="이번 회차 꿈이 이미 있어도 다시")
+    ap.add_argument("--late-sets", action="store_true",
+                    help="계산 번호로 등록된 회차에 제미나이 번호를 별도 기록으로 추가 (수동 실행 때만 · 월요일 번호는 그대로)")
     a = ap.parse_args()
     if a.publish and os.environ.get("GITHUB_ACTIONS") != "true":
         sys.exit("저장은 서버(GitHub Actions)에서만 합니다. 로컬은 --dry-run 만 허용")

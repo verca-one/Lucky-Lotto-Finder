@@ -14,6 +14,11 @@ on:
     - cron: '0 2,6,10,14,18,22 * * 0' # 일 11시 ~ 월 07시 KST, 4시간마다
     - cron: '0 2,6 * * 1'             # 월 11시 · 15시 KST
   workflow_dispatch:
+    inputs:
+      late_sets:
+        description: '계산 번호로 등록된 회차에 제미나이 번호를 별도 기록으로 추가 (월요일 번호는 그대로)'
+        type: boolean
+        default: false
 
 concurrency:
   group: research-7183
@@ -36,4 +41,4 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_KEY: ${{ secrets.SUPABASE_SERVICE_KEY }}
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-        run: python research_7183.py --publish
+        run: python research_7183.py --publish ${{ inputs.late_sets && '--late-sets' || '' }}

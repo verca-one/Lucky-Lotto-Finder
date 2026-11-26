@@ -60,6 +60,21 @@ void main() {
     expect(find.text('끝수 순환이 맨 뒤 번호로 넘어가는 중입니다.'), findsOneWidget);
   });
 
+  testWidgets('주중에 제미나이가 답해 추가한 번호 — 월요일 계산 번호는 그대로, 따로 한 상자', (t) async {
+    await pump(t, Agent7183.fromPayload({
+      ...payload(source: 'gemini'), 'sets_by': 'rule',
+      'late_sets': [[1, 2, 3, 4, 5, 6], [11, 12, 13, 14, 15, 16]], 'late_sets_at': '2026-11-26T12:00:00Z',
+    }));
+    expect(find.text('사전 등록 · 계산'), findsOneWidget); // 월요일 번호 표시는 그대로
+    expect(find.byKey(const ValueKey('a7183_late_sets')), findsOneWidget);
+    expect(find.text('제미나이 번호 5세트 — 주중 추가 (11/26)'), findsOneWidget);
+  });
+
+  testWidgets('늦은 번호 없으면 상자 없음', (t) async {
+    await pump(t, Agent7183.fromPayload(payload(source: 'gemini')));
+    expect(find.byKey(const ValueKey('a7183_late_sets')), findsNothing);
+  });
+
   testWidgets('공개 전 · 저장본 없음 안내', (t) async {
     await pump(t, null, released: false);
     expect(find.textContaining('월요일 0시(또는 수동 추천) 이후 서버가 뽑습니다'), findsOneWidget);

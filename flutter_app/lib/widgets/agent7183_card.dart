@@ -96,6 +96,12 @@ class _Agent7183CardState extends State<Agent7183Card> {
         },
       );
 
+  /// ' (11/26)' — 추가한 날 (KST)
+  static String _lateDay(String? iso) {
+    final t = DateTime.tryParse(iso ?? '')?.toUtc().add(const Duration(hours: 9));
+    return t == null ? '' : ' (${t.month}/${t.day})';
+  }
+
   Widget _note(String s) => Text(s, style: TextStyle(fontSize: 12, color: Colors.orange.shade900));
 
   String _n(num v) => v == v.roundToDouble() ? '${v.toInt()}' : v.toStringAsFixed(1);
@@ -140,6 +146,38 @@ class _Agent7183CardState extends State<Agent7183Card> {
               ]),
             ),
           ),
+      // ── 주중에 제미나이가 답해 추가한 번호 — 위 월요일 등록 번호는 그대로, 이건 별도 기록
+      if (a.lateSets.isNotEmpty)
+        Container(
+          key: const ValueKey('a7183_late_sets'),
+          width: double.infinity,
+          margin: const EdgeInsets.only(top: 4, bottom: 8),
+          padding: const EdgeInsets.all(10),
+          decoration: BoxDecoration(
+            color: k7183Color.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(color: k7183Color.withValues(alpha: 0.35)),
+          ),
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            Text('제미나이 번호 5세트 — 주중 추가${_lateDay(a.lateSetsAt)}',
+                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w900, color: k7183Color)),
+            Text('월요일엔 제미나이가 답하지 못해 계산 번호로 등록됐습니다. 제미나이가 답한 뒤 뽑은 번호를 따로 남깁니다 (위 번호는 그대로 · 채점은 위 번호).',
+                style: TextStyle(fontSize: 10.5, color: Colors.grey.shade700, height: 1.4)),
+            const SizedBox(height: 6),
+            for (final e in a.lateSets.asMap().entries)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 6),
+                child: BriefingSetMarks(
+                  id: '${a.target}:hypothesis_late:${e.key}',
+                  numbers: e.value,
+                  child: Row(children: [
+                    SizedBox(width: 18, child: Text('${e.key + 1}', style: const TextStyle(fontWeight: FontWeight.w900, color: k7183Color))),
+                    ...e.value.map((n) => Padding(padding: const EdgeInsets.only(right: 3), child: lottoBall(n, size: 28))),
+                  ]),
+                ),
+              ),
+          ]),
+        ),
       // ── 조수의 황금 숫자 (확실한 패턴이 있을 때만) · 없으면 일하고 있다는 표시
       _goldBox(a),
       const SizedBox(height: 8),
