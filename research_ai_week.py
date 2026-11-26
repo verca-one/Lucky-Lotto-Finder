@@ -3,8 +3,8 @@
 
 제미나이 무료 한도(하루 20번 · 17:00 KST 에 풀림)를 한 번에 다 쓰지 않게, 매일 17:05 KST 에 그날 몫만 돌린다.
   월: 7183 에이전트 · AI 브리핑전담부서(복기)   화: AI 전략기획부   수: 연금 추리   목: 스피또 추리
-  금: 예비 — 이번 주에 실패했거나 안 돌았던 것만 다시     토·일: 없음
-연구소 [새로고침](workflow_dispatch): 이번 주에 실패 · 빠진 것만 (없으면 오늘 몫)
+  금 · 토 · 일: 자동으로는 돌지 않는다 (2026-11-27 사용자 지시 — 금요일 자동 재시도 대신 수동으로 고름)
+연구소 › AI 부서: 단계별 [재시도] = 그 몫만 (--parts) · 위쪽 [새로고침] = 이번 주에 실패 · 빠진 것 모두(없으면 오늘 몫)
 
 출력: GITHUB_OUTPUT 에 parts=a7183,review,... (빈 값이면 제미나이 단계 모두 건너뜀)
 앱 브리핑 진척도(ai_dept_status.dart AiWeekPlan)와 같은 표 — 바꾸면 같이 바꿀 것.
@@ -37,9 +37,15 @@ def parts_for(now, done, manual=False):
     missed = [p for p in ALL if DAY_OF[p] <= min(wd, 4) and not done.get(p)]
     if manual:
         return missed or PLAN.get(wd, [])
-    if wd == 4:
-        return missed
-    return PLAN.get(wd, [])
+    return PLAN.get(wd, [])   # 금 · 토 · 일은 계획이 없어 빈 목록
+
+
+def chosen(explicit, now, done):
+    """단계별 [재시도]로 고른 몫 — 'auto' 가 섞여 있으면 이번 주 실패 · 빠진 것도 더한다 (순수 함수)"""
+    want = set(explicit) & set(ALL)
+    if "auto" in explicit:
+        want |= set(parts_for(now, done, True))
+    return [p for p in ALL if p in want]
 
 
 def week_done(get, now):
@@ -67,8 +73,10 @@ def selfcheck():
     assert parts_for(mon, {}) == ["a7183", "review"]
     assert parts_for(mon + timedelta(days=1), {}) == ["direction"]
     fri = mon + timedelta(days=4)
-    assert parts_for(fri, {"a7183": True, "review": True, "direction": False, "pension": True, "speetto": True}) == ["direction"]
-    assert parts_for(fri, {p: True for p in ALL}) == []
+    assert parts_for(fri, {"a7183": True, "review": True, "direction": False, "pension": True, "speetto": True}) == []   # 금요일 자동 재시도 없음
+    assert parts_for(fri, {"direction": False, "a7183": True, "review": True, "pension": True, "speetto": True}, manual=True) == ["direction"]
+    assert chosen(["pension", "x"], fri, {}) == ["pension"] and chosen(["speetto", "a7183"], fri, {}) == ["a7183", "speetto"]
+    assert chosen(["auto", "speetto"], mon + timedelta(days=1), {"a7183": True, "review": True, "direction": True}) == ["direction", "speetto"]   # 빠진 것이 없으면 auto = 오늘 몫
     assert parts_for(mon + timedelta(days=5), {}) == []                        # 토
     assert parts_for(mon + timedelta(days=1), {"a7183": False}, manual=True) == ["a7183", "review", "direction"]
     assert parts_for(mon + timedelta(days=2), {p: True for p in ALL}, manual=True) == ["pension"]
@@ -78,6 +86,7 @@ def selfcheck():
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--manual", action="store_true", help="연구소 새로고침 — 이번 주 실패 · 빠진 것만")
+    ap.add_argument("--parts", default="", help="단계별 재시도로 고른 몫 (쉼표로 · auto = 이번 주 실패 · 빠진 것)")
     ap.add_argument("--selfcheck", action="store_true")
     a = ap.parse_args()
     if a.selfcheck:
@@ -100,7 +109,8 @@ def main():
     except Exception as e:  # 못 읽으면 오늘 몫만
         print(f"이번 주 상태 못 읽음 — 오늘 몫만: {e}")
         done = {}
-    parts = parts_for(now, done, a.manual)
+    explicit = [x for x in a.parts.split(",") if x]
+    parts = chosen(explicit, now, done) if explicit else parts_for(now, done, a.manual)
     print(f"이번 주 상태: {done}")
     print(f"오늘 돌릴 제미나이 몫: {parts or '없음'}")
     out = os.environ.get("GITHUB_OUTPUT")

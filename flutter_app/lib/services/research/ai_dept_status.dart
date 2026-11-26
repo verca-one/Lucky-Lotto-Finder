@@ -8,7 +8,9 @@ class AiDeptItem {
   final bool ok;
   final String detail;
   final DateTime? at;
-  const AiDeptItem(this.name, this.ok, this.detail, [this.at]);
+  /// 서버 몫 이름 (a7183 · review · direction · pension · speetto) — 단계별 [재시도]에 씀
+  final String? part;
+  const AiDeptItem(this.name, this.ok, this.detail, [this.at, this.part]);
 }
 
 /// 새로고침 요청 한 건
@@ -18,8 +20,11 @@ class AiRequest {
   final DateTime requestedAt;
   final DateTime? dispatchedAt, doneAt, runStartedAt, runEndedAt;
   final String? conclusion;
+
+  /// 다시 돌릴 몫 (null = 이번 주 실패 · 빠진 것 모두)
+  final String? parts;
   const AiRequest(this.id, this.status, this.requestedAt,
-      {this.dispatchedAt, this.doneAt, this.conclusion, this.runStartedAt, this.runEndedAt});
+      {this.dispatchedAt, this.doneAt, this.conclusion, this.runStartedAt, this.runEndedAt, this.parts});
 
   factory AiRequest.fromRow(Map<String, dynamic> r) => AiRequest(
         (r['id'] as num).toInt(),
@@ -28,6 +33,7 @@ class AiRequest {
         dispatchedAt: DateTime.tryParse('${r['dispatched_at']}'),
         doneAt: DateTime.tryParse('${r['done_at']}'),
         conclusion: r['conclusion'] as String?,
+        parts: r['parts'] as String?,
         runStartedAt: DateTime.tryParse('${r['run_started_at']}'),
         runEndedAt: DateTime.tryParse('${r['run_ended_at']}'),
       );
@@ -72,7 +78,7 @@ const kAiWeekPlan = <(String, String, List<String>)>[
   ('화', '전략기획부', ['direction']),
   ('수', '연금 추리', ['pension']),
   ('목', '스피또 추리', ['speetto']),
-  ('금', '예비 · 재시도', []),
+  ('금', '수동 재시도', []),
 ];
 
 enum AiDayState { done, failed, missed, wait }
@@ -84,7 +90,10 @@ class AiDeptStatus {
   final Map<String, bool?> week;
   /// 다음 추첨 회차 (0 = 모름) — AI 부서의 '이번 회차 추천번호가 따른 법칙' 풀이에 씀
   final int nextRound;
-  const AiDeptStatus(this.items, this.request, {this.week = const {}, this.nextRound = 0});
+
+  /// 아직 안 끝난 요청의 몫 — 'auto' = 전체 새로고침. 그 단계의 [재시도]는 끝날 때까지 막는다
+  final Set<String> activeParts;
+  const AiDeptStatus(this.items, this.request, {this.week = const {}, this.nextRound = 0, this.activeParts = const {}});
 
   /// 이번 주 월요일 0시 KST
   static DateTime weekStart(DateTime now) {
@@ -102,7 +111,7 @@ class AiDeptStatus {
         () {
           final parts = d.$3.isEmpty ? all : d.$3; // 금요일 = 전체가 다 됐는지
           if (parts.every((p) => week[p] == true)) return AiDayState.done;
-          if (d.$3.isEmpty) return i < passed ? AiDayState.failed : AiDayState.wait;
+          if (d.$3.isEmpty) return AiDayState.wait; // 금요일 = 수동 재시도 날 (자동으로 돌지 않음)
           if (parts.any((p) => week[p] == false)) return AiDayState.failed;
           // 토 추첨 뒤 · 일요일엔 월요일 몫(7183 · 복기)이 새 회차 것으로 바뀌어 비어 보임 → '안 돎'이 아니라 예정
           if (i == 0 && k.weekday >= 6) return AiDayState.wait;
@@ -134,9 +143,13 @@ class AiDeptStatus {
     Map<String, dynamic>? review,
     List<Map<String, dynamic>> runs = const [],
     Map<String, dynamic>? request,
+    List<Map<String, dynamic>> requests = const [],   // 최근 요청들 (최신 먼저) — request 를 안 주면 여기서 고름
     DateTime? now,
     int nextRound = 0,
   }) {
+    final all = [if (request != null) request, ...requests];
+    final active = [for (final r in all) if (r['status'] != 'done') r];
+    request = active.isNotEmpty ? active.first : (all.isEmpty ? null : all.first);   // 진행 중인 것을 먼저 보여 줌
     final items = <AiDeptItem>[];
     final since = weekStart(now ?? DateTime.now());
     final week = <String, bool?>{
@@ -149,34 +162,37 @@ class AiDeptStatus {
       week[part] = mine.isEmpty ? null : mine.any((x) => x['status'] != 'failed');
     }
     if (a7183 == null) {
-      items.add(const AiDeptItem('7183 에이전트', true, '다음 회차 실행 전'));
+      items.add(const AiDeptItem('7183 에이전트', true, '다음 회차 실행 전', null, 'a7183'));
     } else if (a7183['source'] == 'gemini') {
-      items.add(const AiDeptItem('7183 에이전트', true, '제미나이 참여'));
+      items.add(const AiDeptItem('7183 에이전트', true, '제미나이 참여', null, 'a7183'));
     } else if (a7183['source'] == 'claude') {
-      items.add(const AiDeptItem('7183 에이전트', true, 'Claude 대행 (제미나이가 못 답한 주)'));
+      items.add(const AiDeptItem('7183 에이전트', true, 'Claude 대행 (제미나이가 못 답한 주)', null, 'a7183'));
     } else {
       final until = DateTime.tryParse('${a7183['quota_until']}');
       items.add(AiDeptItem('7183 에이전트', false,
-          until == null ? '제미나이 답 없음 (계산 번호만)' : '제미나이 하루 한도 초과 — ${_kst(until)} 이후 다시'));
+          until == null ? '제미나이 답 없음 (계산 번호만)' : '제미나이 하루 한도 초과 — ${_kst(until)} 이후 다시', null, 'a7183'));
     }
     final src = review?['source'];
     items.add(review == null
-        ? const AiDeptItem('AI 브리핑전담부서', true, '다음 회차 복기 전')
+        ? const AiDeptItem('AI 브리핑전담부서', true, '다음 회차 복기 전', null, 'review')
         : src == 'gemini'
-            ? const AiDeptItem('AI 브리핑전담부서', true, '제미나이 복기')
-            : AiDeptItem('AI 브리핑전담부서', false, '제미나이 실패로 기본 규칙 복기 (${_err(review['ai_error'] as String?)})'));
-    for (final (kind, name) in [('ai_direction', 'AI 전략기획부'), ('ai_pension', '연금 추리'), ('ai_speetto', '스피또 추리')]) {
+            ? const AiDeptItem('AI 브리핑전담부서', true, '제미나이 복기', null, 'review')
+            : AiDeptItem('AI 브리핑전담부서', false, '제미나이 실패로 기본 규칙 복기 (${_err(review['ai_error'] as String?)})', null, 'review'));
+    for (final (kind, name, part) in [
+      ('ai_direction', 'AI 전략기획부', 'direction'), ('ai_pension', '연금 추리', 'pension'), ('ai_speetto', '스피또 추리', 'speetto')
+    ]) {
       final r = runs.where((x) => x['kind'] == kind).firstOrNull;
       final at = DateTime.tryParse('${r?['created_at']}');
       if (r == null) {
-        items.add(AiDeptItem(name, true, '기록 없음'));
+        items.add(AiDeptItem(name, true, '기록 없음', null, part));
       } else if (r['status'] == 'failed') {
-        items.add(AiDeptItem(name, false, _err(r['note'] as String?), at));
+        items.add(AiDeptItem(name, false, _err(r['note'] as String?), at, part));
       } else {
-        items.add(AiDeptItem(name, true, r['status'] == 'skipped' ? '이번엔 건너뜀' : '정상', at));
+        items.add(AiDeptItem(name, true, r['status'] == 'skipped' ? '이번엔 건너뜀' : r['status'] == 'manual' ? 'Claude 대행 (이번 주만)' : '정상', at, part));
       }
     }
-    return AiDeptStatus(items, request == null ? null : AiRequest.fromRow(request), week: week, nextRound: nextRound);
+    return AiDeptStatus(items, request == null ? null : AiRequest.fromRow(request), week: week, nextRound: nextRound,
+        activeParts: {for (final r in active) '${r['parts'] ?? 'auto'}'});
   }
 
   static String _kst(DateTime t) {
@@ -198,17 +214,19 @@ class AiDeptStatus {
         .inFilter('kind', ['ai_direction', 'ai_pension', 'ai_speetto']).order('created_at', ascending: false).limit(30);
     List req = const [];
     try {
-      req = await db.from('research_ai_requests').select().order('id', ascending: false).limit(1);
+      req = await db.from('research_ai_requests').select().order('id', ascending: false).limit(10);
     } catch (_) {} // 표가 아직 없으면(SQL 미실행) 요청 없음으로
     return fromRows(
       nextRound: next,
       a7183: (a as List).isEmpty ? null : Map<String, dynamic>.from(a.first),
       review: (rv as List).isEmpty ? null : Map<String, dynamic>.from(rv.first),
       runs: [for (final r in runs as List) Map<String, dynamic>.from(r)],
-      request: req.isEmpty ? null : Map<String, dynamic>.from(req.first),
+      requests: [for (final r in req) Map<String, dynamic>.from(r)],
     );
   }
 
   /// [새로고침] — 서버가 제미나이 작업 전체를 다시 돌리도록 요청 1행
-  static Future<void> requestRefresh() => Supabase.instance.client.from('research_ai_requests').insert({});
+  ///   part 를 주면 그 단계만 (단계별 [재시도])
+  static Future<void> requestRefresh([String? part]) =>
+      Supabase.instance.client.from('research_ai_requests').insert({if (part != null) 'parts': part});
 }

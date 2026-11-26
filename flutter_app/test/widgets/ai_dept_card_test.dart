@@ -92,12 +92,39 @@ void main() {
   testWidgets('문제 있고 실행 중 아님 → [새로고침] 누르면 요청', (t) async {
     final idle = AiDeptStatus(bad.items, null);
     var asked = 0;
-    await t.pumpWidget(MaterialApp(home: Scaffold(body: AiDeptCard(loader: () async => idle, requester: () async => asked++))));
+    await t.pumpWidget(MaterialApp(home: Scaffold(body: AiDeptCard(loader: () async => idle, requester: (_) async => asked++))));
     await t.pumpAndSettle();
     expect(find.text('문제 3'), findsOneWidget);
     await t.tap(find.byKey(const ValueKey('ai_dept_refresh')));
     await t.pumpAndSettle();
     expect(asked, 1);
+  });
+
+  testWidgets('단계별 [재시도] — 그 몫만 요청 · 요청 중인 단계는 [요청됨]', (t) async {
+    final parts = <String?>[];
+    final st = AiDeptStatus.fromRows(
+      a7183: {'source': 'claude'}, review: {'source': 'gemini'},
+      runs: [{'kind': 'ai_direction', 'status': 'failed', 'note': 'TimeoutError', 'created_at': '2026-11-25T18:32:00Z'},
+             {'kind': 'ai_pension', 'status': 'failed', 'note': 'TimeoutError', 'created_at': '2026-11-25T18:44:00Z'}],
+      requests: [{'id': 5, 'status': 'pending', 'parts': 'pension', 'requested_at': '2026-11-27T01:00:00Z'}],
+    );
+    expect(st.activeParts, {'pension'});
+    t.view.physicalSize = const Size(1080, 2600);
+    t.view.devicePixelRatio = 3;
+    addTearDown(t.view.reset);
+    await t.pumpWidget(MaterialApp(home: Scaffold(body: SingleChildScrollView(
+        child: AiDeptCard(loader: () async => st, requester: (p) async => parts.add(p))))));
+    await t.pump();
+    await t.pump();
+    await t.tap(find.byKey(const ValueKey('ai_dept_toggle')));
+    await t.pump();
+    expect(find.byKey(const ValueKey('ai_dept_retry_wait_pension')), findsOneWidget);
+    expect(find.byKey(const ValueKey('ai_dept_retry_pension')), findsNothing);
+    await t.tap(find.byKey(const ValueKey('ai_dept_retry_direction')));
+    await t.pump();
+    await t.pump();
+    expect(parts, ['direction']);
+    await t.pumpWidget(const SizedBox()); // 타이머 정리
   });
 
   test('7183 을 Claude 가 대신 쓴 주 — 문제 아님 · 이번 주 몫 완료', () {

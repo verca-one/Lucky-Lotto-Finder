@@ -86,7 +86,7 @@ class _Ai7183LawsBoxState extends State<Ai7183LawsBox> {
 
 class AiDeptCard extends StatefulWidget {
   final Future<AiDeptStatus> Function()? loader;
-  final Future<void> Function()? requester;
+  final Future<void> Function(String? part)? requester;
   final Future<Agent7183?> Function(int target)? lawsLoader;
   const AiDeptCard({super.key, this.loader, this.requester, this.lawsLoader});
   @override
@@ -134,10 +134,10 @@ class _AiDeptCardState extends State<AiDeptCard> {
     }
   }
 
-  Future<void> _refresh() async {
+  Future<void> _refresh([String? part]) async {
     setState(() => _sending = true);
     try {
-      await (widget.requester ?? AiDeptStatus.requestRefresh)();
+      await (widget.requester ?? AiDeptStatus.requestRefresh)(part);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('새로고침 요청 — 서버가 제미나이 작업을 다시 돌립니다')));
       }
@@ -147,7 +147,9 @@ class _AiDeptCardState extends State<AiDeptCard> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
             content: Text(s.contains('research_ai_requests') && !s.contains('row-level')
                 ? 'DB에 요청 표가 없습니다 — research_v15_ai_requests.sql 을 실행해 주세요'
-                : '방금 요청했거나 진행 중이라 지금은 요청할 수 없습니다 (20분 간격)')));
+                : s.contains("'parts'") || s.contains('parts column')
+                    ? 'DB 표에 단계 칸이 없습니다 — research_v15_ai_requests.sql 을 다시 실행해 주세요'
+                    : '방금 요청했거나 진행 중이라 지금은 요청할 수 없습니다 (같은 단계는 10분 간격)')));
       }
     }
     if (mounted) setState(() => _sending = false);
@@ -250,10 +252,29 @@ class _AiDeptCardState extends State<AiDeptCard> {
                     child: Text('${e.detail}${e.at == null ? '' : ' · ${AiDeptStatus.kst(e.at!)}'}',
                         style: TextStyle(fontSize: 12, color: e.ok ? Colors.black87 : _bad, fontWeight: e.ok ? FontWeight.w500 : FontWeight.w700)),
                   ),
+                  // 단계별 재시도 — 이 몫만 서버가 다시 돌린다 (요청 중이면 끝날 때까지 막힘)
+                  if (e.part != null)
+                    s.activeParts.contains(e.part) || s.activeParts.contains('auto')
+                        ? Padding(
+                            padding: const EdgeInsets.only(left: 6, top: 2),
+                            child: Text('요청됨', key: ValueKey('ai_dept_retry_wait_${e.part}'),
+                                style: const TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900, color: Color(0xFF1565C0))),
+                          )
+                        : SizedBox(
+                            height: 28,
+                            child: OutlinedButton(
+                              key: ValueKey('ai_dept_retry_${e.part}'),
+                              style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(horizontal: 8), minimumSize: const Size(0, 28),
+                                  visualDensity: VisualDensity.compact, foregroundColor: _c),
+                              onPressed: _sending ? null : () => _refresh(e.part),
+                              child: const Text('재시도', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w900)),
+                            ),
+                          ),
                 ]),
               ),
             if (!s.smooth && !running)
-              Text('위 [새로고침]을 누르면 서버가 제미나이 작업을 다시 돌립니다. 하루 한도 초과면 17시(KST) 뒤에 눌러 주세요.',
+              Text('단계 옆 [재시도]는 그 단계만, 위 ↻ 는 이번 주에 실패 · 빠진 것을 모두 다시 돌립니다. 하루 한도 초과면 17시(KST) 뒤에 눌러 주세요.',
                   style: TextStyle(fontSize: 11.5, color: Colors.orange.shade900, height: 1.4)),
             const SizedBox(height: 8),
             if (s.nextRound > 0) Ai7183LawsBox(key: ValueKey('laws_${s.nextRound}'), target: s.nextRound, loader: widget.lawsLoader),

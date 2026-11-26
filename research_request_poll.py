@@ -43,16 +43,22 @@ def ai_requests(get, patch, token, repo, now):
     def ts(v):
         return datetime.fromisoformat(v.replace("Z", "+00:00"))
 
+    # 대기 중 요청은 한 번의 실행으로 묶는다 — 단계별 [재시도]를 여러 개 눌러도 실행은 하나 (같은 워크플로는 대기 줄이 하나뿐이라)
+    pend = [r for r in reqs if r["status"] == "pending"]
+    if pend:
+        order = ["auto", "a7183", "review", "direction", "pension", "speetto"]
+        parts = sorted({(r.get("parts") or "auto") for r in pend if (r.get("parts") or "auto") in order}, key=order.index)
+        ids = {"id": f"in.({','.join(str(r['id']) for r in pend)})"}
+        res = requests.post(api + "/dispatches", headers=gh, json={"ref": "main", "inputs": {"parts": ",".join(parts)}}, timeout=30)
+        if res.status_code != 204:
+            print(f"{AI_WORKFLOW} 실행 요청 실패 {res.status_code} {res.text[:200]}")
+            patch("research_ai_requests", ids, {"status": "done", "done_at": now.isoformat(), "conclusion": "dispatch_failed"})
+        else:
+            patch("research_ai_requests", ids, {"status": "dispatched", "dispatched_at": now.isoformat()})
+            print(f"AI 부서 요청 {len(pend)}건 — {AI_WORKFLOW} 실행 요청 (몫: {','.join(parts)})")
     for r in reqs:
         rid = {"id": f"eq.{r['id']}"}
         if r["status"] == "pending":
-            res = requests.post(api + "/dispatches", headers=gh, json={"ref": "main"}, timeout=30)
-            if res.status_code != 204:
-                print(f"{AI_WORKFLOW} 실행 요청 실패 {res.status_code} {res.text[:200]}")
-                patch("research_ai_requests", rid, {"status": "done", "done_at": now.isoformat(), "conclusion": "dispatch_failed"})
-                continue
-            patch("research_ai_requests", rid, {"status": "dispatched", "dispatched_at": now.isoformat()})
-            print(f"AI 부서 새로고침 #{r['id']} — {AI_WORKFLOW} 실행 요청")
             continue
         # dispatched — 요청 뒤에 생긴 수동 실행을 찾아 끝났는지 본다
         since = ts(r["dispatched_at"]) - timedelta(minutes=2)

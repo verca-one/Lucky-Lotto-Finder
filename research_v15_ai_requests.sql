@@ -21,6 +21,8 @@ CREATE TABLE IF NOT EXISTS research_ai_requests (
 -- 이미 표를 만든 뒤라면 칸만 추가
 ALTER TABLE research_ai_requests ADD COLUMN IF NOT EXISTS run_started_at timestamptz;
 ALTER TABLE research_ai_requests ADD COLUMN IF NOT EXISTS run_ended_at timestamptz;
+-- 단계별 [재시도] — 어느 몫을 다시 돌릴지 (a7183 | review | direction | pension | speetto). 비어 있으면 '이번 주 실패 · 빠진 것 모두'
+ALTER TABLE research_ai_requests ADD COLUMN IF NOT EXISTS parts text;
 
 ALTER TABLE research_ai_requests ENABLE ROW LEVEL SECURITY;
 
@@ -35,9 +37,12 @@ CREATE POLICY "ai_requests_insert" ON research_ai_requests
     status = 'pending' AND source = 'app_manual'
     AND dispatched_at IS NULL AND done_at IS NULL AND conclusion IS NULL AND run_url IS NULL
     AND run_started_at IS NULL AND run_ended_at IS NULL
+    AND (parts IS NULL OR parts ~ '^(a7183|review|direction|pension|speetto)$')
+    -- 같은 몫의 요청이 진행 중이거나 10분 안에 있었으면 막는다 (다른 몫은 이어서 누를 수 있음)
     AND NOT EXISTS (
       SELECT 1 FROM research_ai_requests r
-      WHERE r.status <> 'done' OR r.requested_at > now() - interval '20 minutes'
+      WHERE r.parts IS NOT DISTINCT FROM research_ai_requests.parts
+        AND (r.status <> 'done' OR r.requested_at > now() - interval '10 minutes')
     )
   );
 
