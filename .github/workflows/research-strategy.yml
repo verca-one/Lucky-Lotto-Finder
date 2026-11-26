@@ -13,19 +13,7 @@ on:
   schedule:
     - cron: '0 8 * * *'   # 17:00 KST
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - 'research_strategy_ai.py'
-      - 'research_hypothesis_factory.py'
-      - 'research_store_hypotheses.py'
-      - 'research_store_hypothesis_apply.py'
-      - 'research_hypothesis_track.py'
-      - 'research_set_review.py'
-      - 'research_pension.py'
-      - 'research_speetto.py'
-      - 'research_agent_extra.py'
-      - '.github/workflows/research-strategy.yml'
+  # push 로는 돌리지 않음 — 푸쉬마다 제미나이 하루 한도(20번)를 써서 17시 실행 · 7183 이 밀렸음 (2026-11-26). 다시 돌리려면 연구소 › AI 부서 [새로고침]
 
 concurrency:
   group: research-strategy
