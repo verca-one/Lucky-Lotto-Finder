@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../widgets/home_round_header.dart' show DragonBlueLayer;
 import 'favorites_screen.dart';
 import 'tax_calculator_screen.dart';
+import 'win_records_screen.dart';
 
 class FavoritesTabScreen extends StatefulWidget {
   const FavoritesTabScreen({super.key});
@@ -17,7 +18,7 @@ class _FavoritesTabScreenState extends State<FavoritesTabScreen>
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
   }
 
   @override
@@ -86,6 +87,7 @@ class _FavoritesTabScreenState extends State<FavoritesTabScreen>
                   tabs: const [
                     Tab(icon: Icon(Icons.star_rounded, size: 18), text: '즐겨찾기'),
                     Tab(icon: Icon(Icons.receipt_long_rounded, size: 18), text: '세금계산기'),
+                    Tab(icon: Icon(Icons.emoji_events_rounded, size: 18), text: '당첨기록'),
                   ],
                 ),
               ],
@@ -99,6 +101,7 @@ class _FavoritesTabScreenState extends State<FavoritesTabScreen>
               children: const [
                 FavoritesScreen(withNumbers: true), // 즐겨찾기 + 구매번호 (예전 '나의 번호' 탭을 합침)
                 TaxCalculatorContent(),
+                WinRecordsScreen(), // 내 구매번호 중 당첨된 것 (날짜 · 등수 · 그 판매점 구매 횟수)
               ],
             ),
           ),
